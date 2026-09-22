@@ -1,10 +1,10 @@
-# json2json-mapper — Architecture
+# json2json-mapping-engine — Architecture
 
 > First draft. Based on design discussion; subject to revision.
 
 ## Overview
 
-`json2json-mapper` is a **compiled mapping engine** for JSON-to-JSON transformations.
+`json2json-mapping-engine` is a **compiled mapping engine** for JSON-to-JSON transformations.
 Developers write mapping rules in a restricted, hard-typed subset of Python syntax.
 A compiler translates those rules to native code in the target runtime (initially PL/SQL).
 There is no DSL interpretation at runtime — the output is ordinary compiled code.
