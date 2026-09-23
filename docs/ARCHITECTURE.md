@@ -52,13 +52,16 @@ Local variable assignments (`x = ...`) are **permitted inside `.fn` function bod
 and inside multi-line `.fn.yaml` expression blocks, but are **blocked in `.map` file
 scope** outside of per-field function bodies. This keeps every field assignment in
 `.map` files reducible to a single traceable expression, which is required for
-round-trip import and loop fusion analysis.
+round-trip import and loop fusion analysis. The sole exception is a single reserved
+module-level assignment, `__id__ = '<literal>'`, used in bootstrap mode to override the
+mapping id (§Operational modes) — the Validator recognizes it as a compiler metadata
+directive, not a general-purpose variable.
 
 ### Type system
 
 | DSL type | PL/SQL type | JSON Schema type |
 |---|---|---|
-| `str` | `VARCHAR2(4000)` | `string` |
+| `str` | `VARCHAR2(n CHAR)` or `CLOB` — see below | `string` |
 | `int` | `NUMBER(38,0)` | `integer` |
 | `number` | `NUMBER` | `number` |
 | `date` | `DATE` | `string` + `format: date` |
@@ -68,6 +71,13 @@ round-trip import and loop fusion analysis.
 | `Null` | explicit JSON null sentinel (see Return semantics) | `null` |
 | `list[T]` | `JSON_ARRAY_T` | `array` |
 | `@dataclass` | `JSON_OBJECT_T` | `object` |
+
+**String sizing (PL/SQL backend).** The Schema Generator sizes `str` fields from the
+JSON Schema `maxLength`: if `maxLength` is declared and does not exceed 4000, the field
+is declared `VARCHAR2(maxLength CHAR)`; if `maxLength` is absent or exceeds 4000, the
+field falls back to `CLOB` instead of risking a runtime truncation error against
+Oracle's `VARCHAR2` limit. This is a PL/SQL-backend decision, not an engine-level one —
+other targets size their own string types according to their own limits.
 
 When a JSON Schema is available, the Schema Generator produces named stubs for every
 alternative in `oneOf` / `anyOf` constructs (e.g. `PaymentCard | PaymentBank`) so the
@@ -94,11 +104,11 @@ invocation produces no contribution to the output, equivalent to a field-level s
 In PL/SQL the Code Generator emits a two-flag guard per field:
 
 ```plsql
-IF NOT v_r42_skip THEN
-    IF v_r42_is_null THEN
+IF NOT v_ord_lin_skip THEN
+    IF v_ord_lin_is_null THEN
         v_out_obj.put('amount', CAST(NULL AS NUMBER));
     ELSE
-        v_out_obj.put('amount', v_r42_result);
+        v_out_obj.put('amount', v_ord_lin_result);
     END IF;
 END IF;
 ```
@@ -275,6 +285,20 @@ The backend decides the mechanism:
 
 The mapping file declares intent; the backend emits the appropriate scaffolding.
 
+**Conflict with Loop Fusion.** When the Loop Fusion Optimizer merges several field
+functions that iterate the same source array into a single generated loop, their
+`@parallel` declarations must agree. By default, any mismatch (different `degree`
+values, or some functions declaring `@parallel` and others not) is a **compile error**
+naming the conflicting functions. A project may relax this in `mapper.toml`:
+
+```toml
+[optimizer]
+parallel_conflict = "exception"   # exception (default) | max | min
+```
+
+`"max"` / `"min"` resolve the conflict automatically by taking the highest or lowest
+declared degree among the fused functions instead of failing the build.
+
 ---
 
 ## Compiler pipeline
@@ -328,16 +352,19 @@ Field F on $.orders[*] depends on sum(D) → D's loop is emitted first as a pre-
 ```
 
 The optimizer emits loop groups to the Code Generator in topological order.
-Cycles in the DAG (circular dependencies between fields) are a compile error.
+Cycles in the DAG (circular dependencies between fields) are a compile error. Before
+emitting a fused loop group, the optimizer also checks that every function in the group
+agrees on `@parallel` (§`@parallel(degree=N)`) — resolved per `optimizer.parallel_conflict`.
 
 ---
 
 ## Generated artifact (PL/SQL)
 
-Each mapping function compiles to a single stored procedure in the `MAPPING_RULES` package:
+Each mapping compiles to a stored procedure in the `MAPPING_RULES` package, named after
+the mapping's id (§Rule id generation):
 
 ```plsql
-PROCEDURE map_event_48_1 (
+PROCEDURE map_order_event_48 (
     p_src IN  CLOB,
     p_out OUT CLOB
 ) AS
@@ -351,7 +378,91 @@ END;
 ```
 
 The mapping engine calls `MAPPING_RULES.map_<id>(p_src, p_out)` — no DSL
-interpretation, no JSON rule parsing at runtime.
+interpretation, no JSON rule parsing at runtime. Every mapping additionally compiles a
+twin procedure, `map_<id>_safe`, with different failure behaviour — see §Runtime error
+semantics.
+
+---
+
+## Runtime error semantics
+
+**Null is a value, never a side effect of failure.** Every place a field can carry "no
+value" is an explicit, typed branch: a function signature declaring `T | None`, handled
+by `coalesce` / `if_else` / an explicit guard, resolving to `return Null` or a bare
+`return` (§Return semantics and field emission). A function whose signature does not
+include `None` is asserting that it always produces a `T` for any input satisfying its
+parameter types — built-ins and project `.fn` functions that can fail to produce a
+value are expected to encode that as `T | None` and guard for it in their body (as in
+the `split_part` example), not let it surface as an uncaught error. Anything that still
+fails at runtime — an arithmetic error, a type coercion mismatch on unchecked `Any` data
+reached via `root`/`src` with no schema, a target-language `@override` that misbehaves
+relative to its Python reference — is therefore never ambiguous with a null: by
+construction it is an unhandled fault, and it raises.
+
+**Per-rule wrapping, not per-expression.** The Code Generator wraps each rule-function
+call site inside the mapping's procedure individually — one rule = one function, per
+the project's convention — not every nested call inside a rule's expression tree. A
+failure several calls deep inside a rule's expression is still attributed to that rule
+as a whole; the original error message is preserved as the failure's cause.
+
+**Errors accumulate instead of failing fast.** A single failing rule does not abort the
+mapping immediately. The generated procedure keeps an in-memory accumulator keyed by
+the rule's fully-qualified id (§Rule id generation): the *first* failure for a given
+rule is recorded, subsequent failures for the same rule (e.g. repeated iterations of the
+same loop) are ignored, and execution continues with the remaining rules. A single
+invocation therefore surfaces every distinct failing rule in one pass instead of one
+rebuild-fix-rebuild cycle per error — relevant for mappings with 300+ rules.
+
+```plsql
+BEGIN
+  v_out.LineAmount := fn_ord_lin(...);
+EXCEPTION WHEN OTHERS THEN
+  IF NOT v_errors.EXISTS('ord.lin') THEN
+    v_errors('ord.lin') := SQLERRM;
+  END IF;
+  -- no RAISE here — continue with the next rule
+END;
+```
+
+**Twin procedures, always generated, no configuration.** Every mapping compiles to two
+procedures sharing the same core logic:
+
+| Procedure | On accumulated errors | Signature |
+|---|---|---|
+| `map_<id>` | raises | `(p_src IN CLOB, p_out OUT CLOB)` |
+| `map_<id>_safe` | never raises | `(p_src IN CLOB, p_out OUT CLOB, p_err OUT CLOB)` |
+
+`map_<id>_safe` returns whatever fields were successfully computed in `p_out` (failed
+fields are simply left unassigned, same as any other skipped field) alongside `p_err` —
+an empty JSON array on success. `map_<id>` raises once, at the end, only if the
+accumulator is non-empty; a caller relying on it never receives a partial `p_out`
+(PL/SQL does not copy `OUT` parameters back to the caller when a procedure exits via an
+unhandled exception). Callers choose per call site which contract they want — this is
+not a build-time toggle.
+
+**Error payload.** On raise, `map_<id>` calls `RAISE_APPLICATION_ERROR` with a single
+reserved error code (`mapper.toml`, `[target.plsql] error_code`, default `-20000`) and a
+JSON payload as the message, truncated to whichever limit is hit first: 20 entries, or
+the byte budget left under Oracle's ~2048-byte message limit. The truncation is
+self-describing, not silent:
+
+```json
+{
+  "mapping": "order_event_48",
+  "total_errors": 47,
+  "shown": 20,
+  "errors": [
+    {"rule": "ord.lin", "cause": "ORA-01858: ..."}
+  ]
+}
+```
+
+**Other targets.** The PL/SQL strategy above (reserved code + JSON payload) is specific
+to that backend. A Python target would instead raise a dedicated `MappingError`
+exception carrying `mapping_id` and the accumulated per-rule causes (chained via
+`raise ... from`); a Go target would return a typed `error`. Per-rule wrapping,
+accumulation, and the twin-procedure contract are part of the engine's behaviour; the
+*representation* of the error is, like code generation itself, target-specific.
 
 ---
 
@@ -402,7 +513,8 @@ mode   = "driven"    # driven | bootstrap
 target = "plsql"     # compilation target
 
 [optimizer]
-loop_fusion = true   # disable if side-effects are suspected
+loop_fusion       = true          # disable if side-effects are suspected
+parallel_conflict = "exception"   # exception (default) | max | min — see §@parallel(degree=N)
 
 [target.plsql]
 schema     = "MAPPING_OWNER"   # Oracle schema that owns the generated packages
@@ -410,6 +522,7 @@ package    = "MAPPING_RULES"   # name of the generated mapping-rules package
 fn_package = "MAPPING_FUNCTIONS"
 fn_prefix  = ""                # optional prefix for generated procedure/function names
 fn_suffix  = ""                # optional suffix
+error_code = -20000             # reserved RAISE_APPLICATION_ERROR code — see §Runtime error semantics
 
 [compiler]
 decimal_mode = "round"    # round | truncate (default: round); per-field format_mode overrides this
@@ -649,9 +762,18 @@ build/
 ```
 
 At each build invocation:
-1. Hash the `.fn.yaml`. If it matches the cached hash **and** `build/transpiled/<mapping>.map.py` exists, skip Stages 1–5. If either condition fails (hash changed or file missing), re-transpile.
-2. Hash the `.map.py`. If it matches the cached hash **and** `build/compiled/<mapping>.sql` exists, skip compilation. If either condition fails, recompile.
+1. Hash the `.fn.yaml` **together with the full contents of `mapper.toml`**. If it
+   matches the cached hash **and** `build/transpiled/<mapping>.map.py` exists, skip
+   Stages 1–5. If either condition fails (hash changed or file missing), re-transpile.
+2. Hash the `.map.py` **together with `mapper.toml`**. If it matches the cached hash
+   **and** `build/compiled/<mapping>.sql` exists, skip compilation. If either condition
+   fails, recompile.
 3. Only changed files (and downstream dependents) are reprocessed.
+
+Any change to `mapper.toml` — even a single unrelated key — invalidates every cached
+hash project-wide, forcing a full rebuild. This is a deliberate simplification: code
+generation is fast enough that a full rebuild on config change is cheaper than tracking
+which config keys affect which stage.
 
 **Function library dependency tracking** — each `.fn.yaml` file records the set of
 `.fn` functions it references (by name and signature hash) in the build cache. When a
@@ -705,6 +827,24 @@ Rules of kind `loop` and `object` contain nested `rules:` lists. Rules of kind
 `lookup` are typically declared at the top level (before any `loop` or `object` rule)
 and are global to the file. All rule labels (`label:`) share a single namespace —
 a `lookup` label must not collide with a `loop` label in the same file.
+
+Every `.fn.yaml` file also declares two top-level metadata keys, outside the `rules:`
+tree:
+
+```yaml
+name: "Order Event 48"     # free-text, functional display name
+id: order_event_48         # auto-suggested slug of `name` at creation; user-editable
+rules:
+  - id: loop_orders
+    kind: loop
+    ...
+```
+
+`id` is what the compiler uses as `<id>` in the generated `map_<id>` / `map_<id>_safe`
+procedure names (§Generated artifact). It is auto-suggested from `name` when the file
+is created (lowercased, non-alphanumeric → `_`) but is a plain editable field from then
+on — renaming `name` later does not retroactively change `id`. Uniqueness of `id` is
+enforced project-wide; a collision is a build error.
 
 #### Loop rule
 
@@ -912,6 +1052,35 @@ two typed parameters.
 On no match, `lookup` returns `None` by default (field omitted). An explicit default
 can be provided: `lookup(@.code, @countryCurrency, default="EUR")`.
 
+#### Rule id generation
+
+Every rule's `id:` (loop, object, field, or lookup) is auto-suggested, not fixed: the
+tool abbreviates the rule's own path segment (`field:` / `output:` / `label:`) to its
+first three letters, lowercased, with any `[]` stripped — `SubObject` → `sub`,
+`List[]` → `lis`. The **fully-qualified id**, used wherever a single rule needs to be
+identified unambiguously (the runtime error payload in §Runtime error semantics, the
+generated local-variable mangling prefix, grid breadcrumbs), is this local id joined
+with its ancestors' local ids by `.`, walking the parent chain exactly as the compiler
+already does to build the full output path:
+
+```
+$.Orders[*].SubObject.Name   →   ord.sub.nam
+```
+
+**Uniqueness is per-file, on the fully-qualified id** — not project-wide (that scope is
+reserved for the document-level `id`, §Functional file schema). On a collision, the
+tool appends a numeric index to whichever local segment is ambiguous — not to the whole
+string — and re-checks, so an index can appear at more than one level if the collision
+cascades:
+
+```
+ord.sub.nam    (first "sub")
+ord.sub2.nam   (second, colliding "sub")
+```
+
+The developer or functional user can rename any local segment freely, at any level, as
+long as the resulting fully-qualified id stays unique within the file.
+
 ---
 
 ### Scope anchors
@@ -948,7 +1117,8 @@ $.header.vatRate   →  root.header.vatRate
 
 Transformations are written as **expression blocks**: the last line is the value
 returned; preceding lines may declare local variables for readability. The transpiler
-mangles local variable names with a rule-id prefix to prevent collisions with loop
+mangles local variable names with the rule's fully-qualified id as a prefix
+(§Rule id generation, dots replaced by underscores) to prevent collisions with loop
 variables in the wider generated scope.
 
 ```yaml
@@ -962,9 +1132,9 @@ transform:
 Generates:
 
 ```python
-r42_base     = order.price * order.qty
-r42_discount = order.discountRate if order.discountRate is not None else root.defaults.discount
-out.amount   = round(r42_base * (1 - r42_discount), 2)
+ord_lin_base     = order.price * order.qty
+ord_lin_discount = order.discountRate if order.discountRate is not None else root.defaults.discount
+out.amount       = round(ord_lin_base * (1 - ord_lin_discount), 2)
 ```
 
 Single-line expressions remain the common case; the multi-line form is available
@@ -1094,6 +1264,19 @@ The Validator runs as the **first** compiler phase on every build and must rejec
 construct outside the permitted subset before any code generation occurs. This is a
 security requirement: a malicious or misconfigured `.map.py` must never reach code
 generation or execution.
+
+**Ids in bootstrap mode.** There is no `.fn.yaml` frontmatter to hold `id:`/`name:`, so
+the mapping id defaults to the file's basename and each rule's id defaults to its
+function's name (still one rule = one function). A project can override the mapping id
+explicitly with a single reserved module-level assignment:
+
+```python
+__id__ = 'order_event_48'
+```
+
+`__id__ = '<string literal>'` is the one exception to the module-scope assignment ban
+(§Language subset) — the Validator recognizes it as a compiler metadata directive, not
+a general-purpose variable, and strips it before code generation.
 
 **Functional-driven** (`mode: driven`)
 The `.fn.yaml` is always the source of truth. The `.map.py` is always a generated
