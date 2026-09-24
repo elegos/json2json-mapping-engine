@@ -356,6 +356,15 @@ Cycles in the DAG (circular dependencies between fields) are a compile error. Be
 emitting a fused loop group, the optimizer also checks that every function in the group
 agrees on `@parallel` (§`@parallel(degree=N)`) — resolved per `optimizer.parallel_conflict`.
 
+Differing `filter` expressions (§Loop rule) across the `loop` rules being fused are
+*not* a conflict — the optimizer iterates the unfiltered source array once and
+rewrites each original `loop` rule's `filter` into a per-branch `IF` guard around
+that rule's contribution (its output-array append and everything nested under it).
+Because each branch is independently guarded by its own original filter, this holds
+regardless of how the filters relate to each other (identical, disjoint, or
+overlapping) — there is no equivalent of `optimizer.parallel_conflict` for filters,
+since this rewrite is always correct and needs no configuration.
+
 ---
 
 ## Generated artifact (PL/SQL)
@@ -870,6 +879,41 @@ enforced project-wide; a collision is a build error.
       rules:
         # ...
 ```
+
+**`filter`** (optional) is a boolean expression, in the same expression
+language and scope-anchor rules as `transform.expression` (§Expression
+language), evaluated once per source element in the scope of that element
+(`@`) — *before* any nested rule (including nested `loop`/`object` rules)
+runs. An element for which `filter` evaluates false is skipped entirely: it
+does not appear in the output array, and none of its nested rules execute
+for that element (no partial output, no accumulated errors from skipped
+nested rules). This differs from `guard` on an `object` rule (§Object rule
+below), which omits one already-selected object rather than an entire loop
+iteration — the two are analogous but not interchangeable, and a rule may
+not declare both.
+
+`filter` requires no new compiler primitive: it transpiles to a bare
+`continue` guard (`if not (<filter-as-python-subset>): continue`) as the
+first statement of the corresponding `for` loop's body in the generated
+`.map.py`, reusing the `continue` construct already in the bootstrap
+language subset (§Permitted constructs). In hand-written bootstrap `.map.py`
+files, the same effect is achieved by writing that guard directly — there is
+no separate `filter:` keyword outside `.fn.yaml`.
+
+**Interaction with Loop Fusion** — see §Loop Fusion Optimizer. Unlike
+`@parallel` mismatches, a `filter` difference between two `loop` rules over
+the same source array is never a compile error: when the optimizer fuses
+them, it iterates the *unfiltered* source array once and pushes each
+original `loop` rule's `filter` down into a per-branch `IF <filter>` guard
+wrapping that rule's entire nested-rule subtree (its own output-array
+append and everything nested under it). This is a pure Code Generator
+rewrite with no configuration knob needed — it is always semantically
+equivalent to running each `loop` rule's own filtered iteration separately,
+whether the filters are identical, disjoint, or overlapping. When
+`optimizer.loop_fusion` is off, or a given source array is only iterated by
+one `loop` rule, `filter` is simply applied up front (a `continue` guard at
+loop entry) as described above — the branch-guard rewrite only happens when
+fusion actually merges multiple `loop` rules into one generated loop.
 
 #### Object rule
 
