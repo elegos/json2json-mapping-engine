@@ -83,6 +83,19 @@ class _ExprTypeChecker:
             return self._attr_type(base_type, node.attr)
         return ANY
 
+    def type_of_in_function(self, node: ast.expr, param_types: dict[str, str]) -> str:
+        """Like `type_of`, but for reads *inside a rule function's own
+        body* — functions take explicit parameters and have no implicit
+        access to the caller's `root`/`src`/loop scope (§codegen module
+        docstring's calling convention), so resolution is purely by
+        declared parameter name, not by scope chain."""
+        if isinstance(node, ast.Name):
+            return param_types.get(node.id, ANY)
+        if isinstance(node, ast.Attribute):
+            base_type = self.type_of_in_function(node.value, param_types)
+            return self._attr_type(base_type, node.attr)
+        return ANY
+
     def _attr_type(self, base_type: str, attr: str) -> str:
         if base_type == ANY or self.input_schema is None:
             return ANY
@@ -148,6 +161,14 @@ class _ExprTypeChecker:
                 return "str", False
             if fname in ("split_nth", "lookup"):
                 return "str", True
+            if fname == "count":
+                return "int", False
+            if fname in ("max", "min", "sum", "avg"):
+                # Never null/omit — an aggregate over an (empty-or-not)
+                # array always produces a value (max/min/avg over an empty
+                # array is a runtime concern, not a static nullability one —
+                # same stance codegen takes).
+                return "number", False
             return ANY, True
         if isinstance(node, (ast.Name, ast.Attribute)):
             resolved = self.type_of(node, scope)
@@ -228,7 +249,7 @@ def _walk_body(
 ) -> None:
     for stmt in stmts:
         if isinstance(stmt, ast.FunctionDef):
-            _check_def_reads(stmt, checker, scope)
+            _check_def_reads(stmt, checker)
             continue
         if isinstance(stmt, ast.For):
             inner_scope = scope_resolution.for_scopes[id(stmt)]
@@ -278,10 +299,23 @@ def _walk_body(
                 _check_reads_in_expr(stmt.value.args[0], checker, scope)
 
 
-def _check_def_reads(fn_def: ast.FunctionDef, checker: _ExprTypeChecker, scope: Scope) -> None:
-    for stmt in ast.walk(fn_def):
-        if isinstance(stmt, ast.Attribute):
-            checker.type_of(stmt, scope)
+def _check_def_reads(fn_def: ast.FunctionDef, checker: _ExprTypeChecker) -> None:
+    param_types: dict[str, str] = {}
+    for a in fn_def.args.args:
+        type_name = a.annotation.id if isinstance(a.annotation, ast.Name) else None
+        if (
+            type_name is not None
+            and checker.input_schema is not None
+            and type_name in checker.input_schema.classes
+        ):
+            param_types[a.arg] = type_name
+        else:
+            param_types[a.arg] = ANY  # scalar DSL type, "Any", or unrecognized — unchecked
+
+    for body_stmt in fn_def.body:
+        for node in ast.walk(body_stmt):
+            if isinstance(node, ast.Attribute):
+                checker.type_of_in_function(node, param_types)
 
 
 def _check_reads_in_expr(node: ast.expr, checker: _ExprTypeChecker, scope: Scope) -> None:

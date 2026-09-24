@@ -50,21 +50,21 @@ def _check(source: str, with_input=True, with_output=True):
 
 def test_valid_read_and_write_passes():
     _check(
-        "def order_id() -> str:\n"
+        "def order_id(root: OrderEvent) -> str:\n"
         "    return root.id\n\n"
-        "out.order_id = order_id()\n\n"
-        "def amount() -> number:\n"
+        "out.order_id = order_id(root)\n\n"
+        "def amount(root: OrderEvent) -> number:\n"
         "    return root.amount\n\n"
-        "out.amount = amount()\n"
+        "out.amount = amount(root)\n"
     )
 
 
 def test_unknown_field_read_is_an_error():
     with pytest.raises(TypeCheckError, match="does not exist"):
         _check(
-            "def order_id() -> str:\n"
+            "def order_id(root: OrderEvent) -> str:\n"
             "    return root.nope\n\n"
-            "out.order_id = order_id()\n"
+            "out.order_id = order_id(root)\n"
             "out.amount = 1.0\n"
         )
 
@@ -87,20 +87,20 @@ def test_type_mismatch_on_write_is_an_error():
 def test_nullable_rule_into_required_field_is_an_error():
     with pytest.raises(TypeCheckError, match="required and non-nullable"):
         _check(
-            "def maybe_amount() -> number | None:\n"
+            "def maybe_amount(root: OrderEvent) -> number | None:\n"
             "    return root.amount\n\n"
             "out.order_id = root.id\n"
-            "out.amount = maybe_amount()\n"
+            "out.amount = maybe_amount(root)\n"
         )
 
 
 def test_nullable_rule_into_nullable_field_is_fine():
     _check(
-        "def note() -> str | None:\n"
+        "def note(root: OrderEvent) -> str | None:\n"
         "    return root.id\n\n"
         "out.order_id = root.id\n"
         "out.amount = root.amount\n"
-        "out.note = note()\n"
+        "out.note = note(root)\n"
     )
 
 
@@ -135,4 +135,28 @@ def test_coalesce_resolves_nullability_away():
     _check(
         "out.order_id = root.id\n"
         "out.amount = coalesce(root.amount, 0.0)\n"
+    )
+
+
+def test_function_param_typed_to_nested_class_is_checked():
+    # `order: Order` — the parameter, not any enclosing scope, drives
+    # read-checking inside the function body (the compiler's actual
+    # explicit-parameter calling convention, not zero-arg closures).
+    with pytest.raises(TypeCheckError, match="does not exist"):
+        _check(
+            "def bad(order: Order) -> str:\n"
+            "    return order.nonexistent\n\n"
+            "out.order_id = root.id\n"
+            "out.amount = root.amount\n"
+            "for order in root.orders:\n"
+            "    out.order_id = bad(order)\n"
+        )
+
+
+def test_function_param_typed_any_is_unchecked():
+    _check(
+        "def whatever(x: Any) -> str:\n"
+        "    return x.anything.goes\n\n"
+        "out.order_id = whatever(root)\n"
+        "out.amount = root.amount\n"
     )
