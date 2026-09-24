@@ -108,6 +108,21 @@ size. The Code Generator now maintains two separate DSL→PL/SQL type maps
 (`_DSL_TO_PLSQL_RETURN` unconstrained, `_EXPECTED_TO_DECL_TYPE` constrained)
 rather than one, to avoid emitting invalid procedures.
 
+### 5. `JSON_OBJECT_T.get_*` on a missing key returns NULL, does not raise
+
+Discovered while exercising the array/dataclass fixture with a source item
+missing its `price` field: `p_itm.get_Number('price')` returned `NULL`
+rather than raising. Arithmetic/comparisons on that `NULL` also don't raise
+(`NULL * x` is just `NULL`). This means an *unchecked* (no-schema) read of a
+missing key is silently lenient at the PL/SQL runtime level — a genuine
+runtime error only surfaces from an actual type mismatch (e.g. reading a
+string field with `get_Number`, → `ORA-01722`), not from a merely-absent
+key. Consistent with "reads unchecked without schema" (§Input type
+contract), but worth knowing precisely: "unchecked" here means "coerces to
+null", not "anything goes silently including numeric operations" — no
+further compiler action needed, just a runtime-behavior fact to design
+Track 2 test fixtures around later.
+
 ## Not yet covered by this spike
 
 - A dedicated case where the **byte budget**, not the 20-entry cap, is the

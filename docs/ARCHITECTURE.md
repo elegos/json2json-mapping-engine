@@ -391,6 +391,23 @@ interpretation, no JSON rule parsing at runtime. Every mapping additionally comp
 twin procedure, `map_<id>_safe`, with different failure behaviour — see §Runtime error
 semantics.
 
+**Rule-function visibility.** Every `.map` rule function (one per field/array-element
+rule, §Compiler pipeline) is compiled into the package body alongside `map_<id>` /
+`map_<id>_safe`. By default only the two entry-point procedures appear in the package
+**spec** — every `fn_<rule_id>` is package-private, callable from other code in the same
+package body but not from outside it. Setting
+
+```toml
+[target.plsql]
+export_rule_functions = true   # default: false
+```
+
+additionally lists every `fn_<rule_id>` in the package spec, making each rule function
+independently callable — e.g. for external reuse or for unit-testing an individual
+rule's logic in isolation from the full mapping. This is a package-assembly-time
+decision (which names go in the spec), not a code-generation-time one: the rule
+functions themselves are generated identically either way.
+
 ---
 
 ## Runtime error semantics
@@ -532,6 +549,7 @@ fn_package = "MAPPING_FUNCTIONS"
 fn_prefix  = ""                # optional prefix for generated procedure/function names
 fn_suffix  = ""                # optional suffix
 error_code = -20000             # reserved RAISE_APPLICATION_ERROR code — see §Runtime error semantics
+export_rule_functions = false  # true = list every fn_<rule_id> in the package spec too — see §Generated artifact
 
 [compiler]
 decimal_mode = "round"    # round | truncate (default: round); per-field format_mode overrides this
