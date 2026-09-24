@@ -730,8 +730,45 @@ class PlsqlCodeGenerator(CodeGenerator):
                 lines.extend(
                     self._emit_for(stmt, loop_vars, rule_signatures, dataclasses, list_accumulators)
                 )
+            elif isinstance(stmt, ast.If):
+                lines.extend(
+                    self._emit_flow_if(
+                        stmt, loop_vars, rule_signatures, dataclasses, list_accumulators, translator
+                    )
+                )
             else:
                 raise CodeGenError(f"unsupported statement in mapping body: {type(stmt).__name__}")
+        return lines
+
+    def _emit_flow_if(
+        self,
+        stmt: ast.If,
+        loop_vars: list[str],
+        rule_signatures: dict[str, _RuleSignature],
+        dataclasses: dict[str, _DataclassDef],
+        list_accumulators: dict[str, _ListAccumulator],
+        translator: _ExprTranslator,
+    ) -> list[str]:
+        """Handles a plain `IF`/`ELIF`/`ELSE` at flow level — the shape the
+        Loop Fusion Optimizer normalizes bootstrap `if cond: continue`
+        filters into (§compiler/loop_fusion.py), and a legitimate direct
+        conditional guard around a group of `out.*` writes in its own right."""
+
+        def recurse(body: list[ast.stmt]) -> list[str]:
+            return self._emit_flow(body, loop_vars, rule_signatures, dataclasses, list_accumulators)
+
+        lines = [f"IF {translator.translate(stmt.test, 'BOOLEAN')} THEN"]
+        lines.extend(_indent(recurse(stmt.body)))
+        orelse = stmt.orelse
+        while len(orelse) == 1 and isinstance(orelse[0], ast.If):
+            elif_stmt = orelse[0]
+            lines.append(f"ELSIF {translator.translate(elif_stmt.test, 'BOOLEAN')} THEN")
+            lines.extend(_indent(recurse(elif_stmt.body)))
+            orelse = elif_stmt.orelse
+        if orelse:
+            lines.append("ELSE")
+            lines.extend(_indent(recurse(orelse)))
+        lines.append("END IF;")
         return lines
 
     def _emit_out_write(

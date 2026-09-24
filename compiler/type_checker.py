@@ -237,6 +237,20 @@ def _walk_body(
                 assigned_fields,
             )
             continue
+        if isinstance(stmt, ast.If):
+            # Loop Fusion (compiler/loop_fusion.py) normalizes `if cond:
+            # continue` filters into `IF NOT (cond): <rest>` guards — the
+            # writes inside still need checking/coverage-counting.
+            _check_reads_in_expr(stmt.test, checker, scope)
+            _walk_body(
+                stmt.body, scope, scope_resolution, checker, rule_defs, output_schema,
+                assigned_fields,
+            )
+            _walk_body(
+                stmt.orelse, scope, scope_resolution, checker, rule_defs, output_schema,
+                assigned_fields,
+            )
+            continue
         if isinstance(stmt, ast.Assign) and isinstance(stmt.targets[0], ast.Attribute):
             target = stmt.targets[0]
             if isinstance(target.value, ast.Name) and target.value.id == "out":
@@ -244,6 +258,24 @@ def _walk_body(
                 assigned_fields.add(field_name)
                 _check_write(field_name, stmt.value, checker, scope, rule_defs, output_schema)
             _check_reads_in_expr(stmt.value, checker, scope)
+            continue
+        if (
+            isinstance(stmt, ast.Expr)
+            and isinstance(stmt.value, ast.Call)
+            and isinstance(stmt.value.func, ast.Attribute)
+            and stmt.value.func.attr == "append"
+            and isinstance(stmt.value.func.value, ast.Attribute)
+            and isinstance(stmt.value.func.value.value, ast.Name)
+            and stmt.value.func.value.value.id == "out"
+        ):
+            field_name = stmt.value.func.value.attr
+            assigned_fields.add(field_name)
+            if stmt.value.args:
+                _check_write(
+                    field_name, stmt.value.args[0], checker, scope, rule_defs, output_schema,
+                    unwrap_list=True,
+                )
+                _check_reads_in_expr(stmt.value.args[0], checker, scope)
 
 
 def _check_def_reads(fn_def: ast.FunctionDef, checker: _ExprTypeChecker, scope: Scope) -> None:
@@ -265,6 +297,7 @@ def _check_write(
     scope: Scope,
     rule_defs: dict[str, ast.FunctionDef],
     output_schema: SchemaTypes | None,
+    unwrap_list: bool = False,
 ) -> None:
     if output_schema is None:
         return
@@ -272,13 +305,22 @@ def _check_write(
     declared = next((f for f in root_cls.fields if f.name == field_name), None)
     if declared is None:
         raise TypeCheckError(f"assignment to undeclared output field 'out.{field_name}'")
-    declared_bases, declared_nullable = _strip_none(declared.type_expr)
+    declared_type_expr = declared.type_expr
+    if unwrap_list:
+        bases, _ = _strip_none(declared_type_expr)
+        list_bases = [b[len("list[") : -1] for b in bases if b.startswith("list[")]
+        if not list_bases:
+            raise TypeCheckError(
+                f"'.append(...)' used on 'out.{field_name}', declared as "
+                f"'{declared_type_expr}' — not a list type"
+            )
+        declared_type_expr = list_bases[0]
+    declared_bases, declared_nullable = _strip_none(declared_type_expr)
 
     if (
         isinstance(value, ast.Call)
         and isinstance(value.func, ast.Name)
         and value.func.id in rule_defs
-        and not value.args
     ):
         produced_base, produced_nullable = _base_type_from_rule(rule_defs[value.func.id])
     else:
