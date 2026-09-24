@@ -1,0 +1,22 @@
+[project]
+mode   = "bootstrap"   # driven | bootstrap — bootstrap until the transpiler (M5) is wired up
+target = "plsql"       # compilation target
+
+[optimizer]
+loop_fusion       = true          # disable if side-effects are suspected
+parallel_conflict = "exception"   # exception (default) | max | min
+
+[target.plsql]
+schema     = "MAPPING_OWNER"   # Oracle schema that owns the generated packages
+package    = "MAPPING_RULES"   # name of the generated mapping-rules package
+fn_package = "MAPPING_FUNCTIONS"
+fn_prefix  = ""                # optional prefix for generated procedure/function names
+fn_suffix  = ""                # optional suffix
+error_code = -20000            # reserved RAISE_APPLICATION_ERROR code
+
+[compiler]
+decimal_mode = "round"    # round | truncate (default: round); per-field format_mode overrides this
+
+[test]
+container_image = "container-registry.oracle.com/database/adb-free"
+container_tag   = "latest-23ai"

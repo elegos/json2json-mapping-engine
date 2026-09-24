@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+.basedpyright/
+
+# build/ is git-ignored except build/compiled/ (§Build folder and incremental compilation)
+build/*
+!build/compiled/
+build/cache/
+build/transpiled/
+build/python/
+
+*.egg-info/
+dist/

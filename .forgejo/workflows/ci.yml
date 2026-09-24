@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  track1:
+    runs-on: docker
+    container:
+      image: python:3.12-slim
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        run: pip install --no-cache-dir uv
+
+      - name: Sync dependencies
+        run: uv sync --all-extras --dev
+
+      - name: ruff check
+        run: uv run ruff check .
+
+      - name: basedpyright
+        run: uv run basedpyright
+
+      - name: pytest (track 1 — no runtime dependency)
+        run: uv run pytest tests/track1
+
+  # Track 2 (E2E golden-record tests against a real Oracle container) is not
+  # wired into CI yet — it needs the M0.5 spike findings and the M4 harness
+  # (cli/track2.py) first, and a runner with docker-in-docker access to pull
+  # container-registry.oracle.com/database/adb-free.

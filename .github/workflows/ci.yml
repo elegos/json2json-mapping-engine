@@ -1,0 +1,37 @@
+# Mirror of .forgejo/workflows/ci.yml — Forgejo is the primary CI target for
+# this repo; this file keeps GitHub Actions in sync for repos also pushed there.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  track1:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Sync dependencies
+        run: uv sync --all-extras --dev
+
+      - name: ruff check
+        run: uv run ruff check .
+
+      - name: basedpyright
+        run: uv run basedpyright
+
+      - name: pytest (track 1 — no runtime dependency)
+        run: uv run pytest tests/track1
+
+  # Track 2 (E2E golden-record tests against a real Oracle container) is not
+  # wired into CI yet — it needs the M0.5 spike findings and the M4 harness
+  # (cli/track2.py) first.
