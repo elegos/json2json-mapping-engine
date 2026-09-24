@@ -6,15 +6,22 @@ Resolution priority per function name, per target:
   3. Built-in hardcoded implementation for the current target
   4. None of the above → compile error
 
-M2a ships exactly one hand-written built-in (`coalesce`) to prove the
-mechanism end-to-end; the full built-in library lands in M2b
-(`compiler/backends/plsql/builtins.py`). Project `fn/` file loading is not
-implemented yet — the registry always falls through to built-ins for now.
+`FunctionImpl` is target-agnostic infrastructure; the actual built-in
+implementations for the `plsql` target live in
+`compiler/backends/plsql/builtins.py` (M2b — full built-in library). Project
+`fn/` file loading is not implemented yet — the registry always falls
+through to built-ins for now.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
+
+# A template is either a `str.format`-style string using positional
+# `{0}`, `{1}`, ... (fixed arity), or a callable for variadic / structurally
+# different renderings (e.g. `concat`, `lookup`).
+Renderer = str | Callable[[list[str]], str]
 
 
 class FunctionLinkError(Exception):
@@ -24,8 +31,7 @@ class FunctionLinkError(Exception):
 @dataclass(frozen=True)
 class FunctionImpl:
     name: str
-    # target -> a `str.format`-style template using positional `{0}`, `{1}`, ...
-    target_templates: dict[str, str]
+    target_templates: dict[str, Renderer]
 
     def render(self, target: str, arg_exprs: list[str]) -> str:
         try:
@@ -34,15 +40,9 @@ class FunctionImpl:
             raise FunctionLinkError(
                 f"function '{self.name}' has no implementation for target {target!r}"
             ) from exc
+        if callable(template):
+            return template(arg_exprs)
         return template.format(*arg_exprs)
-
-
-_BUILTINS: dict[str, FunctionImpl] = {
-    "coalesce": FunctionImpl(
-        name="coalesce",
-        target_templates={"plsql": "COALESCE({0}, {1})"},
-    ),
-}
 
 
 class FunctionLinker:
@@ -51,10 +51,13 @@ class FunctionLinker:
         # loader exists; kept as a constructor param so callers/tests can
         # inject them ahead of that.
         self._project_functions = project_functions or {}
+        from compiler.backends.plsql.builtins import BUILTIN_FUNCTIONS
+
+        self._builtins = BUILTIN_FUNCTIONS
 
     def resolve(self, name: str) -> FunctionImpl:
         if name in self._project_functions:
             return self._project_functions[name]
-        if name in _BUILTINS:
-            return _BUILTINS[name]
+        if name in self._builtins:
+            return self._builtins[name]
         raise FunctionLinkError(f"no implementation found for function '{name}'")

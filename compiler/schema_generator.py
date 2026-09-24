@@ -50,6 +50,22 @@ class FieldDef:
     required: bool
 
 
+@dataclass
+class SchemaTypes:
+    """Structured (non-text) view of a resolved schema, for the Type
+    Checker (compiler/type_checker.py) — avoids re-parsing the generated
+    `.pyi`/`.py` text back into a type table."""
+
+    root_type: str
+    classes: dict[str, ClassDef]
+
+
+def resolve_schema_types(schema: JsonSchema, root_name: str) -> SchemaTypes:
+    walker = _SchemaWalker(root_name)
+    root_type = walker.resolve_root(schema)
+    return SchemaTypes(root_type=root_type, classes={c.name: c for c in walker.classes})
+
+
 class _SchemaWalker:
     """Walks a JSON Schema, emitting one ClassDef per object/oneOf-alternative
     encountered, in the order they were first referenced (children first, so
