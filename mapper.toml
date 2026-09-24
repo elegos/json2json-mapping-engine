@@ -13,6 +13,7 @@ fn_package = "MAPPING_FUNCTIONS"
 fn_prefix  = ""                # optional prefix for generated procedure/function names
 fn_suffix  = ""                # optional suffix
 error_code = -20000            # reserved RAISE_APPLICATION_ERROR code
+export_rule_functions = false  # true = list every fn_<rule_id> in the package spec too
 
 [compiler]
 decimal_mode = "round"    # round | truncate (default: round); per-field format_mode overrides this

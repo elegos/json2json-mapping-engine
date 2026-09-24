@@ -1,3 +1,24 @@
+CREATE OR REPLACE FUNCTION fn_status_label(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+BEGIN
+    p_omitted := FALSE;
+    IF (p_root.get_String('status') = 'ACTIVE') THEN
+        RETURN 'Active';
+    ELSIF (p_root.get_String('status') = 'CANCELLED') THEN
+        RETURN NULL;
+    ELSE
+        p_omitted := TRUE;
+        RETURN NULL;
+    END IF;
+END fn_status_label;
+/
+
+CREATE OR REPLACE FUNCTION fn_risky_amount(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN NUMBER IS
+BEGIN
+    p_omitted := FALSE;
+    RETURN (p_root.get_Number('amount') / p_root.get_Number('divisor'));
+END fn_risky_amount;
+/
+
 CREATE OR REPLACE PROCEDURE map_return_forms (
     p_src IN  CLOB,
     p_out OUT CLOB
@@ -6,40 +27,30 @@ CREATE OR REPLACE PROCEDURE map_return_forms (
     v_out_obj  JSON_OBJECT_T := JSON_OBJECT_T();
     TYPE t_error_map IS TABLE OF VARCHAR2(4000) INDEX BY VARCHAR2(200);
     v_errors   t_error_map;
-    e_field_omitted EXCEPTION;
-
-        FUNCTION fn_status_label RETURN VARCHAR2 IS
-        BEGIN
-            IF (v_srcroot.get_String('status') = 'ACTIVE') THEN
-                RETURN 'Active';
-            ELSIF (v_srcroot.get_String('status') = 'CANCELLED') THEN
-                RETURN NULL;
-            ELSE
-                RAISE e_field_omitted;
-            END IF;
-        END fn_status_label;
-
-        FUNCTION fn_risky_amount RETURN NUMBER IS
-        BEGIN
-            RETURN (v_srcroot.get_Number('amount') / v_srcroot.get_Number('divisor'));
-        END fn_risky_amount;
 BEGIN
+    DECLARE
+        v_result_status_label VARCHAR2(4000 CHAR);
+        v_omitted_status_label BOOLEAN;
     BEGIN
-        v_out_obj.put('StatusLabel', fn_status_label());
+        v_result_status_label := fn_status_label(v_srcroot, v_omitted_status_label);
+        IF NOT v_omitted_status_label THEN
+            v_out_obj.put('StatusLabel', v_result_status_label);
+        END IF;
     EXCEPTION
-        WHEN e_field_omitted THEN
-            NULL;
         WHEN OTHERS THEN
             IF NOT v_errors.EXISTS('status_label') THEN
                 v_errors('status_label') := SQLERRM;
             END IF;
     END;
-
+    DECLARE
+        v_result_risky_amount NUMBER;
+        v_omitted_risky_amount BOOLEAN;
     BEGIN
-        v_out_obj.put('RiskyAmount', fn_risky_amount());
+        v_result_risky_amount := fn_risky_amount(v_srcroot, v_omitted_risky_amount);
+        IF NOT v_omitted_risky_amount THEN
+            v_out_obj.put('RiskyAmount', v_result_risky_amount);
+        END IF;
     EXCEPTION
-        WHEN e_field_omitted THEN
-            NULL;
         WHEN OTHERS THEN
             IF NOT v_errors.EXISTS('risky_amount') THEN
                 v_errors('risky_amount') := SQLERRM;
@@ -94,40 +105,30 @@ CREATE OR REPLACE PROCEDURE map_return_forms_safe (
     v_out_obj  JSON_OBJECT_T := JSON_OBJECT_T();
     TYPE t_error_map IS TABLE OF VARCHAR2(4000) INDEX BY VARCHAR2(200);
     v_errors   t_error_map;
-    e_field_omitted EXCEPTION;
-
-        FUNCTION fn_status_label RETURN VARCHAR2 IS
-        BEGIN
-            IF (v_srcroot.get_String('status') = 'ACTIVE') THEN
-                RETURN 'Active';
-            ELSIF (v_srcroot.get_String('status') = 'CANCELLED') THEN
-                RETURN NULL;
-            ELSE
-                RAISE e_field_omitted;
-            END IF;
-        END fn_status_label;
-
-        FUNCTION fn_risky_amount RETURN NUMBER IS
-        BEGIN
-            RETURN (v_srcroot.get_Number('amount') / v_srcroot.get_Number('divisor'));
-        END fn_risky_amount;
 BEGIN
+    DECLARE
+        v_result_status_label VARCHAR2(4000 CHAR);
+        v_omitted_status_label BOOLEAN;
     BEGIN
-        v_out_obj.put('StatusLabel', fn_status_label());
+        v_result_status_label := fn_status_label(v_srcroot, v_omitted_status_label);
+        IF NOT v_omitted_status_label THEN
+            v_out_obj.put('StatusLabel', v_result_status_label);
+        END IF;
     EXCEPTION
-        WHEN e_field_omitted THEN
-            NULL;
         WHEN OTHERS THEN
             IF NOT v_errors.EXISTS('status_label') THEN
                 v_errors('status_label') := SQLERRM;
             END IF;
     END;
-
+    DECLARE
+        v_result_risky_amount NUMBER;
+        v_omitted_risky_amount BOOLEAN;
     BEGIN
-        v_out_obj.put('RiskyAmount', fn_risky_amount());
+        v_result_risky_amount := fn_risky_amount(v_srcroot, v_omitted_risky_amount);
+        IF NOT v_omitted_risky_amount THEN
+            v_out_obj.put('RiskyAmount', v_result_risky_amount);
+        END IF;
     EXCEPTION
-        WHEN e_field_omitted THEN
-            NULL;
         WHEN OTHERS THEN
             IF NOT v_errors.EXISTS('risky_amount') THEN
                 v_errors('risky_amount') := SQLERRM;

@@ -1,7 +1,13 @@
 """Compiler pipeline (docs/ARCHITECTURE.md, §Compiler pipeline, Phase 2).
 
-M2a wires: Validator -> Scope Resolver -> Function Linker -> Code Generator.
-The Type Checker and Loop Fusion Optimizer are not wired in yet (M2b).
+Wires: Validator -> Scope Resolver -> Type Checker -> Function Linker ->
+Code Generator. Loop Fusion is not wired in yet.
+
+`input_schema` / `output_schema` are explicit optional parameters rather
+than resolved by a file-naming convention — the architecture doc does not
+specify how a `.map.py` file declares which schema pair it targets (that is
+a Build CLI concern, M3); the Type Checker itself just needs the resolved
+`SchemaTypes`, or `None` for the documented unchecked/`Any` behavior.
 """
 
 from __future__ import annotations
@@ -11,11 +17,19 @@ from pathlib import Path
 
 from compiler.backends.plsql.codegen import PlsqlCodeGenerator
 from compiler.function_linker import FunctionLinker
+from compiler.schema_generator import SchemaTypes
 from compiler.scope_resolver import resolve_scopes
+from compiler.type_checker import check_module
 from compiler.validator import Validator
 
 
-def compile_source(source: str, default_mapping_id: str, error_code: int = -20000) -> str:
+def compile_source(
+    source: str,
+    default_mapping_id: str,
+    error_code: int = -20000,
+    input_schema: SchemaTypes | None = None,
+    output_schema: SchemaTypes | None = None,
+) -> str:
     tree = ast.parse(source)
     Validator().validate(tree)  # security gate — must run first
 
@@ -31,10 +45,23 @@ def compile_source(source: str, default_mapping_id: str, error_code: int = -2000
             mapping_id = value.value
 
     scope_resolution = resolve_scopes(tree)
+    check_module(tree, scope_resolution, input_schema, output_schema)
+
     linker = FunctionLinker()
     backend = PlsqlCodeGenerator(function_linker=linker, error_code=error_code)
     return backend.compile_module(tree, mapping_id, scope_resolution)
 
 
-def compile_file(path: Path, error_code: int = -20000) -> str:
-    return compile_source(path.read_text(), default_mapping_id=path.stem, error_code=error_code)
+def compile_file(
+    path: Path,
+    error_code: int = -20000,
+    input_schema: SchemaTypes | None = None,
+    output_schema: SchemaTypes | None = None,
+) -> str:
+    return compile_source(
+        path.read_text(),
+        default_mapping_id=path.stem,
+        error_code=error_code,
+        input_schema=input_schema,
+        output_schema=output_schema,
+    )

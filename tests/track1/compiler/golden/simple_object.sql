@@ -1,3 +1,24 @@
+CREATE OR REPLACE FUNCTION fn_order_id(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+BEGIN
+    p_omitted := FALSE;
+    RETURN p_root.get_String('id');
+END fn_order_id;
+/
+
+CREATE OR REPLACE FUNCTION fn_amount(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN NUMBER IS
+BEGIN
+    p_omitted := FALSE;
+    RETURN (p_root.get_Number('price') * p_root.get_Number('qty'));
+END fn_amount;
+/
+
+CREATE OR REPLACE FUNCTION fn_discount_code(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+BEGIN
+    p_omitted := FALSE;
+    RETURN COALESCE(p_root.get_String('discountCode'), 'NONE');
+END fn_discount_code;
+/
+
 CREATE OR REPLACE PROCEDURE map_simple_object (
     p_src IN  CLOB,
     p_out OUT CLOB
@@ -6,50 +27,44 @@ CREATE OR REPLACE PROCEDURE map_simple_object (
     v_out_obj  JSON_OBJECT_T := JSON_OBJECT_T();
     TYPE t_error_map IS TABLE OF VARCHAR2(4000) INDEX BY VARCHAR2(200);
     v_errors   t_error_map;
-    e_field_omitted EXCEPTION;
-
-        FUNCTION fn_order_id RETURN VARCHAR2 IS
-        BEGIN
-            RETURN v_srcroot.get_String('id');
-        END fn_order_id;
-
-        FUNCTION fn_amount RETURN NUMBER IS
-        BEGIN
-            RETURN (v_srcroot.get_Number('price') * v_srcroot.get_Number('qty'));
-        END fn_amount;
-
-        FUNCTION fn_discount_code RETURN VARCHAR2 IS
-        BEGIN
-            RETURN COALESCE(v_srcroot.get_String('discountCode'), 'NONE');
-        END fn_discount_code;
 BEGIN
+    DECLARE
+        v_result_order_id VARCHAR2(4000 CHAR);
+        v_omitted_order_id BOOLEAN;
     BEGIN
-        v_out_obj.put('OrderId', fn_order_id());
+        v_result_order_id := fn_order_id(v_srcroot, v_omitted_order_id);
+        IF NOT v_omitted_order_id THEN
+            v_out_obj.put('OrderId', v_result_order_id);
+        END IF;
     EXCEPTION
-        WHEN e_field_omitted THEN
-            NULL;
         WHEN OTHERS THEN
             IF NOT v_errors.EXISTS('order_id') THEN
                 v_errors('order_id') := SQLERRM;
             END IF;
     END;
-
+    DECLARE
+        v_result_amount NUMBER;
+        v_omitted_amount BOOLEAN;
     BEGIN
-        v_out_obj.put('Amount', fn_amount());
+        v_result_amount := fn_amount(v_srcroot, v_omitted_amount);
+        IF NOT v_omitted_amount THEN
+            v_out_obj.put('Amount', v_result_amount);
+        END IF;
     EXCEPTION
-        WHEN e_field_omitted THEN
-            NULL;
         WHEN OTHERS THEN
             IF NOT v_errors.EXISTS('amount') THEN
                 v_errors('amount') := SQLERRM;
             END IF;
     END;
-
+    DECLARE
+        v_result_discount_code VARCHAR2(4000 CHAR);
+        v_omitted_discount_code BOOLEAN;
     BEGIN
-        v_out_obj.put('DiscountCode', fn_discount_code());
+        v_result_discount_code := fn_discount_code(v_srcroot, v_omitted_discount_code);
+        IF NOT v_omitted_discount_code THEN
+            v_out_obj.put('DiscountCode', v_result_discount_code);
+        END IF;
     EXCEPTION
-        WHEN e_field_omitted THEN
-            NULL;
         WHEN OTHERS THEN
             IF NOT v_errors.EXISTS('discount_code') THEN
                 v_errors('discount_code') := SQLERRM;
@@ -104,50 +119,44 @@ CREATE OR REPLACE PROCEDURE map_simple_object_safe (
     v_out_obj  JSON_OBJECT_T := JSON_OBJECT_T();
     TYPE t_error_map IS TABLE OF VARCHAR2(4000) INDEX BY VARCHAR2(200);
     v_errors   t_error_map;
-    e_field_omitted EXCEPTION;
-
-        FUNCTION fn_order_id RETURN VARCHAR2 IS
-        BEGIN
-            RETURN v_srcroot.get_String('id');
-        END fn_order_id;
-
-        FUNCTION fn_amount RETURN NUMBER IS
-        BEGIN
-            RETURN (v_srcroot.get_Number('price') * v_srcroot.get_Number('qty'));
-        END fn_amount;
-
-        FUNCTION fn_discount_code RETURN VARCHAR2 IS
-        BEGIN
-            RETURN COALESCE(v_srcroot.get_String('discountCode'), 'NONE');
-        END fn_discount_code;
 BEGIN
+    DECLARE
+        v_result_order_id VARCHAR2(4000 CHAR);
+        v_omitted_order_id BOOLEAN;
     BEGIN
-        v_out_obj.put('OrderId', fn_order_id());
+        v_result_order_id := fn_order_id(v_srcroot, v_omitted_order_id);
+        IF NOT v_omitted_order_id THEN
+            v_out_obj.put('OrderId', v_result_order_id);
+        END IF;
     EXCEPTION
-        WHEN e_field_omitted THEN
-            NULL;
         WHEN OTHERS THEN
             IF NOT v_errors.EXISTS('order_id') THEN
                 v_errors('order_id') := SQLERRM;
             END IF;
     END;
-
+    DECLARE
+        v_result_amount NUMBER;
+        v_omitted_amount BOOLEAN;
     BEGIN
-        v_out_obj.put('Amount', fn_amount());
+        v_result_amount := fn_amount(v_srcroot, v_omitted_amount);
+        IF NOT v_omitted_amount THEN
+            v_out_obj.put('Amount', v_result_amount);
+        END IF;
     EXCEPTION
-        WHEN e_field_omitted THEN
-            NULL;
         WHEN OTHERS THEN
             IF NOT v_errors.EXISTS('amount') THEN
                 v_errors('amount') := SQLERRM;
             END IF;
     END;
-
+    DECLARE
+        v_result_discount_code VARCHAR2(4000 CHAR);
+        v_omitted_discount_code BOOLEAN;
     BEGIN
-        v_out_obj.put('DiscountCode', fn_discount_code());
+        v_result_discount_code := fn_discount_code(v_srcroot, v_omitted_discount_code);
+        IF NOT v_omitted_discount_code THEN
+            v_out_obj.put('DiscountCode', v_result_discount_code);
+        END IF;
     EXCEPTION
-        WHEN e_field_omitted THEN
-            NULL;
         WHEN OTHERS THEN
             IF NOT v_errors.EXISTS('discount_code') THEN
                 v_errors('discount_code') := SQLERRM;

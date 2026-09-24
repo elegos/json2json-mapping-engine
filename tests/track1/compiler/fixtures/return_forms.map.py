@@ -3,7 +3,7 @@ from __mapping__ import *
 __id__ = 'return_forms'
 
 
-def status_label() -> str | Null:
+def status_label(root: Any) -> str | Null:
     if root.status == "ACTIVE":
         return "Active"
     elif root.status == "CANCELLED":
@@ -12,11 +12,11 @@ def status_label() -> str | Null:
         return
 
 
-out.StatusLabel = status_label()
+out.StatusLabel = status_label(root)
 
 
-def risky_amount() -> number:
+def risky_amount(root: Any) -> number:
     return root.amount / root.divisor
 
 
-out.RiskyAmount = risky_amount()
+out.RiskyAmount = risky_amount(root)

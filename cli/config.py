@@ -25,6 +25,9 @@ TARGET_DEFAULTS: dict[str, dict[str, Any]] = {
     "plsql": {
         "fn_prefix": "",
         "fn_suffix": "",
+        # true = also list every fn_<rule_id> in the package spec (not just
+        # map_<id>/map_<id>_safe) — §Generated artifact, "Rule-function visibility".
+        "export_rule_functions": False,
     },
 }
 
