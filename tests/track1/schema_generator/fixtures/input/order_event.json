@@ -1,0 +1,40 @@
+{
+  "title": "OrderEvent",
+  "type": "object",
+  "properties": {
+    "events": {
+      "type": "array",
+      "items": {
+        "title": "Event",
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "amount": { "type": "number" },
+          "shipped_at": { "type": "string", "format": "date-time", "nullable": true },
+          "payment": {
+            "oneOf": [
+              {
+                "title": "PaymentCard",
+                "type": "object",
+                "properties": { "cardNumber": { "type": "string" } },
+                "required": ["cardNumber"]
+              },
+              {
+                "title": "PaymentBank",
+                "type": "object",
+                "properties": { "iban": { "type": "string" } },
+                "required": ["iban"]
+              }
+            ]
+          },
+          "meta": {
+            "type": "object",
+            "patternProperties": { "^x-": { "type": "string" } }
+          }
+        },
+        "required": ["id", "amount"]
+      }
+    }
+  },
+  "required": ["events"]
+}

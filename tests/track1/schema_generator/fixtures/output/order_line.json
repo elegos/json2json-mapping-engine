@@ -1,0 +1,11 @@
+{
+  "title": "OrderLine",
+  "type": "object",
+  "properties": {
+    "order_id": { "type": "integer" },
+    "product_code": { "type": "string" },
+    "unit_price": { "type": "number" },
+    "shipped_at": { "type": "string", "format": "date", "nullable": true }
+  },
+  "required": ["order_id", "product_code", "unit_price"]
+}
