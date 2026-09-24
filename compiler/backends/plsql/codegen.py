@@ -103,6 +103,7 @@ from dataclasses import dataclass
 from compiler.annotations import AnnotationError, resolve_dsl_type
 from compiler.backends.base import CodeGenerator, FieldRule
 from compiler.function_linker import FunctionLinker
+from compiler.loop_iter import LoopIterError, parse_for_iter, parse_for_target
 
 # PL/SQL requires a VARCHAR2 *variable* declaration to carry a size (unlike
 # a function RETURN type or PARAMETER type, which must NOT — see
@@ -165,6 +166,7 @@ _BUILTIN_ARG_EXPECTED: dict[str, list[str | None]] = {
     "split_nth": ["VARCHAR2", "VARCHAR2", "NUMBER"],
     "lookup": ["VARCHAR2", "OBJECT", "VARCHAR2"],
     "parse_date": ["VARCHAR2", "VARCHAR2"],
+    "count": ["ARRAY"],
 }
 
 # Conservative target for the *entries* JSON, leaving margin under the
@@ -482,6 +484,87 @@ def _materialize_dataclass(
     return lines
 
 
+_AGGREGATE_FUNCS = {"max", "min", "sum", "avg"}
+
+_EXPECTED_TO_JSON_ELEMENT_EXTRACTOR = {
+    "VARCHAR2": "to_string",
+    "NUMBER": "to_number",
+    "BOOLEAN": "to_boolean",
+    "DATE": "to_date",
+    "TIMESTAMP": "to_timestamp",
+}
+
+
+def _is_aggregate_call(node: ast.expr) -> bool:
+    return isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in _AGGREGATE_FUNCS
+
+
+def _materialize_aggregate(
+    call: ast.Call,
+    translator: _ExprTranslator,
+    tmp_var: str,
+    return_expected: str,
+    agg_idx: int,
+    declarations: list[str],
+) -> list[str]:
+    """`max`/`min`/`sum`/`avg` over `(array, "field")` — like dataclass
+    construction, this needs a native PL/SQL loop (an accumulator), not a
+    single-expression template, so it can only appear as a direct `return`
+    value or `out.<field> = ...` / `.append(...)` argument. `max`/`min`
+    compare via `JSON_ELEMENT_T.compare_to()` (type-agnostic — same
+    mechanism as the `sorted()` lowering) so they work for numbers,
+    strings, or dates without knowing the field's type ahead of time;
+    `sum`/`avg` accumulate as NUMBER directly. Appends any new local
+    declarations the loop needs to `declarations` (caller owns where
+    those get emitted — a function's declare section, or a `DECLARE`
+    block around a guarded `out` write)."""
+    assert isinstance(call.func, ast.Name)
+    fname = call.func.id
+    if len(call.args) != 2:
+        raise CodeGenError(f"{fname}(...) requires exactly 2 arguments: (list, field_name)")
+    array_expr = translator.translate(call.args[0], "ARRAY")
+    field_node = call.args[1]
+    if not (isinstance(field_node, ast.Constant) and isinstance(field_node.value, str)):
+        raise CodeGenError(f"{fname}(...)'s second argument must be a string literal field name")
+    field = field_node.value
+    arr_var = f"v_aggarr_{agg_idx}"
+    k_var = f"v_aggk_{agg_idx}"
+    acc_var = f"v_aggacc_{agg_idx}"
+
+    if fname in ("max", "min"):
+        cur_var = f"v_aggcur_{agg_idx}"
+        op = ">" if fname == "max" else "<"
+        extractor = _EXPECTED_TO_JSON_ELEMENT_EXTRACTOR.get(return_expected, "to_number")
+        declarations.extend(
+            [f"{arr_var} JSON_ARRAY_T;", f"{acc_var} JSON_ELEMENT_T;", f"{cur_var} JSON_ELEMENT_T;"]
+        )
+        return [
+            f"{arr_var} := {array_expr};",
+            f"{acc_var} := NULL;",
+            f"FOR {k_var} IN 0 .. {arr_var}.get_size - 1 LOOP",
+            f"    {cur_var} := TREAT({arr_var}.get({k_var}) AS JSON_OBJECT_T).get({_quote(field)});",
+            f"    IF {acc_var} IS NULL OR {cur_var}.compare_to({acc_var}) {op} 0 THEN",
+            f"        {acc_var} := {cur_var};",
+            "    END IF;",
+            "END LOOP;",
+            f"{tmp_var} := {acc_var}.{extractor}();",
+        ]
+
+    declarations.extend([f"{arr_var} JSON_ARRAY_T;", f"{acc_var} NUMBER;"])
+    lines = [
+        f"{arr_var} := {array_expr};",
+        f"{acc_var} := 0;",
+        f"FOR {k_var} IN 0 .. {arr_var}.get_size - 1 LOOP",
+        f"    {acc_var} := {acc_var} + TREAT({arr_var}.get({k_var}) AS JSON_OBJECT_T).get_Number({_quote(field)});",
+        "END LOOP;",
+    ]
+    if fname == "avg":
+        lines.append(f"{tmp_var} := {acc_var} / {arr_var}.get_size;")
+    else:
+        lines.append(f"{tmp_var} := {acc_var};")
+    return lines
+
+
 def infer_type(node: ast.expr, ctx: _FnCtx) -> str:
     if isinstance(node, ast.Constant):
         if isinstance(node.value, bool):
@@ -507,6 +590,11 @@ def infer_type(node: ast.expr, ctx: _FnCtx) -> str:
             return "DATE"
         if fname in ("concat", "split_first", "split_nth", "lookup"):
             return "VARCHAR2"
+        if fname in ("max", "min", "sum", "avg", "count"):
+            # Best-effort default: max/min could in principle key on a
+            # str/date field, but without schema info to check the field's
+            # actual type, NUMBER is the common case.
+            return "NUMBER"
     if isinstance(node, ast.Name) and node.id in ctx.locals:
         return ctx.locals[node.id]
     return "VARCHAR2"
@@ -522,6 +610,7 @@ def _translate_fn_body(
     ctx: _FnCtx,
     return_expected: str,
     translator: _ExprTranslator,
+    loop_counter: itertools.count,
 ) -> list[str]:
     out: list[str] = []
     for stmt in stmts:
@@ -551,29 +640,49 @@ def _translate_fn_body(
                     ctx.declarations.append(f"{tmp_var} JSON_OBJECT_T;")
                 out.extend(_materialize_dataclass(stmt.value, translator, tmp_var))
                 out.append(f"RETURN {tmp_var};")
+            elif _is_aggregate_call(stmt.value):
+                assert isinstance(stmt.value, ast.Call)
+                tmp_var = f"v_{ctx.local_prefix}__agg"
+                decl_type = _EXPECTED_TO_DECL_TYPE.get(return_expected, return_expected)
+                if tmp_var not in ctx.locals:
+                    ctx.locals[tmp_var] = return_expected
+                    ctx.declarations.append(f"{tmp_var} {decl_type};")
+                out.extend(
+                    _materialize_aggregate(
+                        stmt.value, translator, tmp_var, return_expected,
+                        next(loop_counter), ctx.declarations,
+                    )
+                )
+                out.append(f"RETURN {tmp_var};")
             else:
                 out.append(f"RETURN {translator.translate(stmt.value, return_expected)};")
         elif isinstance(stmt, ast.If):
-            out.extend(_translate_fn_if(stmt, ctx, return_expected, translator))
+            out.extend(_translate_fn_if(stmt, ctx, return_expected, translator, loop_counter))
         else:
             raise CodeGenError(f"unsupported statement in field-rule body: {type(stmt).__name__}")
     return out
 
 
 def _translate_fn_if(
-    stmt: ast.If, ctx: _FnCtx, return_expected: str, translator: _ExprTranslator
+    stmt: ast.If,
+    ctx: _FnCtx,
+    return_expected: str,
+    translator: _ExprTranslator,
+    loop_counter: itertools.count,
 ) -> list[str]:
     lines = [f"IF {translator.translate(stmt.test, 'BOOLEAN')} THEN"]
-    lines.extend(_indent(_translate_fn_body(stmt.body, ctx, return_expected, translator)))
+    lines.extend(_indent(_translate_fn_body(stmt.body, ctx, return_expected, translator, loop_counter)))
     orelse = stmt.orelse
     while len(orelse) == 1 and isinstance(orelse[0], ast.If):
         elif_stmt = orelse[0]
         lines.append(f"ELSIF {translator.translate(elif_stmt.test, 'BOOLEAN')} THEN")
-        lines.extend(_indent(_translate_fn_body(elif_stmt.body, ctx, return_expected, translator)))
+        lines.extend(
+            _indent(_translate_fn_body(elif_stmt.body, ctx, return_expected, translator, loop_counter))
+        )
         orelse = elif_stmt.orelse
     if orelse:
         lines.append("ELSE")
-        lines.extend(_indent(_translate_fn_body(orelse, ctx, return_expected, translator)))
+        lines.extend(_indent(_translate_fn_body(orelse, ctx, return_expected, translator, loop_counter)))
     lines.append("END IF;")
     return lines
 
@@ -658,7 +767,9 @@ class PlsqlCodeGenerator(CodeGenerator):
         ctx = _FnCtx(params=sig.param_names, local_prefix=name)
         translator = _ExprTranslator(ctx, rule_signatures, dataclasses, self.function_linker)
         body_lines = ["p_omitted := FALSE;"]
-        body_lines.extend(_translate_fn_body(fn_def.body, ctx, sig.return_expected, translator))
+        body_lines.extend(
+            _translate_fn_body(fn_def.body, ctx, sig.return_expected, translator, self._loop_counter)
+        )
 
         params = [
             f"p_{pname} IN {ptype}"
@@ -820,6 +931,17 @@ class PlsqlCodeGenerator(CodeGenerator):
                 declare=[f"{tmp_var} JSON_OBJECT_T;"],
                 body=[*setup_lines, sink(tmp_var)],
             )
+        if _is_aggregate_call(value):
+            assert isinstance(value, ast.Call)
+            fn_ctx_for_infer = _FnCtx(params=[], local_prefix="_")
+            inferred = infer_type(value, fn_ctx_for_infer)
+            tmp_var = f"v_agg_{field_name}"
+            decl_type = _EXPECTED_TO_DECL_TYPE.get(inferred, inferred)
+            declare = [f"{tmp_var} {decl_type};"]
+            setup_lines = _materialize_aggregate(
+                value, translator, tmp_var, inferred, next(self._loop_counter), declare
+            )
+            return self._guarded(field_name, declare=declare, body=[*setup_lines, sink(tmp_var)])
         fn_ctx_for_infer = _FnCtx(params=[], local_prefix="_")
         inferred = infer_type(value, fn_ctx_for_infer)
         expr = translator.translate(value, inferred)
@@ -846,34 +968,89 @@ class PlsqlCodeGenerator(CodeGenerator):
         dataclasses: dict[str, _DataclassDef],
         list_accumulators: dict[str, _ListAccumulator],
     ) -> list[str]:
-        if not isinstance(stmt.target, ast.Name):
-            raise CodeGenError("for-loop target must be a simple name")
-        loop_var = stmt.target.id
+        try:
+            item_var, index_var = parse_for_target(stmt.target)
+            iter_spec = parse_for_iter(stmt.iter)
+        except LoopIterError as exc:
+            raise CodeGenError(str(exc)) from exc
 
         outer_ctx = _FlowCtx(loop_vars)
         outer_translator = _ExprTranslator(outer_ctx, rule_signatures, dataclasses, self.function_linker)
-        source_expr = outer_translator.translate(stmt.iter, "ARRAY")
+        source_expr = outer_translator.translate(iter_spec.array_expr, "ARRAY")
 
         idx = next(self._loop_counter)
         arr_var = f"v_forarr_{idx}"
         idx_var = f"v_i_{idx}"
 
+        setup_lines = [f"{arr_var} JSON_ARRAY_T := {source_expr};"]
+        sort_lines: list[str] = []
+        if iter_spec.sort_key is not None:
+            sort_lines = self._emit_sort(arr_var, iter_spec.sort_key, iter_spec.sort_reverse, idx)
+
+        inner_loop_vars = [*loop_vars, item_var]
+        index_decl = ""
+        if index_var is not None:
+            inner_loop_vars.append(index_var)
+            offset = iter_spec.enumerate_start or 0
+            offset_expr = f"{idx_var}" if offset == 0 else f"{idx_var} + {offset}"
+            index_decl = f"\n            v_{index_var} NUMBER := {offset_expr};"
+
         inner_lines = self._emit_flow(
-            stmt.body, [*loop_vars, loop_var], rule_signatures, dataclasses, list_accumulators
+            stmt.body, inner_loop_vars, rule_signatures, dataclasses, list_accumulators
         )
 
         lines = [
             "DECLARE",
-            f"    {arr_var} JSON_ARRAY_T := {source_expr};",
+            *(f"    {ln}" for ln in setup_lines),
             "BEGIN",
-            f"    FOR {idx_var} IN 0 .. {arr_var}.get_size - 1 LOOP",
-            "        DECLARE",
-            f"            v_{loop_var} JSON_OBJECT_T := TREAT({arr_var}.get({idx_var}) AS JSON_OBJECT_T);",
-            "        BEGIN",
         ]
+        lines.extend(_indent(sort_lines))
+        lines.extend(
+            [
+                f"    FOR {idx_var} IN 0 .. {arr_var}.get_size - 1 LOOP",
+                "        DECLARE",
+                f"            v_{item_var} JSON_OBJECT_T := TREAT({arr_var}.get({idx_var}) AS JSON_OBJECT_T);"
+                f"{index_decl}",
+                "        BEGIN",
+            ]
+        )
         lines.extend(_indent(inner_lines, 3))
         lines.extend(["        END;", "    END LOOP;", "END;"])
         return lines
+
+    def _emit_sort(self, arr_var: str, key: str, reverse: bool, idx: int) -> list[str]:
+        """Native in-place insertion sort by a named field, comparing via
+        `JSON_ELEMENT_T.compare_to()` (type-agnostic — works for both
+        numbers and strings, verified against a live Oracle 23ai instance —
+        no SQL-context ORDER BY, staying in native PL/SQL per the
+        CLOB-only-at-the-boundary principle)."""
+        j_var, k_var, tmp_var, tmp_key_var = (
+            f"v_sortj_{idx}",
+            f"v_sortk_{idx}",
+            f"v_sorttmp_{idx}",
+            f"v_sorttmpkey_{idx}",
+        )
+        op = "<" if reverse else ">"
+        key_q = _quote(key)
+        return [
+            "DECLARE",
+            f"    {j_var} PLS_INTEGER;",
+            f"    {tmp_var} JSON_ELEMENT_T;",
+            f"    {tmp_key_var} JSON_ELEMENT_T;",
+            "BEGIN",
+            f"    FOR {k_var} IN 1 .. {arr_var}.get_size - 1 LOOP",
+            f"        {tmp_var} := {arr_var}.get({k_var});",
+            f"        {tmp_key_var} := TREAT({tmp_var} AS JSON_OBJECT_T).get({key_q});",
+            f"        {j_var} := {k_var} - 1;",
+            f"        WHILE {j_var} >= 0 AND TREAT({arr_var}.get({j_var}) AS JSON_OBJECT_T)"
+            f".get({key_q}).compare_to({tmp_key_var}) {op} 0 LOOP",
+            f"            {arr_var}.put({j_var} + 1, {arr_var}.get({j_var}), TRUE);",
+            f"            {j_var} := {j_var} - 1;",
+            "        END LOOP;",
+            f"        {arr_var}.put({j_var} + 1, {tmp_var}, TRUE);",
+            "    END LOOP;",
+            "END;",
+        ]
 
     @staticmethod
     def _is_out_append(call: ast.Call) -> bool:

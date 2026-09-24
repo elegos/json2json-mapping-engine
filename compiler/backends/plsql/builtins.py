@@ -168,6 +168,13 @@ BUILTIN_FUNCTIONS: dict[str, FunctionImpl] = {
         name="parse_date",
         target_templates={"plsql": "TO_DATE({0}, {1})"},
     ),
+    "count": FunctionImpl(
+        # Trivial (no accumulator needed) — max/min/sum/avg need a native
+        # loop and are lowered specially by the Code Generator
+        # (`_materialize_aggregate`), not routed through here.
+        name="count",
+        target_templates={"plsql": "{0}.get_size"},
+    ),
 }
 
 # Python reference implementations, kept alongside (not inside) FunctionImpl
@@ -184,6 +191,7 @@ BUILTIN_PYTHON_REFERENCE = {
     "split_nth": _split_nth_py,
     "lookup": _lookup_py,
     "parse_date": _parse_date_py,
+    "count": len,
 }
 
 BUILTIN_SINCE_VERSION = {name: "1.0.0" for name in BUILTIN_FUNCTIONS}

@@ -210,6 +210,18 @@ without any configuration. Each built-in has an implementation for every support
 target language via `@override` declarations. Examples: `coalesce`, `round`, `concat`,
 `if_else`, `split_first`, `split_nth`, `lookup`, `parse_date`.
 
+**Aggregation** — `max`, `min`, `sum`, `avg`, `count` reduce an array to a scalar:
+`max($.myList.numAttr)` (`$.myList[]`/`$.myList[*]` are accepted as equivalent, more
+explicit spellings of the same thing). Unlike the built-ins above, these have no
+single-expression target rendering — computing an aggregate requires iterating the
+array, so the PL/SQL backend lowers a call to one of these into a native loop with an
+accumulator (no SQL-context detour: `max`/`min` compare via `JSON_ELEMENT_T.compare_to()`,
+type-agnostic across numbers/strings/dates; `sum`/`avg` accumulate as `NUMBER`
+directly). Because of this, a call to one of these can only appear as the direct value
+of a `return`, an `out.<field> = ...` assignment, or an `.append(...)` argument — not
+nested inside a larger expression. In the Python subset the array/field arguments are
+positional: `max(<array>, "<field name>")`.
+
 The built-in library is versioned with the tool using **SemVer**:
 - **MAJOR** — signature change (breaking); `.fn.yaml` files referencing the changed
   function must be updated explicitly before the build succeeds.
@@ -771,6 +783,28 @@ generation. For `.fn.yaml`-sourced mappings, the compiler's own Loop Fusion phas
 therefore receives already-fused loops and acts as a no-op. The compiler phase is
 retained for `.map.py` files written by hand, where fusion must still be applied.
 
+**Generated function parameter naming convention.** Rule functions in `.map.py` take
+explicit typed parameters (§Generated artifact's "Function-calling convention" —
+functions never close implicitly over `root`/`src`/the loop variable). Stage 5, when
+emitting a rule function, follows a fixed convention so generated code is uniform and
+its call sites are mechanically derivable from `.fn.yaml`'s nesting structure:
+
+- Functions outside any loop take `root` (and `src`, when the rule's own scope isn't
+  the document root — mirroring `$`/`@`).
+- Functions inside a loop additionally take `index` (current loop's position) and, for
+  each enclosing loop that also enumerates, `index1`, `index2`, ... `indexN` outward —
+  only included when the corresponding loop actually declared an index to use (§Scope
+  anchors' `@index`/`@index.N`); a function that doesn't reference an outer index in
+  its `.fn.yaml` expression doesn't get that parameter.
+
+This is purely a **generated-code convention** — it constrains what Stage 5 emits, not
+what the compiler accepts. A hand-written bootstrap `.map.py` file is unconstrained:
+the developer can name and shape rule functions however they like, or skip functions
+entirely and assign to `out` directly with side effects, since bootstrap mode is
+"the developer owns the `.map.py` file directly" (§Operational modes) — strict
+functional style is a convention Stage 5 follows for generated code, not a rule the
+compiler enforces on hand-written code.
+
 ---
 
 ### Build folder and incremental compilation
@@ -881,6 +915,7 @@ enforced project-wide; a collision is a build error.
   label: order                      # anchor label: @order.x or @2.x (positional)
   source: $.source.orders[*]        # source array path
   filter: "@.status == 'ACTIVE'"    # optional filter expression
+  sort: {key: "@.orderDate", reverse: false}   # optional; applied before filter/index
   output: $.Output.Orders[*]        # destination array path
   description: "One output record per active source order."
   rules:
@@ -917,6 +952,27 @@ first statement of the corresponding `for` loop's body in the generated
 language subset (§Permitted constructs). In hand-written bootstrap `.map.py`
 files, the same effect is achieved by writing that guard directly — there is
 no separate `filter:` keyword outside `.fn.yaml`.
+
+**`sort`** (optional) orders the source array before iteration — and, since
+`@index` (§Scope anchors) only ever numbers "whatever order the loop actually
+iterates in", `sort` is what makes an index *meaningful* rather than an
+artifact of source-JSON ordering. `key` is a field-reference expression (same
+anchor rules as `filter`); `reverse` defaults to `false`. Applied before
+`filter` and before index assignment, so `@index` counts positions in the
+*sorted, unfiltered* — no: sorted, then filtered — sequence. (Filtering after
+sorting means indices are contiguous over the elements that survive the
+filter, not over the original array; this is the only order the two
+compose in.) In bootstrap `.map.py` this is the `sorted(<array>, key="<field>")`
+/ `sorted(<array>, key="<field>", reverse=True)` idiom (§Built-in functions'
+sibling note doesn't cover this — `sorted`/`enumerate` are for-loop-iterable
+wrappers, not builtins, recognized directly by the Code Generator and lowered
+to a native in-place sort using `JSON_ELEMENT_T.compare_to()`, same
+no-SQL-context principle as aggregation).
+
+**`@index`** — a loop that wants a progressive per-element number pairs its
+`for` with Python's real `enumerate()`: `for i, x in enumerate(<array>):` (0-based)
+or `enumerate(<array>, start=1)` (1-based). Composed with `sort`:
+`enumerate(sorted(<array>, key="<field>"), start=1)`.
 
 **Interaction with Loop Fusion** — see §Loop Fusion Optimizer. Unlike
 `@parallel` mismatches, a `filter` difference between two `loop` rules over
@@ -1157,6 +1213,12 @@ Source paths use explicit scope anchors. The default when inside a loop is `@`
 | `@<label>` | item of loop *or* lookup table named `<label>` | loop variable or JSON constant |
 | `@2` | item of the second-nearest loop | outer loop variable |
 | `@.field` | field on the current loop item | `<loop_var>.field` |
+| `@index` | position of the current item in the nearest loop | 0-based, or `start`-offset if the loop declares one (§Loop rule `sort`/index) |
+| `@index.2` | position in the second-nearest loop | outer loop's index, by the same positional counting as `@2` |
+
+`@index`/`@index.N` are only meaningful — and only resolve to something — when the
+loop they reference actually enumerates (§Loop rule). Referencing `@index` on a loop
+that doesn't is a compile error, not an implicit zero.
 
 The anchor namespace is shared between loop labels and lookup table labels; names must
 be unique across the entire `.fn.yaml` file.

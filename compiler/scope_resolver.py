@@ -10,31 +10,41 @@ from __future__ import annotations
 import ast
 from dataclasses import dataclass, field
 
+from compiler.loop_iter import LoopIterError, parse_for_iter, parse_for_target
+
 
 @dataclass
 class Scope:
     """One level of the `root`/`src`/`out` context chain.
 
     `loop_var` is the Python identifier bound by the enclosing `for`
-    (`None` for the module-level root scope). `source_expr` is the source
-    AST expression the loop iterates over (unresolved — path resolution is
-    the Code Generator's job).
+    (`None` for the module-level root scope). `index_var` is the
+    identifier bound to the (0-based, or `start`-offset) position when the
+    loop uses `enumerate()` (`None` otherwise). `source_expr` is the *real*
+    source array expression — `enumerate()`/`sorted()` wrapping already
+    unwrapped here, since neither changes the element type, only the
+    iteration order/labeling (unresolved — path resolution is the Code
+    Generator's job).
     """
 
     loop_var: str | None
     source_expr: ast.expr | None
     parent: Scope | None
     depth: int = field(default=0)
+    index_var: str | None = None
+    sort_key: str | None = None
+    sort_reverse: bool = False
+    enumerate_start: int | None = None
 
     def resolve_name(self, name: str) -> Scope | None:
         """Walk up the chain looking for the scope that binds `name`.
         Returns the *scope introducing that binding* — `self` if `name`
-        is this scope's own loop variable, otherwise the nearest ancestor
-        that binds it, or `None` if unbound (caller falls back to
+        is this scope's own loop/index variable, otherwise the nearest
+        ancestor that binds it, or `None` if unbound (caller falls back to
         `root`/`src` magic names)."""
         scope: Scope | None = self
         while scope is not None:
-            if scope.loop_var == name:
+            if scope.loop_var == name or scope.index_var == name:
                 return scope
             scope = scope.parent
         return None
@@ -62,13 +72,20 @@ class _Resolver(ast.NodeVisitor):
         return self._stack[-1]
 
     def visit_For(self, node: ast.For) -> None:
-        if not isinstance(node.target, ast.Name):
-            raise ScopeResolverError("for-loop target must be a simple name")
+        try:
+            item_var, index_var = parse_for_target(node.target)
+            iter_spec = parse_for_iter(node.iter)
+        except LoopIterError as exc:
+            raise ScopeResolverError(str(exc)) from exc
         scope = Scope(
-            loop_var=node.target.id,
-            source_expr=node.iter,
+            loop_var=item_var,
+            source_expr=iter_spec.array_expr,
             parent=self._current(),
             depth=self._current().depth + 1,
+            index_var=index_var,
+            sort_key=iter_spec.sort_key,
+            sort_reverse=iter_spec.sort_reverse,
+            enumerate_start=iter_spec.enumerate_start,
         )
         self.for_scopes[id(node)] = scope
         self._stack.append(scope)

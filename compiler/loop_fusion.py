@@ -46,6 +46,8 @@ import ast
 import copy
 from dataclasses import dataclass, field
 
+from compiler.loop_iter import LoopIterError, parse_for_target
+
 
 class LoopFusionError(Exception):
     pass
@@ -140,7 +142,8 @@ def _check_parallel_conflict(
 @dataclass
 class _Group:
     canonical: ast.For
-    loop_var: str
+    item_var: str
+    index_var: str | None
     members: list[tuple[ast.expr | None, list[ast.stmt]]] = field(default_factory=list)
 
 
@@ -153,25 +156,38 @@ def fuse_loops(
     """Rewrite `stmts`: merge sibling same-source `for` loops (if
     `fusion_enabled`) and normalize `if cond: continue` filters into
     per-branch `IF NOT (cond)` guards (always). Recurses into every `for`
-    body so nested levels are fused independently."""
+    body so nested levels are fused independently. Handles both plain
+    `for x in ...:` and `for i, x in enumerate(...):` targets (§loop_iter)."""
     groups: dict[str, _Group] = {}
     result: list[ast.stmt] = []
 
     for stmt in stmts:
-        if isinstance(stmt, ast.For) and isinstance(stmt.target, ast.Name):
+        if isinstance(stmt, ast.For):
+            try:
+                item_var, index_var = parse_for_target(stmt.target)
+            except LoopIterError as exc:
+                raise LoopFusionError(str(exc)) from exc
+            # `enumerate(...)`'s `start=` isn't part of the fusion key: two
+            # loops differing only in start offset still iterate the exact
+            # same underlying array in the exact same order.
             key = _iter_key(stmt.iter) if fusion_enabled else f"__unfused_{id(stmt)}"
             filter_expr, body = _extract_filter(stmt.body)
             if key not in groups:
-                groups[key] = _Group(canonical=stmt, loop_var=stmt.target.id)
+                groups[key] = _Group(canonical=stmt, item_var=item_var, index_var=index_var)
                 groups[key].members.append((filter_expr, body))
                 result.append(stmt)
             else:
                 group = groups[key]
-                if stmt.target.id != group.loop_var:
-                    renamer = _RenameLoopVar(stmt.target.id, group.loop_var)
+                if item_var != group.item_var:
+                    renamer = _RenameLoopVar(item_var, group.item_var)
                     body = [renamer.visit(copy.deepcopy(n)) for n in body]
                     if filter_expr is not None:
                         filter_expr = renamer.visit(copy.deepcopy(filter_expr))
+                if index_var is not None and group.index_var is not None and index_var != group.index_var:
+                    idx_renamer = _RenameLoopVar(index_var, group.index_var)
+                    body = [idx_renamer.visit(copy.deepcopy(n)) for n in body]
+                    if filter_expr is not None:
+                        filter_expr = idx_renamer.visit(copy.deepcopy(filter_expr))
                 group.members.append((filter_expr, body))
         else:
             result.append(stmt)

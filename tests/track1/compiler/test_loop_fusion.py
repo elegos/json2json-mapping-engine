@@ -158,3 +158,17 @@ def test_matching_parallel_degrees_do_not_conflict():
     fused = fuse_loops(tree.body, _rule_defs(tree))
     for_stmts = [s for s in fused if isinstance(s, ast.For)]
     assert len(for_stmts) == 1
+
+
+def test_enumerate_loops_fuse_and_rename_both_index_and_item():
+    tree = ast.parse(
+        "for i, a in enumerate(root.items):\n"
+        "    out.X.append(a.id)\n"
+        "for j, b in enumerate(root.items):\n"
+        "    out.Y.append(b.price)\n"
+    )
+    fused = fuse_loops(tree.body, _rule_defs(tree))
+    for_stmts = [s for s in fused if isinstance(s, ast.For)]
+    assert len(for_stmts) == 1
+    dumped = ast.dump(fused[0])
+    assert "id='j'" not in dumped and "id='b'" not in dumped
