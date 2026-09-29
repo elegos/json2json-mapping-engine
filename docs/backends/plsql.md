@@ -2,7 +2,7 @@
 
 The backend selected by `[project] target = "plsql"` (`compiler/backends/plsql/`).
 It is one implementation of the target-agnostic `Backend` interface described in
-[ARCHITECTURE.md](ARCHITECTURE.md), §Target backends. This document is the reference
+[ARCHITECTURE.md](../ARCHITECTURE.md), §Target backends. This document is the reference
 for what is specific to PL/SQL: configuration, the generated artifact, the variations
 that a mapping can trigger (such as `@parallel`), and the known gaps.
 
