@@ -321,6 +321,27 @@ nested members (the top-level element is the unit of failure).
 
 ---
 
+## 📋 Backlog — smaller leftovers (untracked until now)
+
+Independent of M6/M7; pick up in any order.
+
+- [ ] **Type Checker: bare `return` in a non-nullable rule.** A rule annotated `-> T`
+      (no `| None`) whose body has a bare `return` (omit) is not flagged; nullability is
+      read from the annotation only.
+- [ ] **Track 2 in CI.** Needs a runner with Docker access to pull
+      `container-registry.oracle.com/database/adb-free`.
+- [ ] **Track 2: exercise `map_<id>`** (raising variant); only the `_safe` twin runs.
+- [ ] **`allowed`-constraint warnings** on Track 2 output (data model exists since M5).
+- [ ] **Per-stage on-disk artifacts** of the transpiler.
+- [ ] **`@parallel` from `.fn.yaml`.**
+- [ ] **Error isolation between nested members** (today the top-level element is the
+      unit of failure).
+- [ ] **Multi-package grouping key** for PL/SQL (optional, like `export_rule_functions`).
+- [ ] **`enumerate(..., dense=True)` / loop `guard`** — deliberately deferred: the loop
+      `filter` stays the only guard for now.
+
+---
+
 ## ⬜ M6 — Tauri desktop tool
 
 Not started (Rust shell, AG Grid frontend, Gitoxide VCS, embedded LLM).
