@@ -339,8 +339,10 @@ Independent of M6/M7; pick up in any order.
 - [x] **`allowed`-constraint warnings** on integration-test output (`cli/allowed.py`; only
       `.fn.yaml` `allowed`, schema-derived constraints wait for M6). Warnings never fail a case;
       keywords not evaluable on a scalar field are reported, not ignored.
-- [ ] **Implicit `multipleOf` rounding** in the transpiler (`schema_options`, project default +
-      per-rule override) — see the design discussion; not yet implemented.
+- [x] **Implicit `multipleOf` rounding** in the transpiler: per-rule `choices` (replaces
+      `format_mode`) + `[compiler.default_choices]` (replaces `decimal_mode`); conflict with
+      `format` must be resolved via `choices.conflicts`. Steps are explained by comments in
+      the `.map.py`. Schema-derived `multipleOf` and the editor UI wait for M6.
 - [ ] **Per-stage on-disk artifacts** of the transpiler.
 - [ ] **`@parallel` from `.fn.yaml`.**
 - [ ] **Error isolation between nested members** (today the top-level element is the

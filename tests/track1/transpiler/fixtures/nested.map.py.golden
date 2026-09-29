@@ -39,6 +39,7 @@ def ord_lin_prt(root: Any, src2: Any, src1: Any, src: Any) -> PartsItem:
     return PartsItem(Part=src.name, LineSku=src1.sku)
 
 def ord_lin(root: Any, src1: Any, src: Any, index1: int, index: int) -> LinesItem:
+    # Total: format '0.00' (choices.format = round)
     ord_lin_prt_list = []
     for ord_lin_prt_src in src.parts:
         ord_lin_prt_list.append(ord_lin_prt(root, src1, src, ord_lin_prt_src))

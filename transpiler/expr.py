@@ -27,6 +27,24 @@ _RESERVED_PARAMS = {"root", "out", "Null"}
 _RESERVED_PATTERN = re.compile(r"^(src|index)\d*$")
 
 
+COMMENT_MARK = "@@comment@@ "
+
+
+def comment_stmt(text: str) -> ast.stmt:
+    """A marker statement that the final render turns into a `# text` line
+    (`ast.unparse` drops real comments)."""
+    return ast.Expr(value=ast.Constant(value=COMMENT_MARK + text))
+
+
+def is_comment(stmt: ast.stmt) -> bool:
+    return (
+        isinstance(stmt, ast.Expr)
+        and isinstance(stmt.value, ast.Constant)
+        and isinstance(stmt.value.value, str)
+        and stmt.value.value.startswith(COMMENT_MARK)
+    )
+
+
 @dataclass
 class Block:
     stmts: list[ast.stmt]  # finalized: every path ends in a Return
@@ -38,7 +56,7 @@ class Block:
         """assign* then one `return <value>` — expressible as a dataclass kwarg."""
         *pre, last = self.stmts
         return (
-            all(isinstance(s, ast.Assign) for s in pre)
+            all(isinstance(s, ast.Assign) or is_comment(s) for s in pre)
             and isinstance(last, ast.Return)
             and last.value is not None
             and not self.returns_null

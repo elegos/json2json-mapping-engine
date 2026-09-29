@@ -24,6 +24,7 @@ def hdr(root: Any) -> str:
 
 def tot(root: Any) -> number:
     tot_base = root.price * root.qty
+    # Total: format '0.00' (choices.format = round)
     return round(tot_base * 1.22, 2)
 
 def dsc(root: Any) -> Discount | None:

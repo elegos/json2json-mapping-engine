@@ -34,16 +34,20 @@ from __future__ import annotations
 
 import ast
 import re
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 from compiler.loop_fusion import fuse_loops
 from compiler.schema_generator import SchemaTypes
 from transpiler.anchors import AnchorScope, LoopRef, resolve_anchors
-from transpiler.expr import Block, parse_block
+from transpiler.expr import COMMENT_MARK, Block, comment_stmt, parse_block
 from transpiler.ids import assign_ids, ident_of, walk
 from transpiler.model import (
+    CONFLICT_KEY,
+    CONFLICT_RESOLUTIONS,
     FieldRule,
     FnYamlError,
     FunctionalFile,
@@ -59,7 +63,9 @@ from transpiler.model import (
 class TranspileOptions:
     loop_fusion: bool = True
     parallel_conflict: str = "exception"
-    decimal_mode: str = "round"  # round | truncate — per-field format_mode overrides
+    # round | truncate — project defaults, overridden by a rule's `choices`
+    format_choice: str = "round"
+    multiple_of_choice: str = "round"
 
 
 def _pascal(name: str) -> str:
@@ -109,22 +115,38 @@ class _CollapseDoubleNot(ast.NodeTransformer):
         return node
 
 
-class _Wrap(ast.NodeTransformer):
-    """Wrap every returned value in `round(x, n)` / `trunc(x, n)` (`format`)."""
+def _render(module: ast.Module) -> str:
+    text = ast.unparse(module)
+    quote = "(?:'''|\"\"\"|'|\")"
+    return re.sub(
+        rf"^(\s*){quote}{re.escape(COMMENT_MARK)}(.*?){quote}$", r"\1# \2", text, flags=re.M
+    )
 
-    def __init__(self, func: str, digits: int):
-        self.func, self.digits = func, digits
 
-    def visit_Return(self, node: ast.Return) -> ast.Return:
+class _PostProcess(ast.NodeTransformer):
+    """Apply the post-processing steps to every returned value, each explained by
+    a comment line above the `return`: the `.map.py` is what the developer reads."""
+
+    def __init__(self, steps: list[tuple[str, str, Callable[[ast.expr], ast.expr]]]):
+        self.steps = steps  # (kind, comment, wrap)
+
+    def visit_Return(self, node: ast.Return) -> list[ast.stmt]:
         v = node.value
         if v is None or (isinstance(v, ast.Name) and v.id == "Null"):
-            return node
-        call = ast.Call(
-            func=ast.Name(id=self.func, ctx=ast.Load()),
-            args=[v, ast.Constant(value=self.digits)],
-            keywords=[],
-        )
-        return ast.copy_location(ast.Return(value=call), node)
+            return [node]
+        for _kind, _text, wrap in self.steps:
+            v = wrap(v)
+        notes = [comment_stmt(text) for _kind, text, _wrap in self.steps]
+        return [*notes, ast.copy_location(ast.Return(value=v), node)]
+
+
+def _call(func: str, *args: ast.expr) -> ast.expr:
+    return ast.Call(func=ast.Name(id=func, ctx=ast.Load()), args=list(args), keywords=[])
+
+
+def _decimals_of(number: Any) -> int:
+    exp = Decimal(str(number)).normalize().as_tuple().exponent
+    return max(0, -exp) if isinstance(exp, int) else 0
 
 
 def _index_offsets(nodes: Sequence[ast.AST]) -> set[int]:
@@ -207,6 +229,66 @@ class _Builder:
     def _scope(self, frame: _Frame) -> AnchorScope:
         return AnchorScope(loops=frame.loop_refs(), lookups=self.lookups)
 
+    def _post_steps(
+        self, rule: FieldRule, where: str
+    ) -> list[tuple[str, str, Callable[[ast.expr], ast.expr]]]:
+        """Post-processing steps appended after the declared transform, in order:
+        `allowed.multipleOf` snapping, then `format` decimals. Each is decided by
+        the rule's `choices`, else the project default."""
+        steps: list[tuple[str, str, Callable[[ast.expr], ast.expr]]] = []
+        multiple = (rule.allowed or {}).get("multipleOf")
+        if multiple is not None and (
+            isinstance(multiple, bool) or not isinstance(multiple, (int, float)) or multiple <= 0
+        ):
+            raise FnYamlError(
+                f"{where}: allowed.multipleOf must be a number > 0 — got {multiple!r}"
+            )
+        do_multiple = multiple is not None and rule.type in ("number", "int")
+        do_format = rule.type == "number" and rule.format is not None
+        if do_multiple and do_format:
+            assert rule.format is not None
+            if _decimals_of(multiple) > _decimals(rule.format):
+                resolution = rule.choices.conflicts.get(CONFLICT_KEY)
+                if resolution is None:
+                    raise FnYamlError(
+                        f"{where}: format {rule.format!r} ({_decimals(rule.format)} decimals) "
+                        f"conflicts with allowed.multipleOf {multiple} — the format step would "
+                        "break the multiple; decide with "
+                        f"choices.conflicts.{CONFLICT_KEY}: {' | '.join(CONFLICT_RESOLUTIONS)}"
+                    )
+                do_multiple = resolution in ("both", "multipleOf_only")
+                do_format = resolution in ("both", "format_only")
+        if do_multiple:
+            mode = rule.choices.multiple_of or self.opt.multiple_of_choice
+            fn = "round" if mode == "round" else "trunc"
+            step = ast.Constant(value=multiple)
+
+            def snap(v: ast.expr, fn: str = fn, step: ast.Constant = step) -> ast.expr:
+                div = ast.BinOp(left=v, op=ast.Div(), right=step)
+                return ast.BinOp(
+                    left=_call(fn, div, ast.Constant(value=0)), op=ast.Mult(), right=step
+                )
+
+            steps.append(
+                (
+                    "multipleOf",
+                    f"{rule.field}: multipleOf {multiple} (choices.multipleOf = {mode})",
+                    snap,
+                )
+            )
+        if do_format:
+            assert rule.format is not None
+            mode = rule.choices.format or self.opt.format_choice
+            fn, digits = ("round" if mode == "round" else "trunc"), _decimals(rule.format)
+            steps.append(
+                (
+                    "format",
+                    f"{rule.field}: format {rule.format!r} (choices.format = {mode})",
+                    lambda v, fn=fn, digits=digits: _call(fn, v, ast.Constant(value=digits)),
+                )
+            )
+        return steps
+
     def _field_block(self, rule: FieldRule, fq: str, scope: AnchorScope) -> Block:
         where = f"rule '{fq}'"
         t = rule.transform
@@ -217,10 +299,14 @@ class _Builder:
             assert t.expression is not None
             text = resolve_anchors(t.expression, scope, where).text
         block = parse_block(text, ident_of(fq), where)
-        if rule.type == "number" and rule.format:
-            mode = rule.format_mode or self.opt.decimal_mode
-            wrap = _Wrap("round" if mode == "round" else "trunc", _decimals(rule.format))
-            block = Block([wrap.visit(s) for s in block.stmts], block.returns_null, block.can_omit)
+        steps = self._post_steps(rule, where)
+        if steps:
+            post = _PostProcess(steps)
+            stmts: list[ast.stmt] = []
+            for s in block.stmts:
+                out = post.visit(s)
+                stmts.extend(out if isinstance(out, list) else [out])
+            block = Block(stmts, block.returns_null, block.can_omit)
             for s in block.stmts:
                 ast.fix_missing_locations(s)
         return block
@@ -549,7 +635,7 @@ def transpile_file_model(
         f"# Generated by `mapper transpile` from {source_name} — do not edit.\n"
         f"# compiler options: loop_fusion={'on' if options.loop_fusion else 'off'}\n\n"
     )
-    return comment + ast.unparse(module) + "\n"
+    return comment + _render(module) + "\n"
 
 
 def transpile_file(

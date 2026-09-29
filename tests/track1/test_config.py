@@ -22,8 +22,9 @@ fn_prefix  = ""
 fn_suffix  = ""
 error_code = -20000
 
-[compiler]
-decimal_mode = "round"
+[compiler.default_choices]
+format = "round"
+multipleOf = "round"
 
 [test]
 container_image = "container-registry.example.com/oracle-db"
@@ -38,7 +39,7 @@ def test_round_trips_architecture_example():
     assert config.project.target == "plsql"
     assert config.optimizer.loop_fusion is True
     assert config.optimizer.parallel_conflict == "exception"
-    assert config.compiler.decimal_mode == "round"
+    assert config.compiler.default_choices.format == "round"
     assert config.test.container_image == "container-registry.example.com/oracle-db"
     assert config.test.container_tag == "19.3.0-ee"
 
@@ -85,7 +86,7 @@ def test_defaults_when_sections_absent():
     )
     assert config.project.mode == "driven"
     assert config.optimizer.loop_fusion is True
-    assert config.compiler.decimal_mode == "round"
+    assert config.compiler.default_choices.format == "round"
     assert config.test.container_image is None
 
 
@@ -100,3 +101,15 @@ def test_load_config_from_repo_root(tmp_path: Path):
 def test_load_config_missing_file(tmp_path: Path):
     with pytest.raises(MapperConfigError, match="no mapper.toml found"):
         load_config(tmp_path / "mapper.toml")
+
+
+def test_default_choices_validated():
+    base = {
+        "target": {"plsql": {"schema": "S", "package": "P", "fn_package": "F", "error_code": -1}}
+    }
+    cfg = parse_config({**base, "compiler": {"default_choices": {"multipleOf": "truncate"}}})
+    assert cfg.compiler.default_choices.multiple_of == "truncate"
+    assert cfg.compiler.default_choices.format == "round"
+    for bad in ({"format": "up"}, {"nope": "round"}):
+        with pytest.raises(MapperConfigError):
+            parse_config({**base, "compiler": {"default_choices": bad}})

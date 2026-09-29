@@ -108,7 +108,8 @@ def transpile_functional(path: Path, config: MapperConfig, write: bool = True) -
             TranspileOptions(
                 loop_fusion=config.optimizer.loop_fusion,
                 parallel_conflict=config.optimizer.parallel_conflict,
-                decimal_mode=config.compiler.decimal_mode,
+                format_choice=config.compiler.default_choices.format,
+                multiple_of_choice=config.compiler.default_choices.multiple_of,
             ),
             input_schema=resolve_schema_for(stem, SCHEMAS_INPUT_DIR),
         )

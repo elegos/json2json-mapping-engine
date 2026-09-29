@@ -44,6 +44,22 @@ class Transform:
     last_auto_version: str | None = None
 
 
+CONFLICT_KEY = "format+multipleOf"
+CONFLICT_RESOLUTIONS = ("both", "multipleOf_only", "format_only")
+_ROUNDING = ("round", "truncate")
+
+
+@dataclass
+class Choices:
+    """Per-rule decisions on the post-processing steps the transpiler appends
+    after the declared transform. `None` = not decided here (project default in
+    `mapper.toml` `[compiler.default_choices]`, or, for `conflicts`, unresolved)."""
+
+    format: Literal["round", "truncate"] | None = None
+    multiple_of: Literal["round", "truncate"] | None = None
+    conflicts: dict[str, str] = dc_field(default_factory=dict)
+
+
 @dataclass
 class FieldRule:
     id: str | None
@@ -51,7 +67,7 @@ class FieldRule:
     type: str
     required: bool = True
     format: str | None = None
-    format_mode: Literal["round", "truncate"] | None = None
+    choices: Choices = dc_field(default_factory=Choices)
     allowed: dict[str, Any] | None = None
     example: Any = None
     description: str | None = None
@@ -154,7 +170,7 @@ _FIELD_KEYS = _COMMON | {
     "field",
     "type",
     "format",
-    "format_mode",
+    "choices",
     "required",
     "allowed",
     "example",
@@ -176,6 +192,27 @@ _LOOP_KEYS = _COMMON | {
 _LOOKUP_KEYS = _COMMON | {"label", "entries"}
 
 
+def _load_choices(where: str, raw: dict[str, Any]) -> Choices:
+    c_raw = _get_dict(where, raw, "choices")
+    _check_keys(f"{where}.choices", c_raw, {"format", "multipleOf", "conflicts"})
+    for key in ("format", "multipleOf"):
+        if c_raw.get(key) not in (None, *_ROUNDING):
+            raise _err(
+                f"{where}.choices", f"'{key}' must be 'round' or 'truncate' — got {c_raw[key]!r}"
+            )
+    conflicts = c_raw.get("conflicts") or {}
+    if not isinstance(conflicts, dict):
+        raise _err(f"{where}.choices", "'conflicts' must be a mapping")
+    _check_keys(f"{where}.choices.conflicts", conflicts, {CONFLICT_KEY})
+    for key, res in conflicts.items():
+        if res not in CONFLICT_RESOLUTIONS:
+            raise _err(
+                f"{where}.choices.conflicts",
+                f"'{key}' must be one of {', '.join(CONFLICT_RESOLUTIONS)} — got {res!r}",
+            )
+    return Choices(c_raw.get("format"), c_raw.get("multipleOf"), dict(conflicts))
+
+
 def _load_field(where: str, raw: dict[str, Any]) -> FieldRule:
     _check_keys(where, raw, _FIELD_KEYS)
     name = _get_str(where, raw, "field", required=True)
@@ -188,9 +225,7 @@ def _load_field(where: str, raw: dict[str, Any]) -> FieldRule:
     fmt = raw.get("format")
     if fmt is not None and not isinstance(fmt, str):
         raise _err(where, "'format' must be a string")
-    mode = raw.get("format_mode")
-    if mode not in (None, "round", "truncate"):
-        raise _err(where, f"'format_mode' must be 'round' or 'truncate' — got {mode!r}")
+    choices = _load_choices(where, raw)
     required = raw.get("required", True)
     if not isinstance(required, bool):
         raise _err(where, "'required' must be true or false")
@@ -232,7 +267,7 @@ def _load_field(where: str, raw: dict[str, Any]) -> FieldRule:
         type=type_,
         required=required,
         format=fmt,
-        format_mode=mode,
+        choices=choices,
         allowed=allowed,
         example=raw.get("example"),
         description=_get_str(where, raw, "description"),

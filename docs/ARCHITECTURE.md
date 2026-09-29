@@ -576,8 +576,9 @@ fn_suffix  = ""                # optional suffix
 error_code = -20000             # reserved RAISE_APPLICATION_ERROR code — see §Runtime error semantics
 export_rule_functions = false  # true = list every fn_<rule_id> in the package spec too — see §Generated artifact
 
-[compiler]
-decimal_mode = "round"    # round | truncate (default: round); per-field format_mode overrides this
+[compiler.default_choices]   # per-rule `choices` in the .fn.yaml override these
+format     = "round"         # round | truncate (default: round) — `format` decimals
+multipleOf = "round"         # round | truncate (default: round) — `allowed.multipleOf` snapping
 
 [test]
 container_image = "container-registry.example.com/oracle-db"
@@ -891,9 +892,16 @@ Other choices where the spec was silent or needed a decision:
 - `@index` start-offset is declared with a loop key `index_start: <int>` (default 0).
 - Generated identifiers use `_` where the fully-qualified id has `.`
   (`ord.sub.nam` → `ord_sub_nam`), including in the runtime error payload's `rule` key.
-- `format` wraps the expression in `round(x, n)` / `trunc(x, n)` per `format_mode` /
-  `decimal_mode` (`trunc` is a new built-in). `"0"` follows the mode too, rather than
-  always truncating. The declared `NUMBER(38,n)` column scale is not emitted.
+- `format` wraps the expression in `round(x, n)` / `trunc(x, n)` per `choices.format` /
+  `[compiler.default_choices] format` (`trunc` is a new built-in). `"0"` follows the mode
+  too, rather than always truncating. The declared `NUMBER(38,n)` column scale is not
+  emitted.
+- `allowed.multipleOf: m` on a `number`/`int` field appends `round(x / m, 0) * m` (or
+  `trunc`) per `choices.multipleOf`, *before* the `format` step. Every such step is
+  preceded in the `.map.py` by a `# <Field>: … (choices.… = …)` comment naming the rule
+  and the choice in force — the Python layer is where the developer reads the logic.
+  `minimum`, `maximum`, `maxLength`, … never transform: violations are the downstream
+  validator's (and the integration-test warnings') business. See §choices.
 - An `object`'s `guard` is emitted as `if <guard>: build else: return`, so a `NULL`
   guard (e.g. a missing field) omits the object.
 - Inline `lookup` tables (`@label` or a dict) are constant dict literals, compiled to
@@ -1116,7 +1124,7 @@ field-level sentinel. This is the mechanism for conditional sub-objects and cove
   field: LineAmount                  # field name, relative to enclosing loop or object
   type: number
   format: "0.00"                     # decimal precision hint for Code Generator (see §format)
-  format_mode: round                 # round | truncate — optional, overrides mapper.toml default
+  choices: {format: round}           # per-rule decisions, override mapper.toml defaults (see §choices)
   required: true
   allowed: {minimum: 0}              # JSON Schema constraint metadata (see §allowed)
   example: "12.50"
@@ -1167,12 +1175,14 @@ declares the PL/SQL column type with the corresponding scale. This enforces prec
 at the database level, not just in the expression.
 
 **Rounding mode** — default `round` (standard in financial contexts). Override at
-project level in `mapper.toml` or per field with `format_mode: truncate`.
+project level in `mapper.toml` (`[compiler.default_choices] format`) or per field with
+`choices: {format: truncate}` (see §choices).
 
 ```toml
 # mapper.toml
-[compiler]
-decimal_mode = "round"   # round | truncate
+[compiler.default_choices]
+format     = "round"   # round | truncate
+multipleOf = "round"   # round | truncate
 ```
 
 **JSON Schema integration** — when the output JSON Schema carries its own formatting
@@ -1184,6 +1194,31 @@ constraints, the `format` field in `.fn.yaml` reflects them:
 | Schema `pattern: <regex>` | read-only; regex displayed as tooltip |
 | Schema `description` | shown as tooltip regardless of other fields |
 | None of the above | freely editable |
+
+#### §choices — per-rule decisions on post-processing steps
+
+`choices` collects the decisions a rule makes about the steps the transpiler appends
+after the declared transform. Project defaults live in `[compiler.default_choices]`;
+a rule's `choices` win (specific > general). The editor shows a choice only when it
+applies (e.g. `multipleOf` when the schema/`allowed` declares one).
+
+```yaml
+allowed: {multipleOf: 0.05}
+format: "0.00"
+choices:
+  format: truncate                          # round | truncate
+  multipleOf: round                         # round | truncate
+  conflicts: {format+multipleOf: both}      # both | multipleOf_only | format_only
+```
+
+Steps run in this order: declared transform → `multipleOf` snapping → `format`. A
+**conflict** exists when `allowed.multipleOf` has more decimals than `format` (e.g.
+`0.001` vs `"0.00"`): the format step would break the multiple. Without a
+`conflicts.format+multipleOf` decision the transpiler fails (naming the rule and the
+options); in the editor the conflict is a warning on the row that disappears once the
+user picks a resolution. Compatible pairs (`0.05` vs `"0.00"`) apply both steps. A
+choice with no matching subject (e.g. `multipleOf` without `allowed.multipleOf`) is
+ignored.
 
 #### §allowed — validation constraints
 

@@ -15,8 +15,9 @@ fn_suffix  = ""                # optional suffix
 error_code = -20000            # reserved RAISE_APPLICATION_ERROR code
 export_rule_functions = false  # true = list every fn_<rule_id> in the package spec too
 
-[compiler]
-decimal_mode = "round"    # round | truncate (default: round); per-field format_mode overrides this
+[compiler.default_choices]   # per-rule `choices` in the .fn.yaml override these
+format     = "round"         # round | truncate — `format` decimals
+multipleOf = "round"         # round | truncate — `allowed.multipleOf` snapping
 
 [test]
 container_image = "container-registry.oracle.com/database/adb-free"

@@ -315,10 +315,57 @@ def test_two_loops_over_same_source_are_fused_when_enabled():
 def test_format_wraps_with_round_or_trunc():
     r = [field("a", "$.v", "V", "number", format="0.00")]
     assert "return round(root.v, 2)" in tr(r)
-    assert "return trunc(root.v, 2)" in tr(r, decimal_mode="truncate")
-    r[0]["format_mode"] = "truncate"
+    assert "return trunc(root.v, 2)" in tr(r, format_choice="truncate")
+    r[0]["choices"] = {"format": "truncate"}
     assert "return trunc(root.v, 2)" in tr(r)
     assert "return round(root.v, 0)" in tr([field("a", "$.v", "V", "number", format="0")])
+
+
+def _num(fmt=None, multiple=None, **kw):
+    extra = {"allowed": {"multipleOf": multiple}} if multiple is not None else {}
+    if fmt:
+        extra["format"] = fmt
+    return [field("a", "$.v", "V", "number", **extra, **kw)]
+
+
+def test_multiple_of_snaps_with_visible_comment():
+    text = tr(_num(multiple=0.05))
+    assert "# V: multipleOf 0.05 (choices.multipleOf = round)" in text
+    assert "return round(root.v / 0.05, 0) * 0.05" in text
+    assert "return trunc(root.v / 0.05, 0) * 0.05" in tr(
+        _num(multiple=0.05), multiple_of_choice="truncate"
+    )
+    rule = _num(multiple=0.05, choices={"multipleOf": "truncate"})
+    assert "trunc(root.v / 0.05, 0) * 0.05" in tr(rule)  # rule beats project default
+
+
+def test_multiple_of_then_format_when_compatible():
+    text = tr(_num("0.00", 0.05))
+    assert "return round(round(root.v / 0.05, 0) * 0.05, 2)" in text
+
+
+def test_multiple_of_format_conflict_needs_a_decision():
+    with pytest.raises(FnYamlError, match="choices.conflicts.format\\+multipleOf"):
+        tr(_num("0.00", 0.001))
+    key = "format+multipleOf"
+    only = tr(_num("0.00", 0.001, choices={"conflicts": {key: "multipleOf_only"}}))
+    assert "return round(root.v / 0.001, 0) * 0.001" in only
+    fmt = tr(_num("0.00", 0.001, choices={"conflicts": {key: "format_only"}}))
+    assert (
+        "return round(root.v, 2)" in fmt
+        and "0.001" not in fmt.replace("# ", "")[fmt.index("return") :]
+    )
+    both = tr(_num("0.00", 0.001, choices={"conflicts": {key: "both"}}))
+    assert "round(round(root.v / 0.001, 0) * 0.001, 2)" in both
+
+
+def test_invalid_choices_rejected():
+    with pytest.raises(FnYamlError):
+        tr(_num("0.00", choices={"format": "up"}))
+    with pytest.raises(FnYamlError):
+        tr(_num(choices={"bogus": 1}))
+    with pytest.raises(FnYamlError):
+        tr(_num(multiple=0))
 
 
 def test_object_with_guard_omits_via_bare_return():

@@ -49,8 +49,16 @@ class OptimizerConfig:
 
 
 @dataclass(frozen=True)
+class DefaultChoices:
+    """Project-wide defaults for per-rule `choices` (§Transpiler, `choices`)."""
+
+    format: Literal["round", "truncate"] = "round"
+    multiple_of: Literal["round", "truncate"] = "round"
+
+
+@dataclass(frozen=True)
 class CompilerConfig:
-    decimal_mode: Literal["round", "truncate"] = "round"
+    default_choices: DefaultChoices = field(default_factory=lambda: DefaultChoices())
 
 
 @dataclass(frozen=True)
@@ -90,12 +98,27 @@ def _validate_parallel_conflict(value: Any) -> Literal["exception", "max", "min"
     return value
 
 
-def _validate_decimal_mode(value: Any) -> Literal["round", "truncate"]:
+def _validate_rounding(key: str, value: Any) -> Literal["round", "truncate"]:
     if value not in ("round", "truncate"):
         raise MapperConfigError(
-            f"[compiler] decimal_mode must be 'round' or 'truncate' — got {value!r}"
+            f"[compiler.default_choices] {key} must be 'round' or 'truncate' — got {value!r}"
         )
     return value
+
+
+def _parse_default_choices(raw: Any) -> DefaultChoices:
+    if not isinstance(raw, dict):
+        raise MapperConfigError("[compiler.default_choices] must be a table")
+    unknown = sorted(set(raw) - {"format", "multipleOf"})
+    if unknown:
+        raise MapperConfigError(
+            f"[compiler.default_choices] unknown key(s): {', '.join(unknown)} "
+            "(allowed: format, multipleOf)"
+        )
+    return DefaultChoices(
+        format=_validate_rounding("format", raw.get("format", "round")),
+        multiple_of=_validate_rounding("multipleOf", raw.get("multipleOf", "round")),
+    )
 
 
 def _validate_mode(value: Any) -> Literal["driven", "bootstrap"]:
@@ -132,7 +155,7 @@ def parse_config(raw: dict[str, Any]) -> MapperConfig:
 
     compiler_raw = raw.get("compiler", {})
     compiler = CompilerConfig(
-        decimal_mode=_validate_decimal_mode(compiler_raw.get("decimal_mode", "round")),
+        default_choices=_parse_default_choices(compiler_raw.get("default_choices", {})),
     )
 
     test_raw = raw.get("test", {})

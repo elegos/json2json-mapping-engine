@@ -43,14 +43,14 @@ def _coalesce_py(a, b):
 
 def _round_py(value: float, digits: int) -> float:
     """Round-half-up (away from zero for negatives), matching the
-    architecture's default `decimal_mode = "round"` financial convention —
+    architecture's default `format = "round"` (default_choices) financial convention —
     deliberately not Python's banker's-rounding `round()`."""
     quantum = Decimal(1).scaleb(-digits)
     return float(Decimal(str(value)).quantize(quantum, rounding=ROUND_HALF_UP))
 
 
 def _trunc_py(value: float, digits: int) -> float:
-    """Truncate toward zero to `digits` decimals (`format_mode: truncate`)."""
+    """Truncate toward zero to `digits` decimals (`choices.format: truncate`)."""
     quantum = Decimal(1).scaleb(-digits)
     return float(Decimal(str(value)).quantize(quantum, rounding=ROUND_DOWN))
 

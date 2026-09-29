@@ -27,7 +27,8 @@ error_code = -20000
 export_rule_functions = false
 
 [compiler]
-decimal_mode = "round"
+[compiler.default_choices]
+format = "round"
 """
 
 PING_MAPPING = 'from __mapping__ import *\n\n__id__ = "ping"\n\nout.Status = "OK"\n'
