@@ -29,7 +29,7 @@ class OrdersItem:
     Tax: Tax | None
     Lines: list[LinesItem]
 
-def ord_tax(root: Any, src: Any) -> Tax:
+def ord_tax(root: Any, src: Any) -> Tax | None:
     if src.taxRate != None:
         return Tax(Rate=src.taxRate)
     else:

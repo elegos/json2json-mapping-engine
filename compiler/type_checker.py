@@ -28,6 +28,8 @@ PL/SQL-specific knowledge here.
   field must be present. Constructor calls are checked too: unknown/missing
   keyword arguments, and rule calls / list locals whose produced type differs
   from the field's declared type.
+- A rule annotated non-nullable (`-> T`) may not `return` bare (omit) or
+  `return None`; annotate it `| None`.
 
 A union of classes (`oneOf`/`anyOf` alternatives) is only readable one level
 further if the accessed field exists on *every* alternative (conservative:
@@ -400,6 +402,27 @@ def _base_type_from_rule(fn_def: ast.FunctionDef) -> tuple[str, bool]:
         raise TypeCheckError(str(exc)) from exc
 
 
+def _check_null_returns(rule_defs: dict[str, ast.FunctionDef]) -> None:
+    """A rule annotated non-nullable cannot `return` (omit) or `return None`."""
+    for name, fn_def in rule_defs.items():
+        if fn_def.returns is None:
+            continue  # reported where the rule is used
+        _base, nullable = _base_type_from_rule(fn_def)
+        if nullable:
+            continue
+        for node in ast.walk(fn_def):
+            if not isinstance(node, ast.Return):
+                continue
+            if node.value is None or (
+                isinstance(node.value, ast.Constant) and node.value.value is None
+            ):
+                raise TypeCheckError(
+                    f"line {node.lineno}: rule '{name}' is annotated non-nullable but "
+                    f"returns {'nothing' if node.value is None else 'None'}; "
+                    f"annotate it '| None' or return a value"
+                )
+
+
 def check_module(
     tree: ast.Module,
     scope_resolution: ScopeResolution,
@@ -418,6 +441,7 @@ def check_module(
     shapes = _Shapes(output_schema, local_classes) if output_schema is not None else None
     checker = _ExprTypeChecker(input_schema, output_schema, scope_type, rule_defs, shapes)
     _check_constructors(tree, local_classes, rule_defs)
+    _check_null_returns(rule_defs)
 
     # Resolve each loop's element type from its (already scope-resolved)
     # source expression, walking outer-to-inner so parent types are ready.

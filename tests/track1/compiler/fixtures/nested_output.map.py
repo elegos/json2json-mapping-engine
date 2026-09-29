@@ -18,7 +18,7 @@ class Tax:
 @dataclass
 class Order:
     OrderId: str
-    Tax: Tax
+    Tax: Tax | None
     Lines: list[Line]
 
 
@@ -26,7 +26,7 @@ def line_rule(root: Any, o: Any, l: Any, j: int) -> Line:
     return Line(Pos=j, LineId=l.id, Price=l.price)
 
 
-def tax_rule(root: Any, o: Any) -> Tax:
+def tax_rule(root: Any, o: Any) -> Tax | None:
     if o.taxRate != None:
         return Tax(Rate=o.taxRate)
     else:

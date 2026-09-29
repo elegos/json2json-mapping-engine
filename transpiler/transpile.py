@@ -451,7 +451,9 @@ class _Builder:
             body = [*g.pre, ast.If(test=g.value, body=build, orelse=[ast.Return(value=None)])]
 
         needs = _index_offsets(body)
-        fn = ast.parse(f"def {ident}({self._params(frame, needs)}) -> {cls}:\n    pass").body[0]
+        fn = ast.parse(
+            f"def {ident}({self._params(frame, needs)}) -> {cls}{' | None' if guard else ''}:\n    pass"
+        ).body[0]
         assert isinstance(fn, ast.FunctionDef)
         fn.body = body
         ast.fix_missing_locations(fn)

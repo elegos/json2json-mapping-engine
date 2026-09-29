@@ -325,9 +325,10 @@ nested members (the top-level element is the unit of failure).
 
 Independent of M6/M7; pick up in any order.
 
-- [ ] **Type Checker: bare `return` in a non-nullable rule.** A rule annotated `-> T`
-      (no `| None`) whose body has a bare `return` (omit) is not flagged; nullability is
-      read from the annotation only.
+- [x] **Type Checker: bare `return` in a non-nullable rule.** A rule annotated `-> T`
+      with a bare `return` / `return None` is now an error. This exposed a transpiler
+      bug: guarded objects were emitted as `-> Cls` with a bare `return`; they are now
+      `-> Cls | None`.
 - [x] **Track 2 in CI.** Job `track2` on the `docker-dind` runner label
       (`.forgejo/workflows/ci.yml`), green. Needs `docker-cli` in the job image; the
       harness probes docker with a minimal `info --format` and, with a remote

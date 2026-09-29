@@ -26,7 +26,7 @@ def tot(root: Any) -> number:
     tot_base = root.price * root.qty
     return round(tot_base * 1.22, 2)
 
-def dsc(root: Any) -> Discount:
+def dsc(root: Any) -> Discount | None:
     if root.discountRate != None:
         return Discount(Rate=root.discountRate)
     else:

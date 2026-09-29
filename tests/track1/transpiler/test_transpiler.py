@@ -333,7 +333,7 @@ def test_object_with_guard_omits_via_bare_return():
             }
         ]
     )
-    assert "def o(root: Any) -> Disc:" in text
+    assert "def o(root: Any) -> Disc | None:" in text
     assert "        return\n" in text
     assert "out.Disc = o(root)" in text
     compile_source(text, "m")
@@ -466,7 +466,7 @@ def test_object_inside_a_loop_is_a_call_and_may_be_omitted_by_its_guard():
             )
         ]
     )
-    assert "def lp_ob(root: Any, src: Any) -> Tax:" in text
+    assert "def lp_ob(root: Any, src: Any) -> Tax | None:" in text
     assert "Tax=lp_ob(root, src)" in text
     assert "Tax: Tax | None" in text
     compile_source(text, "m")

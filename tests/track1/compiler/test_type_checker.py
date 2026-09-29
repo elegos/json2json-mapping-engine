@@ -280,3 +280,36 @@ def test_constructor_missing_field_is_an_error():
 def test_constructor_nullable_rule_into_non_nullable_field_is_an_error():
     with pytest.raises(TypeCheckError, match="may produce null/omit"):
         _check_nested(NESTED_BASE.replace("Tax: Tax | None", "Tax: Tax", 1))
+
+
+def test_bare_return_in_non_nullable_rule_is_an_error():
+    with pytest.raises(
+        TypeCheckError, match="rule 'r' is annotated non-nullable but returns nothing"
+    ):
+        _check(
+            "def r(root: OrderEvent) -> str:\n"
+            "    if root.id != None:\n"
+            "        return root.id\n"
+            "    return\n\n"
+            "out.order_id = r(root)\n",
+            with_output=False,
+        )
+
+
+def test_return_none_in_non_nullable_rule_is_an_error():
+    with pytest.raises(TypeCheckError, match="returns None"):
+        _check(
+            "def r(root: OrderEvent) -> str:\n    return None\n\nout.order_id = r(root)\n",
+            with_output=False,
+        )
+
+
+def test_bare_return_in_nullable_rule_is_fine():
+    _check(
+        "def r(root: OrderEvent) -> str | None:\n"
+        "    if root.id != None:\n"
+        "        return root.id\n"
+        "    return\n\n"
+        "out.note = r(root)\n",
+        with_output=False,
+    )
