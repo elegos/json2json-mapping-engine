@@ -32,6 +32,28 @@ jobs:
       - name: pytest (offline tests — no runtime dependency)
         run: uv run pytest tests/track1
 
-  # Integration tests (E2E golden-record tests against a real Oracle container) are not
-  # wired into CI yet — it needs the M0.5 spike findings and the M4 harness
-  # (cli/track2.py) first.
+  # Integration tests (`mapper test --integration`, harness in cli/track2.py) start an
+  # ephemeral Oracle container (container-registry.oracle.com/database/adb-free);
+  # ubuntu-latest runners ship a docker daemon.
+  track2:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Sync dependencies
+        run: uv sync --all-extras --dev
+
+      - name: mapper build
+        run: uv run mapper build
+
+      - name: mapper test (integration — Oracle container)
+        run: uv run mapper test --integration
