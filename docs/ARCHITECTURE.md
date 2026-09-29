@@ -119,8 +119,7 @@ flowchart TB
 
 What a backend contributes. The engine core selects one via `[project] target` and
 validates its `[target.<name>]` section against the keys the backend declares. PL/SQL is
-implemented today; the other rows are illustrative (§Target backends, which also
-lists what is still hard-wired to PL/SQL).
+implemented today; the other rows are illustrative (§Target backends).
 
 ```mermaid
 flowchart LR
@@ -137,7 +136,7 @@ flowchart LR
         C4["artifact assembly &<br/>namespacing"]
         C5["error-reporting mechanism<br/>(raising + non-raising entry points)"]
         C6["[target.&lt;name&gt;] config keys<br/>+ type/size mapping"]
-        C7["test environment<br/>(image / runner)"]
+        C7["target-specific integration tests<br/>+ test environment"]
     end
 
     PL --- contract
@@ -170,9 +169,9 @@ flowchart LR
 
 ### 6. Testing
 
-Offline tests need no runtime at all. Integration tests need the active backend's test
-environment; the diagram shows the PL/SQL one (an ephemeral Oracle container), which is
-the only harness implemented so far.
+Offline tests need no runtime at all. Integration tests are specific to each backend and run
+in its test environment; the diagram shows the PL/SQL ones (an ephemeral Oracle
+container), the only ones implemented so far.
 
 ```mermaid
 flowchart TB
@@ -600,15 +599,18 @@ A backend contributes:
 | `@override` / `@parallel` | Resolution of `@override(target=...)` and the parallelism mechanism (§Decorators) |
 | Assembly and namespacing | How the mappings of a project become deployable artifact(s) (PL/SQL: one package; others may use a module or namespace per mapping) |
 | Error reporting | The failure mechanism behind the raising entry point (§Runtime error semantics, *Other targets*) |
-| Test environment | The image or runner used by the integration tests (§Testing) |
+| Integration tests | Its own golden-case tests and test environment (image or runner), §Testing |
 
 **Status.** PL/SQL is the only implemented backend and the reference for the contract.
 The `CodeGenerator` interface exists, and everything before it is target-independent, but
-`compiler/pipeline.py` and `cli/build.py` still instantiate the PL/SQL generator and
-package assembler directly instead of dispatching on `[project] target`; likewise the
-integration-test harness and the `[test]` container settings are Oracle-specific.
-Selecting a backend by name, and putting assembly and the test environment behind the
-same interface, is part of adding a second target.
+nothing selects a backend from `[project] target` yet: `compiler/pipeline.py` and
+`cli/build.py` instantiate the PL/SQL generator and package assembler directly, so any
+target value would still produce PL/SQL. Dispatching on the configured target (code
+generation and package assembly) is part of adding a second backend.
+
+**Integration tests are per target.** Each backend brings its own integration tests and
+test environment (PL/SQL: golden cases against an ephemeral Oracle container). The
+current harness and the `[test]` container settings are the PL/SQL ones.
 
 ## Generated artifact (PL/SQL)
 
