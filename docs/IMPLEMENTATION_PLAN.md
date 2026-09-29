@@ -349,6 +349,8 @@ Independent of M6/M7; pick up in any order.
       `build/transpiled/stages/<mapping>/`.
 - [x] **`@parallel` from `.fn.yaml`.** Loop key `parallel: N` / `{degree: N}` → `@parallel(degree=N)`
       on the loop's element function; `@parallel(N)` is an alias of `degree=N` in the DSL.
+      PL/SQL backend: `map_<id>_fn ... PARALLEL_ENABLE` SQL-callable wrapper (not yet run
+      against a real Oracle).
 - [ ] **Error isolation between nested members** (today the top-level element is the
       unit of failure).
 - [ ] **Multi-package grouping key** for PL/SQL (optional, like `export_rule_functions`).

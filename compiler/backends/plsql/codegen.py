@@ -114,6 +114,7 @@ from compiler.backends.base import CodeGenError, CompiledUnit
 from compiler.function_linker import FunctionLinker
 from compiler.loop_fusion import (
     NEXT_INDEX,
+    _parallel_degree,
     extract_continue_filter,
     lower_filtered_iter,
     wrap_filter,
@@ -209,7 +210,8 @@ class PlsqlUnit(CompiledUnit):
 
     mapping_id: str
     rule_functions: list[PlsqlSubprogram]
-    entry_points: list[PlsqlSubprogram]  # map_<id>, map_<id>_safe
+    # map_<id>, map_<id>_safe, and map_<id>_fn when a rule declares `@parallel`
+    entry_points: list[PlsqlSubprogram]
 
     def to_json(self) -> dict:
         return asdict(self)
@@ -1107,11 +1109,46 @@ class PlsqlCodeGenerator:
             list_accumulators=list_accumulators,
         )
 
+        entry_points = self._render(mapping_id, body_lines, list_accumulators)
+        parallel = {
+            name: degree
+            for name, fn_def in rule_defs.items()
+            if (degree := _parallel_degree(fn_def)) is not None
+        }
+        if parallel:
+            entry_points.append(self._parallel_wrapper(mapping_id, parallel))
+
         return PlsqlUnit(
-            mapping_id=mapping_id,
-            rule_functions=function_texts,
-            entry_points=self._render(mapping_id, body_lines, list_accumulators),
+            mapping_id=mapping_id, rule_functions=function_texts, entry_points=entry_points
         )
+
+    def _parallel_wrapper(self, mapping_id: str, degrees: dict[str, int]) -> PlsqlSubprogram:
+        """`map_<id>_fn`: the SQL-callable, `PARALLEL_ENABLE` face of `map_<id>`.
+
+        `PARALLEL_ENABLE` only means something for a function called from a SQL
+        statement (Oracle may then run it in parallel-query slaves, one document
+        per call); it cannot parallelize a PL/SQL loop. The procedures cannot be
+        called from SQL (OUT parameters), hence this scalar wrapper, generated
+        only for mappings whose rule functions declare `@parallel`. It calls the
+        raising twin: a failing document fails the statement with the usual
+        error payload (use `map_<id>_safe` from PL/SQL to collect errors).
+        """
+        name = _check_identifier(f"map_{mapping_id}_fn")
+        raising = _check_identifier(f"map_{mapping_id}")
+        sig = f"FUNCTION {name} (p_src IN CLOB) RETURN CLOB PARALLEL_ENABLE"
+        declared = ", ".join(f"{fn} (degree={d})" for fn, d in degrees.items())
+        body = (
+            f"-- @parallel declared by: {declared}.\n"
+            f"-- The degree is chosen by the caller, e.g.\n"
+            f"--   SELECT /*+ PARALLEL({max(degrees.values())}) */ {name}(doc) FROM staging\n"
+            f"{sig} AS\n"
+            "    v_out CLOB;\n"
+            "BEGIN\n"
+            f"    {raising}(p_src, v_out);\n"
+            "    RETURN v_out;\n"
+            f"END {name};"
+        )
+        return PlsqlSubprogram(name, f"{sig};", body)
 
     def _compile_rule_function(
         self,

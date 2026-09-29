@@ -497,8 +497,16 @@ The backend decides the mechanism:
 
 | Target | Mechanism |
 |---|---|
-| PL/SQL | `DBMS_PARALLEL_EXECUTE` with chunk orchestration |
-| PL/SQL pipelined | `PARALLEL_ENABLE (PARTITION BY ANY)` |
+| PL/SQL | Scalar wrapper `map_<id>_fn(p_src CLOB) RETURN CLOB PARALLEL_ENABLE`, generated for every mapping with at least one `@parallel` rule function |
+
+`PARALLEL_ENABLE` only applies to a function called from a SQL statement: Oracle may then
+run it in parallel-query slaves, one document per call. It cannot parallelize a PL/SQL
+loop, and the `map_<id>` procedures are not SQL-callable (`OUT` parameters), hence the
+wrapper. It calls the raising twin `map_<id>`; the caller picks the degree, e.g.
+`SELECT /*+ PARALLEL(4) */ pkg.map_x_fn(doc) FROM staging`, and the generated comment
+lists the declared degrees. Intra-document parallelism (a pipelined table function over
+`JSON_TABLE`) and `DBMS_PARALLEL_EXECUTE` (chunked jobs over a staging table) were
+considered and not implemented.
 
 The mapping file declares intent; the backend emits the appropriate scaffolding.
 `@parallel(4)` is an alias of `@parallel(degree=4)`.

@@ -22,10 +22,10 @@ differing `filter:` values, applied at the bootstrap-mode AST level.
 **`@parallel(degree=N)` conflict check** — before fusing a group, every
 rule function called from within it that declares `@parallel` must agree
 on `degree`; resolved per `optimizer.parallel_conflict` (exception|max|min),
-mirroring `.fn.yaml`'s. Emitting the actual `DBMS_PARALLEL_EXECUTE` /
-`PARALLEL_ENABLE` scaffolding for a resolved degree is *not* implemented
-here — out of scope for this milestone; only the conflict-detection/
-resolution logic (the part that must run during fusion itself) is.
+mirroring `.fn.yaml`'s. The backend, not this module, turns the
+declaration into target scaffolding (PL/SQL: the `map_<id>_fn` wrapper); only
+the conflict-detection/resolution logic (the part that must run during
+fusion itself) lives here.
 
 **Cross-rule data-dependency DAG** — deliberately not built here. The
 architecture's own illustrative example ("Field F depends on sum(D)")
