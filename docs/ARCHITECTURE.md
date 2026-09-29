@@ -602,7 +602,8 @@ since this rewrite is always correct and needs no configuration.
 The engine core is target-agnostic; a **backend** is what makes it emit code for a
 particular language and runtime. The active one is `[project] target` in `mapper.toml`;
 its configuration lives in `[target.<name>]`, and the loader validates that section
-against the keys the backend requires (`TARGET_REQUIRED_KEYS` in `cli/config.py`).
+against the keys the backend requires (`Backend.required_keys`). The PL/SQL backend is
+described in [BACKEND_PLSQL.md](BACKEND_PLSQL.md).
 
 **The interface is coarse on purpose** (`compiler/backends/base.py`). A backend
 receives one checked, annotated mapping and returns a `CompiledUnit`; later it
