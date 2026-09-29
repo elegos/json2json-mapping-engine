@@ -153,3 +153,130 @@ def test_function_param_typed_any_is_unchecked():
         "out.order_id = whatever(root)\n"
         "out.amount = root.amount\n"
     )
+
+
+# -- nested dataclasses vs output schema ---------------------------------------
+
+NESTED_OUTPUT_SCHEMA = {
+    "title": "Result",
+    "type": "object",
+    "properties": {
+        "Orders": {
+            "type": "array",
+            "items": {
+                "title": "OrderOut",
+                "type": "object",
+                "properties": {
+                    "OrderId": {"type": "string"},
+                    "Tax": {
+                        "title": "TaxOut",
+                        "type": "object",
+                        "nullable": True,
+                        "properties": {"Rate": {"type": "number"}},
+                        "required": ["Rate"],
+                    },
+                    "Lines": {
+                        "type": "array",
+                        "items": {
+                            "title": "LineOut",
+                            "type": "object",
+                            "properties": {
+                                "Pos": {"type": "integer"},
+                                "Price": {"type": "number"},
+                                "Note": {"type": "string"},
+                            },
+                            "required": ["Pos", "Price"],
+                        },
+                    },
+                },
+                "required": ["OrderId", "Lines"],
+            },
+        }
+    },
+    "required": ["Orders"],
+}
+
+NESTED_BASE = (
+    "@dataclass\nclass Line:\n    Pos: int\n    Price: number\n\n"
+    "@dataclass\nclass Tax:\n    Rate: number\n\n"
+    "@dataclass\nclass Order:\n    OrderId: str\n    Tax: Tax | None\n    Lines: list[Line]\n\n"
+    "def line_rule(root: Any, l: Any, j: int) -> Line:\n"
+    "    return Line(Pos=j, Price=l.price)\n\n"
+    "def tax_rule(root: Any, o: Any) -> Tax | None:\n"
+    "    return Tax(Rate=o.rate)\n\n"
+    "def order_rule(root: Any, o: Any) -> Order:\n"
+    "    lines = []\n"
+    "    for j, l in enumerate(o.lines):\n"
+    "        lines.append(line_rule(root, l, j))\n"
+    "    return Order(OrderId=o.id, Tax=tax_rule(root, o), Lines=lines)\n\n"
+    "for o in root.orders:\n"
+    "    out.Orders.append(order_rule(root, o))\n"
+)
+
+
+def _check_nested(source: str) -> None:
+    tree = ast.parse(source)
+    check_module(
+        tree,
+        resolve_scopes(tree),
+        None,
+        resolve_schema_types(NESTED_OUTPUT_SCHEMA, "Result"),
+    )
+
+
+def test_nested_dataclasses_matching_schema_pass():
+    _check_nested(NESTED_BASE)
+
+
+def test_nested_undeclared_field_is_an_error():
+    with pytest.raises(TypeCheckError, match=r"Orders\.Lines\[\]\.Extra.*not declared"):
+        _check_nested(
+            NESTED_BASE.replace(
+                "    Price: number\n\n@dataclass\nclass Tax",
+                "    Price: number\n    Extra: str\n\n@dataclass\nclass Tax",
+                1,
+            ).replace("Price=l.price)", "Price=l.price, Extra='x')")
+        )
+
+
+def test_nested_field_type_mismatch_is_an_error():
+    with pytest.raises(TypeCheckError, match=r"Orders\.Lines\[\]\.Price.*produces 'str'"):
+        _check_nested(NESTED_BASE.replace("Price: number", "Price: str", 1))
+
+
+def test_nested_required_field_missing_is_an_error():
+    with pytest.raises(TypeCheckError, match="required field 'Price'"):
+        _check_nested(
+            NESTED_BASE.replace(
+                "    Price: number\n\n@dataclass\nclass Tax", "\n@dataclass\nclass Tax", 1
+            ).replace("Line(Pos=j, Price=l.price)", "Line(Pos=j)")
+        )
+
+
+def test_nested_nullable_into_required_is_an_error():
+    with pytest.raises(TypeCheckError, match="non-nullable"):
+        _check_nested(NESTED_BASE.replace("OrderId: str", "OrderId: str | None", 1))
+
+
+def test_nested_list_of_wrong_class_is_an_error():
+    with pytest.raises(TypeCheckError, match="collects 'Tax'"):
+        _check_nested(
+            NESTED_BASE.replace(
+                "lines.append(line_rule(root, l, j))", "lines.append(tax_rule(root, l))"
+            )
+        )
+
+
+def test_constructor_unknown_keyword_is_an_error():
+    with pytest.raises(TypeCheckError, match="has no field 'Bogus'"):
+        _check_nested(NESTED_BASE.replace("Line(Pos=j,", "Line(Bogus=1, Pos=j,"))
+
+
+def test_constructor_missing_field_is_an_error():
+    with pytest.raises(TypeCheckError, match="missing required field"):
+        _check_nested(NESTED_BASE.replace("Line(Pos=j, Price=l.price)", "Line(Pos=j)"))
+
+
+def test_constructor_nullable_rule_into_non_nullable_field_is_an_error():
+    with pytest.raises(TypeCheckError, match="may produce null/omit"):
+        _check_nested(NESTED_BASE.replace("Tax: Tax | None", "Tax: Tax", 1))

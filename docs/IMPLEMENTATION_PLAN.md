@@ -316,8 +316,7 @@ indexed inner loops, outer element/index read from the inner level).
 
 **Not done**: per-stage on-disk artifacts;
 `@parallel` from `.fn.yaml`; the desktop tool's use of `apply_decay` (M6);
-`allowed` warnings on Track 2 output; the Type Checker comparing nested dataclasses with
-the output schema (only top-level reads/writes are checked); error isolation between
+`allowed` warnings on Track 2 output; error isolation between
 nested members (the top-level element is the unit of failure).
 
 ---

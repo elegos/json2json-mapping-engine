@@ -854,8 +854,12 @@ One consequence: the unit of failure is the top-level element. If anything insid
 `Orders[]` element fails, that element is reported under the top-level rule and omitted;
 the compiler does not isolate nested members from each other.
 
-The Type Checker still validates only top-level reads/writes against the schemas; the
-shape of nested dataclasses is not compared with the output schema.
+The Type Checker compares nested dataclasses with the output schema *structurally*
+(class names need not match): each dataclass field must be declared on the target schema
+class, types must be compatible (`int` widens to `number`), a nullable field cannot feed a
+non-nullable one, and every `required` schema field must be present; `list[X]` and nested
+objects recurse. Constructor calls are checked as well (unknown/missing keywords, rule
+calls and `.append`-ed list locals whose produced type differs from the field's).
 
 #### Implementation status and deliberate deviations (M5)
 

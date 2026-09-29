@@ -20,9 +20,15 @@ PL/SQL-specific knowledge here.
   once per module: every `required` field of the output root class must
   have at least one `out.<field> = ...` assignment somewhere in the module.
 
-Scope: flat (module-level and single-loop-level) `out.<field>` writes only,
-matching what the M2a/M2b Code Generator actually compiles — nested
-`object`/`loop` output writes will extend this once nested codegen exists.
+- **Nested dataclasses** (`@dataclass class Order: ... Lines: list[Line]`
+  built inside rule functions) are compared *structurally* against the output
+  schema class the value ends up in (names need not match): every dataclass
+  field must be declared, types compatible (`int` widens to `number`),
+  nullable fields cannot feed non-nullable ones, and every `required` schema
+  field must be present. Constructor calls are checked too: unknown/missing
+  keyword arguments, and rule calls / list locals whose produced type differs
+  from the field's declared type.
+
 A union of classes (`oneOf`/`anyOf` alternatives) is only readable one level
 further if the accessed field exists on *every* alternative (conservative:
 no narrowing construct exists in the permitted subset to disambiguate).
@@ -31,7 +37,7 @@ no narrowing construct exists in the permitted subset to disambiguate).
 from __future__ import annotations
 
 import ast
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from compiler.annotations import AnnotationError, resolve_dsl_type
 from compiler.schema_generator import SchemaTypes
@@ -53,12 +59,218 @@ def _strip_none(type_expr: str) -> tuple[list[str], bool]:
     return remaining, nullable
 
 
+# -- nested dataclasses ---------------------------------------------------------
+
+_Fields = dict[str, tuple[str, bool]]  # field name -> (base DSL type, nullable)
+
+
+def _collect_local_classes(tree: ast.Module) -> dict[str, _Fields]:
+    """`@dataclass` classes declared in the module: name -> {field: (base, nullable)}."""
+    classes: dict[str, _Fields] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef):
+            continue
+        fields: _Fields = {}
+        for stmt in node.body:
+            if isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name):
+                try:
+                    fields[stmt.target.id] = resolve_dsl_type(stmt.annotation)
+                except AnnotationError as exc:
+                    raise TypeCheckError(f"{node.name}.{stmt.target.id}: {exc}") from exc
+        classes[node.name] = fields
+    return classes
+
+
+@dataclass
+class _Shapes:
+    output_schema: SchemaTypes
+    local_classes: dict[str, _Fields]
+    _seen: set[tuple[str, str]] = field(default_factory=set)
+
+    def compat(
+        self,
+        local_base: str,
+        local_nullable: bool,
+        schema_type_expr: str,
+        path: str,
+    ) -> None:
+        """`local_base` (a scalar, `list[X]`, or local dataclass name) must fit
+        `schema_type_expr`. Raises `TypeCheckError` naming `path`."""
+        schema_bases, schema_nullable = _strip_none(schema_type_expr)
+        if local_nullable and not schema_nullable:
+            raise TypeCheckError(
+                f"{path} is declared '{schema_type_expr}' (non-nullable) but the value "
+                f"may be null/omitted"
+            )
+        if local_base == ANY:
+            return
+        if local_base.startswith("list["):
+            elem = local_base[len("list[") : -1]
+            list_bases = [b[len("list[") : -1] for b in schema_bases if b.startswith("list[")]
+            if not list_bases:
+                raise TypeCheckError(
+                    f"{path} is declared '{schema_type_expr}' but the value is a '{local_base}'"
+                )
+            self.compat(elem, False, list_bases[0], f"{path}[]")
+            return
+        if local_base in self.local_classes:
+            targets = [b for b in schema_bases if b in self.output_schema.classes]
+            if not targets:
+                raise TypeCheckError(
+                    f"{path} is declared '{schema_type_expr}' but the value is a "
+                    f"dataclass '{local_base}'"
+                )
+            errors: list[str] = []
+            for target in targets:
+                try:
+                    self.shape(local_base, target, path)
+                    return
+                except TypeCheckError as exc:
+                    errors.append(str(exc))
+            raise TypeCheckError(errors[0])
+        if local_base in schema_bases or (local_base == "int" and "number" in schema_bases):
+            return
+        raise TypeCheckError(
+            f"{path} declared as '{schema_type_expr}' but the value produces '{local_base}'"
+        )
+
+    def shape(self, local_name: str, schema_name: str, path: str) -> None:
+        key = (local_name, schema_name)
+        if key in self._seen:
+            return
+        self._seen.add(key)
+        local = self.local_classes[local_name]
+        schema_cls = self.output_schema.classes[schema_name]
+        declared = {f.name: f for f in schema_cls.fields}
+        for fname, (base, nullable) in local.items():
+            sf = declared.get(fname)
+            if sf is None:
+                raise TypeCheckError(
+                    f"{path}.{fname}: field not declared on output class '{schema_name}'"
+                )
+            self.compat(base, nullable, sf.type_expr, f"{path}.{fname}")
+        for sf in schema_cls.fields:
+            if sf.required and sf.name not in local:
+                raise TypeCheckError(
+                    f"{path}: required field '{sf.name}' of output class '{schema_name}' "
+                    f"is missing from dataclass '{local_name}'"
+                )
+
+
+def _check_constructors(
+    tree: ast.Module,
+    local_classes: dict[str, _Fields],
+    rule_defs: dict[str, ast.FunctionDef],
+) -> None:
+    """Every `Cls(Field=value, ...)` for a module dataclass: keywords match the
+    declared fields and rule-call / list-local values have the declared type."""
+    for fn in (n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)):
+        list_locals = _list_locals(fn, rule_defs)
+        for call in (n for n in ast.walk(fn) if isinstance(n, ast.Call)):
+            if not (isinstance(call.func, ast.Name) and call.func.id in local_classes):
+                continue
+            cls, fields = call.func.id, local_classes[call.func.id]
+            given = {kw.arg for kw in call.keywords if kw.arg}
+            for kw in call.keywords:
+                if kw.arg is None:
+                    continue
+                if kw.arg not in fields:
+                    raise TypeCheckError(f"{fn.name}: '{cls}' has no field '{kw.arg}'")
+                _check_ctor_value(
+                    fn.name, cls, kw.arg, kw.value, fields[kw.arg], rule_defs, list_locals
+                )
+            missing = [n for n, (_b, nullable) in fields.items() if n not in given and not nullable]
+            if missing:
+                raise TypeCheckError(
+                    f"{fn.name}: '{cls}(...)' is missing required field(s): {', '.join(missing)}"
+                )
+
+
+def _list_locals(fn: ast.FunctionDef, rule_defs: dict[str, ast.FunctionDef]) -> dict[str, set[str]]:
+    """`name = []` locals -> base types of the rule calls appended to them."""
+    lists: dict[str, set[str]] = {}
+    for node in ast.walk(fn):
+        if (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and isinstance(node.value, ast.List)
+            and not node.value.elts
+        ):
+            lists.setdefault(node.targets[0].id, set())
+    for node in ast.walk(fn):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "append"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id in lists
+            and node.args
+            and isinstance(node.args[0], ast.Call)
+            and isinstance(node.args[0].func, ast.Name)
+            and node.args[0].func.id in rule_defs
+        ):
+            base, _n = _base_type_from_rule(rule_defs[node.args[0].func.id])
+            lists[node.func.value.id].add(base)
+    return lists
+
+
+def _widens(produced: str, declared: str) -> bool:
+    return produced == declared or (produced == "int" and declared == "number")
+
+
+def _check_ctor_value(
+    fn_name: str,
+    cls: str,
+    fname: str,
+    value: ast.expr,
+    declared: tuple[str, bool],
+    rule_defs: dict[str, ast.FunctionDef],
+    list_locals: dict[str, set[str]],
+) -> None:
+    d_base, d_nullable = declared
+    where = f"{fn_name}: {cls}.{fname}"
+    if (
+        isinstance(value, ast.Call)
+        and isinstance(value.func, ast.Name)
+        and value.func.id in rule_defs
+    ):
+        p_base, p_nullable = _base_type_from_rule(rule_defs[value.func.id])
+        if p_nullable and not d_nullable:
+            raise TypeCheckError(
+                f"{where} is non-nullable but '{value.func.id}' may produce null/omit"
+            )
+        if ANY not in (p_base, d_base) and not _widens(p_base, d_base):
+            raise TypeCheckError(
+                f"{where} declared as '{d_base}' but '{value.func.id}' produces '{p_base}'"
+            )
+    elif isinstance(value, ast.Name) and value.id in list_locals:
+        if not d_base.startswith("list["):
+            raise TypeCheckError(f"{where} declared as '{d_base}' but the value is a list")
+        elem = d_base[len("list[") : -1]
+        for produced in sorted(list_locals[value.id]):
+            if produced != ANY and not _widens(produced, elem):
+                raise TypeCheckError(
+                    f"{where} declared as '{d_base}' but '{value.id}' collects '{produced}' elements"
+                )
+    elif isinstance(value, ast.Constant) and value.value is not None:
+        p = "bool" if isinstance(value.value, bool) else type(value.value).__name__
+        p = {"float": "number"}.get(p, p)
+        if (
+            d_base in _SCALAR_TYPES
+            and d_base not in ("date", "datetime")
+            and not _widens(p, d_base)
+        ):
+            raise TypeCheckError(f"{where} declared as '{d_base}' but the value is a '{p}'")
+
+
 @dataclass
 class _ExprTypeChecker:
     input_schema: SchemaTypes | None
     output_schema: SchemaTypes | None
     scope_type: dict[int, str]  # id(Scope) -> class name or ANY
     rule_defs: dict[str, ast.FunctionDef]
+    shapes: _Shapes | None = None
 
     # -- reads --------------------------------------------------------------
 
@@ -202,7 +414,10 @@ def check_module(
         scope_type[id(root_scope)] = ANY
 
     rule_defs = {stmt.name: stmt for stmt in ast.walk(tree) if isinstance(stmt, ast.FunctionDef)}
-    checker = _ExprTypeChecker(input_schema, output_schema, scope_type, rule_defs)
+    local_classes = _collect_local_classes(tree)
+    shapes = _Shapes(output_schema, local_classes) if output_schema is not None else None
+    checker = _ExprTypeChecker(input_schema, output_schema, scope_type, rule_defs, shapes)
+    _check_constructors(tree, local_classes, rule_defs)
 
     # Resolve each loop's element type from its (already scope-resolved)
     # source expression, walking outer-to-inner so parent types are ready.
@@ -374,6 +589,16 @@ def _check_write(
     else:
         produced_base, produced_nullable = checker.infer_produced_type(value, scope)
 
+    if checker.shapes is not None and (
+        produced_base.startswith("list[") or produced_base in checker.shapes.local_classes
+    ):
+        checker.shapes.compat(
+            produced_base,
+            produced_nullable,
+            declared.type_expr if not unwrap_list else declared_type_expr,
+            f"out.{field_name}",
+        )
+        return
     if produced_base != ANY and produced_base not in declared_bases:
         raise TypeCheckError(
             f"field 'out.{field_name}' declared as '{declared.type_expr}' but the "
