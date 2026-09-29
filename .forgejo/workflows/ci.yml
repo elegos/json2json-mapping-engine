@@ -27,7 +27,7 @@ jobs:
       - name: pytest (track 1 — no runtime dependency)
         run: uv run pytest tests/track1
 
-  # Track 2 (E2E golden-record tests against a real Oracle container) is not
-  # wired into CI yet — it needs the M0.5 spike findings and the M4 harness
-  # (cli/track2.py) first, and a runner with docker-in-docker access to pull
+  # Track 2 (`mapper test --track 2`, harness in cli/track2.py) is not
+  # wired into CI yet — it needs a runner with docker-in-docker access to
+  # pull
   # container-registry.oracle.com/database/adb-free.

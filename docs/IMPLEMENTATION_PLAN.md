@@ -203,16 +203,40 @@ manually tampered `build/compiled/*.sql`.
 
 ---
 
-## ⬜ M4 — Testing infrastructure (`mapper test --track 1|2`)
+## ✅ M4 — Testing infrastructure (`mapper test --track 1|2`)
 
-Not started. Track 1 (consolidate the existing golden-file/snapshot
-fixtures under one `mapper test --track 1` entry point) is mostly
-bookkeeping given the fixtures already exist. Track 2 (formalize the M0.5
-spike into `cli/track2.py`: detect Podman/Docker, spin up the configured
-container, run a compiled procedure against a test input, diff against an
-optional expected output) needs building from scratch — the M0.5 spike so
-far has been done by hand against a long-lived container, not through an
-automated detect/start/run/teardown harness.
+`mapper test` runs Track 1, Track 2, or both (no `--track`). Exit code 1 on
+any failure.
+
+- **Track 1** (`cli/track1.py`): runs the project's `tests/track1/` through
+  pytest. Skipped with a note if the project has no such directory.
+- **Track 2** (`cli/track2.py`): detects Podman (preferred) or Docker, starts
+  an ephemeral `--rm` container from `[test] container_image:container_tag`
+  on a random loopback port, waits for the DB (thin-mode `python-oracledb`,
+  new dependency — no Oracle client needed), deploys
+  `build/compiled/<mapping>.sql`, runs `map_<id>_safe` per case, removes the
+  container in a `finally`. Verified live against the 23ai ADB-Free image
+  (~1m40s cold start + run).
+- **Case convention (new, not in ARCHITECTURE.md)**:
+  `tests/golden/<mapping>/<case>.input.json` (required) and
+  `<case>.expected.json` (optional). With an expected file: key-order-
+  insensitive diff, PASS/FAIL. Without: output printed for inspection.
+  Per-rule errors from `p_err` are always shown; a case with an expected
+  file also fails if any rule errored.
+- **Deploy check**: `CREATE OR REPLACE` with a compile error doesn't raise
+  client-side, so deploy reads `USER_ERRORS` and fails loudly.
+- **Mappings deploy one at a time**: rule functions are top-level
+  `fn_<rule_id>`, so two mappings sharing a rule id would overwrite each
+  other in one schema. Cases run right after their own mapping is deployed.
+- No runtime: `mapper test` prints "Track 2 unavailable" and succeeds;
+  `--track 2` explicitly requested exits 1.
+- Deploys as `ADMIN` in its own schema; `[target.plsql] schema` is not used
+  by the harness.
+
+**Not done**: `allowed`-constraint warnings on Track 2 output (needs the
+`.fn.yaml` data model, M5); Track 2 in CI (needs a runner with Docker access
+to pull the Oracle image); exercising `map_<id>` (raising variant) — only the
+`_safe` twin is run.
 
 ---
 

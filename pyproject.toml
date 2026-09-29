@@ -9,6 +9,7 @@ dependencies = [
     "tomli>=2.0; python_version < '3.11'",
     "pyyaml>=6.0",
     "jsonschema>=4.21",
+    "oracledb>=2.0",
 ]
 
 [project.scripts]
