@@ -1,4 +1,4 @@
-"""Track 1 — runtime-free unit tests (see docs/ARCHITECTURE.md, §Testing).
+"""Offline tests (track 1) — runtime-free tests (see docs/ARCHITECTURE.md, §Testing).
 
 A project's own `tests/track1/` suite (transpiler snapshots, compiler golden
 files), run through pytest so `mapper test --track 1` is one entry point.
@@ -14,7 +14,7 @@ TRACK1_DIR = Path("tests/track1")
 
 
 def run_track1(extra_args: list[str] | None = None) -> int | None:
-    """Exit code of pytest, or None if the project has no Track 1 suite."""
+    """Exit code of pytest, or None if the project has no offline test suite."""
     if not TRACK1_DIR.is_dir():
         return None
     cmd = [sys.executable, "-m", "pytest", str(TRACK1_DIR), *(extra_args or [])]

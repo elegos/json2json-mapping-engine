@@ -1,4 +1,4 @@
-"""Track 2 — target-environment tests (see docs/ARCHITECTURE.md, §Testing).
+"""Integration tests (track 2) — target-environment tests (see docs/ARCHITECTURE.md, §Testing).
 
 Detects Podman/Docker, starts an ephemeral Oracle container, deploys the
 compiled `build/compiled/<mapping>.sql`, runs `map_<id>_safe` for every test
@@ -41,7 +41,7 @@ _STARTUP_TIMEOUT_S = 600
 
 
 class Track2Error(Exception):
-    """Track 2 cannot run, or the environment failed (not a test failure)."""
+    """The integration tests cannot run, or the environment failed (not a test failure)."""
 
 
 # --------------------------------------------------------------------------

@@ -29,9 +29,9 @@ jobs:
       - name: basedpyright
         run: uv run basedpyright
 
-      - name: pytest (track 1 — no runtime dependency)
+      - name: pytest (offline tests — no runtime dependency)
         run: uv run pytest tests/track1
 
-  # Track 2 (E2E golden-record tests against a real Oracle container) is not
+  # Integration tests (E2E golden-record tests against a real Oracle container) are not
   # wired into CI yet — it needs the M0.5 spike findings and the M4 harness
   # (cli/track2.py) first.

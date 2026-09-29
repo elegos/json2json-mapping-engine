@@ -611,8 +611,8 @@ mapper compile
 mapper check
 
 # Run tests
-mapper test --track 1          # transpiler unit tests (no runtime needed)
-mapper test --track 2          # E2E golden-record tests (requires container runtime)
+mapper test --offline          # offline tests, = --track 1 (no runtime needed)
+mapper test --integration      # integration tests, = --track 2 (golden records; container runtime)
 mapper test                    # both tracks
 
 # Single file
@@ -1200,7 +1200,7 @@ allowed: {pattern: "^[A-Z]{3}$"}      # regex (string)
 ```
 
 The tool evaluates `allowed` constraints against:
-- **Track 2 test outputs** — violations are reported as warnings alongside the
+- **Integration test outputs** — violations are reported as warnings alongside the
   golden-record diff, flagging rows whose generated values fall outside the declared
   constraints.
 - **Manual review** — the editor highlights cells whose `example` value violates
@@ -1440,7 +1440,7 @@ validation:
   validated: false        # true = developer has verified; false = not yet or reset
   needs_review: false     # true = explicitly flagged for active re-review
   notes: null             # free text — e.g. "functional: confirmed with Mario 2026-09-22;
-                          #              programmatic: Track 2 golden-record passed"
+                          #              programmatic: integration test passed"
 ```
 
 **Decay rule** — `validated` is reset to `false` and `needs_review` set to `true`
@@ -1465,8 +1465,8 @@ rather than just "not yet done."
 - `validated: false, needs_review: true` — amber indicator; requires active attention.
 
 The `notes` field is free text and carries no machine-readable structure. Teams use it
-to record what kind of verification was done (functional review, programmatic Track 2
-pass, or both) and when.
+to record what kind of verification was done (functional review, programmatic integration
+test, or both) and when.
 
 ---
 
@@ -1572,15 +1572,16 @@ teams tend to own distinct rule sets.
 
 ### Testing
 
-Testing is split into two independent tracks.
+Testing is split into two independent suites: the **offline tests** (track 1) and the
+**integration tests** (track 2).
 
-**Track 1 — Transpiler unit tests**
+**Offline tests (track 1)**
 The transpiler itself (`.fn.yaml` → `.map.py`) is tested with standard unit tests that
 do not require any target runtime. Each test feeds a `.fn.yaml` fixture through the
 transpiler and asserts the generated Python subset matches an expected snapshot.
 These tests run in pure Python with no Oracle or container dependency.
 
-**Track 2 — Target environment tests**
+**Integration tests (track 2) — target environment**
 Testing that the generated PL/SQL behaves correctly requires the target runtime. The
 tool detects whether **Podman** or **Docker** is available on the system. If found, it
 offers to spin up a container using the image declared by the compiler backend
@@ -1592,7 +1593,7 @@ offers to spin up a container using the image declared by the compiler backend
    If omitted, the tool displays the mapped output for manual inspection.
 3. The container is ephemeral — started for the test run, stopped and removed after.
 
-If neither Podman nor Docker is detected, Track 2 is silently unavailable. The relevant
+If neither Podman nor Docker is detected, the integration tests are silently unavailable. The relevant
 UI controls are disabled with a tooltip explaining the missing prerequisite.
 
 ---
@@ -1635,7 +1636,7 @@ into `.fn.yaml` via a two-phase LLM process:
 
 Reverse import is simpler than forward import because the source is already a formal
 Python AST rather than free-form natural language. However, the golden-record tests
-(Track 2) remain mandatory before marking any reverse-imported row as `validated`.
+(integration tests) remain mandatory before marking any reverse-imported row as `validated`.
 
 ---
 
@@ -1645,7 +1646,7 @@ A project that starts in `bootstrap` mode (hand-written `.map.py` files) can mig
 individual mappings to `driven` at any time. The process is:
 
 1. Run the reverse import (Phase A + B) to produce a `.fn.yaml` from the `.map.py`.
-2. Review and validate rows in the editor; run Track 2 tests against golden records.
+2. Review and validate rows in the editor; run the integration tests against golden records.
 3. When satisfied, trigger the archival action in the tool — either per-file or for all
    selected mappings at once.
 

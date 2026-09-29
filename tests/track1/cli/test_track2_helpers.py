@@ -62,9 +62,12 @@ def test_test_command_track2_unavailable(tmp_path: Path, monkeypatch: pytest.Mon
     runner = CliRunner()
     both = runner.invoke(app, ["test"])
     assert both.exit_code == 0
-    assert "Track 2 unavailable" in both.output
+    assert "integration tests unavailable" in both.output
+    assert "== Offline tests ==" in both.output
     only2 = runner.invoke(app, ["test", "--track", "2"])
     assert only2.exit_code == 1
+    assert runner.invoke(app, ["test", "--integration"]).exit_code == 1
+    assert runner.invoke(app, ["test", "--offline", "--integration"]).exit_code == 2
     assert runner.invoke(app, ["test", "--track", "3"]).exit_code == 2
 
 

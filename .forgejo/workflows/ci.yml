@@ -6,6 +6,7 @@ on:
 
 jobs:
   track1:
+    name: Offline tests
     runs-on: docker
     container:
       image: python:3.12-slim
@@ -32,15 +33,16 @@ jobs:
       - name: basedpyright
         run: uv run basedpyright
 
-      - name: pytest (track 1 — no runtime dependency)
+      - name: pytest (offline tests — no runtime dependency)
         run: uv run pytest tests/track1
 
-  # Track 2 (`mapper test --track 2`, harness in cli/track2.py) starts an
+  # Integration tests (`mapper test --integration`, harness in cli/track2.py) start an
   # ephemeral Oracle container (container-registry.oracle.com/database/adb-free)
   # and connects to its published port on 127.0.0.1, so the job needs a
   # docker daemon reachable from the job. Runners with the `docker-dind`
   # label provide one.
   track2:
+    name: Integration tests
     runs-on: docker-dind
     container:
       image: python:3.12-slim
@@ -62,5 +64,5 @@ jobs:
       - name: mapper build
         run: uv run mapper build
 
-      - name: mapper test (track 2 — Oracle container)
-        run: uv run mapper test --track 2
+      - name: mapper test (integration — Oracle container)
+        run: uv run mapper test --integration

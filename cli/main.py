@@ -155,12 +155,26 @@ def build(
 
 @app.command()
 def test(
-    track: int | None = typer.Option(None, "--track", help="1 = unit tests, 2 = target E2E"),
-    mapping: str | None = typer.Argument(None, help="Track 2: only this mapping's cases"),
+    track: int | None = typer.Option(
+        None, "--track", help="1 = offline tests, 2 = integration tests (same as the flags below)"
+    ),
+    offline: bool = typer.Option(False, "--offline", help="Only the offline tests (--track 1)"),
+    integration: bool = typer.Option(
+        False, "--integration", help="Only the integration tests (--track 2)"
+    ),
+    mapping: str | None = typer.Argument(None, help="Integration tests: only this mapping's cases"),
 ) -> None:
-    """Run Track 1 (pytest, no runtime) and/or Track 2 (golden-record tests
-    against an ephemeral Oracle container). No --track runs both; Track 2 is
-    skipped with a note when no container runtime is available."""
+    """Run the offline tests (pytest, no runtime; track 1) and/or the
+    integration tests (golden-record tests against an ephemeral Oracle
+    container; track 2). Without a selector both run; the integration tests
+    are skipped with a note when no container runtime is available."""
+    if offline:
+        track = 1
+    if integration:
+        track = 2
+    if offline and integration:
+        typer.echo("error: --offline and --integration are mutually exclusive", err=True)
+        raise typer.Exit(code=2)
     if track not in (None, 1, 2):
         typer.echo("error: --track must be 1 or 2", err=True)
         raise typer.Exit(code=2)
@@ -168,17 +182,17 @@ def test(
     failed = False
 
     if track in (None, 1):
-        typer.echo("== Track 1 ==")
+        typer.echo("== Offline tests ==")
         code = run_track1()
         if code is None:
-            typer.echo("no tests/track1/ suite — skipped")
+            typer.echo("no tests/track1/ suite (offline tests) — skipped")
         elif code != 0:
             failed = True
 
     if track in (None, 2):
-        typer.echo("== Track 2 ==")
+        typer.echo("== Integration tests ==")
         if detect_runtime() is None:
-            typer.echo("no podman/docker available — Track 2 unavailable")
+            typer.echo("no podman/docker available — integration tests unavailable")
             typer.echo(f"  {runtime_diagnostic()}")
             failed = failed or track == 2
         else:
