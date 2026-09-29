@@ -328,10 +328,10 @@ Independent of M6/M7; pick up in any order.
 - [ ] **Type Checker: bare `return` in a non-nullable rule.** A rule annotated `-> T`
       (no `| None`) whose body has a bare `return` (omit) is not flagged; nullability is
       read from the annotation only.
-- [ ] **Track 2 in CI.** Job `track2` added on the `docker-dind` runner label
-      (`.forgejo/workflows/ci.yml`); not yet verified on a real run. With a remote
-      daemon (`DOCKER_HOST=tcp://…`) the harness publishes on all interfaces and
-      connects to that host; with a local/shared daemon it uses `127.0.0.1`. Tick once green.
+- [x] **Track 2 in CI.** Job `track2` on the `docker-dind` runner label
+      (`.forgejo/workflows/ci.yml`), green. Needs `docker-cli` in the job image; the
+      harness probes docker with a minimal `info --format` and, with a remote
+      `DOCKER_HOST=tcp://…`, connects to that host instead of `127.0.0.1`.
 - [ ] **Track 2: exercise `map_<id>`** (raising variant); only the `_safe` twin runs.
 - [ ] **`allowed`-constraint warnings** on Track 2 output (data model exists since M5).
 - [ ] **Per-stage on-disk artifacts** of the transpiler.
