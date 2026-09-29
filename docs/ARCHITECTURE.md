@@ -16,6 +16,14 @@ There is no DSL interpretation at runtime — the output is ordinary compiled co
 High-level views of the system. Each diagram is detailed in the section named under it;
 this chapter is the map, not the specification.
 
+**Target-agnostic by design.** Everything up to and including the compiler's Type
+Checker and Function Linker knows nothing about the target language. A *target backend*
+(selected by `[project] target` in `mapper.toml`, configured under `[target.<name>]`) is
+the only part that emits code. **PL/SQL is the first backend and the reference
+implementation, not a premise of the architecture**: in the diagrams below, "target
+artifact" and "target runtime" stand for whatever the active backend produces and runs
+on, and PL/SQL appears only as an example (§Target backends).
+
 ### 1. Sources, build and artifacts
 
 Two ways in (§Operational modes): **bootstrap** — the developer hand-writes `.map.py`;
@@ -27,15 +35,15 @@ flowchart LR
     subgraph inputs["Inputs (committed)"]
         FNY[".fn.yaml<br/>functional rules"]
         MAPPY_H[".map.py<br/>hand-written (bootstrap)"]
-        FN[".fn library<br/>+ @override"]
+        FN[".fn library<br/>+ @override per target"]
         SCH["JSON Schemas<br/>input / output"]
-        TOML["mapper.toml"]
+        TOML["mapper.toml<br/>target + [target.&lt;name&gt;]"]
     end
 
     subgraph build["mapper build"]
         TR["Transpiler<br/>(driven mode only)"]
         GEN["Schema Generator"]
-        COMP["Compiler"]
+        COMP["Compiler<br/>front end + active backend"]
     end
 
     FNY --> TR --> MAPPY_G[".map.py<br/>build/transpiled/ (ephemeral)"]
@@ -46,8 +54,8 @@ flowchart LR
     STUBS --> COMP
     TOML -.->|options, hash| TR
     TOML -.->|options, hash| COMP
-    COMP --> SQL["build/compiled/&lt;package&gt;.sql<br/>PL/SQL package (committed)"]
-    SQL --> DEPLOY[("Oracle DB<br/>MAPPING_RULES")]
+    COMP --> ART["target artifact<br/>build/compiled/ (committed)<br/>e.g. PL/SQL package, module, library"]
+    ART --> DEPLOY[("target runtime<br/>e.g. Oracle DB")]
 ```
 
 *Detail: §Compiler pipeline, §Build CLI, §Build folder and incremental compilation.*
@@ -55,7 +63,8 @@ flowchart LR
 ### 2. Transpiler: `.fn.yaml` → `.map.py`
 
 Four stages; each can be dumped to `build/transpiled/stages/<mapping>/` and re-run from
-that artifact (`--stage`, `--dump-stages`, `--cached`).
+that artifact (`--stage`, `--dump-stages`, `--cached`). The output is plain Python subset:
+the transpiler is target-independent too.
 
 ```mermaid
 flowchart LR
@@ -73,9 +82,10 @@ flowchart LR
 
 *Detail: §Transpiler pipeline, §choices.*
 
-### 3. Compiler: `.map.py` → PL/SQL
+### 3. Compiler: `.map.py` → target code
 
-Language-agnostic front end; the Code Generator is the only target-specific part.
+A language-agnostic front end feeds a pluggable back end. Only the Code Generator and
+Package Assembly are target-specific.
 
 ```mermaid
 flowchart TB
@@ -83,45 +93,86 @@ flowchart TB
         FNL[".fn files + @override"] --> SYM["symbol table<br/>(name → param/return types)"]
     end
 
-    subgraph phase2["Phase 2 — mapping rules"]
+    subgraph front["Phase 2 — front end (target-agnostic)"]
         SRC[".map.py"] --> VAL["Validator<br/>subset gate (security)"]
         VAL --> FUS["Loop Fusion Optimizer"]
         FUS --> SCOPE["Scope Resolver<br/>root / src / out chain"]
         SCOPE --> TC["Type Checker<br/>reads vs stubs,<br/>writes vs dataclasses"]
         TC --> LINK["Function Linker"]
-        LINK --> CG["Code Generator<br/>(PL/SQL backend)"]
     end
 
     STUBS["stubs + dataclasses<br/>(from JSON Schemas)"] --> TC
     SYM --> LINK
-    CG --> PKG["Package assembly<br/>one package per project"]
-    PKG --> SQL["&lt;package&gt;.sql"]
+    LINK --> IR["annotated, typed AST<br/>(the backend interface)"]
+
+    subgraph back["Back end (target-specific)"]
+        IR --> CG["Code Generator"]
+        CG --> PKG["Artifact assembly"]
+    end
+
+    PKG --> ART["target artifact"]
 ```
 
 *Detail: §Compiler pipeline, §Loop Fusion Optimizer.*
 
-### 4. Generated code at runtime
+### 4. Target backends
 
-Every mapping compiles to two entry points over the same rule functions. The engine calls
-one of them; there is no rule interpretation at runtime.
+What a backend contributes. The engine core selects one via `[project] target` and
+validates its `[target.<name>]` section against the keys the backend declares. PL/SQL is
+implemented today; the other rows are illustrative (§Target backends, which also
+lists what is still hard-wired to PL/SQL).
 
 ```mermaid
 flowchart LR
-    IN["p_src (CLOB)"] --> R["map_&lt;id&gt;<br/>(raising)"]
-    IN --> S["map_&lt;id&gt;_safe"]
+    IR["annotated typed AST<br/>+ symbol table<br/>+ schema types"] --> B{{"active backend<br/>[project] target"}}
 
-    R --> RF["rule functions<br/>fn_&lt;id&gt;_&lt;rule&gt;<br/>(one call per rule,<br/>wrapped individually)"]
-    S --> RF
+    B --> PL["PL/SQL (implemented)"]
+    B -.-> PY["Python (example)"]
+    B -.-> GO["Go (example)"]
 
-    RF -->|"all rules ok"| OUT["p_out (CLOB)"]
-    RF -->|"rule failed"| ACC["error accumulator<br/>first failure per rule,<br/>execution continues"]
-    ACC -->|"safe"| SOUT["p_out + errors<br/>(no exception)"]
-    ACC -->|"raising"| RAISE["raises reserved error code<br/>payload: total_errors + errors"]
+    subgraph contract["Backend contract"]
+        C1["code generation<br/>(AST → target source)"]
+        C2["built-in function<br/>implementations"]
+        C3["@override resolution<br/>+ @parallel mechanism"]
+        C4["artifact assembly &<br/>namespacing"]
+        C5["error-reporting mechanism<br/>(raising + non-raising entry points)"]
+        C6["[target.&lt;name&gt;] config keys<br/>+ type/size mapping"]
+        C7["test environment<br/>(image / runner)"]
+    end
+
+    PL --- contract
 ```
 
-*Detail: §Generated artifact (PL/SQL), §Runtime error semantics.*
+*Detail: §Compiler components, §Target backends.*
 
-### 5. Testing
+### 5. Generated code at runtime
+
+The contract every backend honours: each mapping yields **two entry points over the same
+rule functions** — a *raising* one and a *safe* one that reports failures as data. The
+mechanism is the backend's (PL/SQL: `RAISE_APPLICATION_ERROR` with a reserved code and a
+JSON payload; a Python target: a `MappingError` exception; Go: a typed `error`).
+
+```mermaid
+flowchart LR
+    IN["source JSON"] --> R["map_&lt;id&gt;<br/>(raising)"]
+    IN --> S["map_&lt;id&gt;_safe<br/>(errors as data)"]
+
+    R --> RF["rule functions<br/>(one per rule,<br/>each call wrapped individually)"]
+    S --> RF
+
+    RF -->|"all rules ok"| OUT["output JSON"]
+    RF -->|"rule failed"| ACC["error accumulator<br/>first failure per rule,<br/>execution continues"]
+    ACC -->|"safe"| SOUT["output + error list<br/>(no exception)"]
+    ACC -->|"raising"| RAISE["backend-specific failure<br/>carrying all per-rule errors<br/>(PL/SQL: reserved code +<br/>total_errors payload)"]
+```
+
+*Detail: §Generated artifact, §Runtime error semantics.*
+
+### 6. Testing
+
+Offline tests need no runtime at all. Integration tests need the active backend's test
+environment; the diagram shows the PL/SQL one (an ephemeral Oracle container), which is
+the only harness implemented so far.
 
 ```mermaid
 flowchart TB
@@ -131,17 +182,17 @@ flowchart TB
 
     subgraph integ["Integration tests — mapper test --integration"]
         C["tests/golden/&lt;mapping&gt;/*.input.json<br/>(+ optional *.expected.json)"] --> H["harness"]
-        H --> DB[("ephemeral Oracle container<br/>podman / docker")]
-        DB --> H
-        H --> CHK["per case:<br/>map_&lt;id&gt;_safe → diff vs expected<br/>map_&lt;id&gt; → consistent with _safe<br/>output vs allowed constraints → warnings"]
+        H --> ENV[("backend test environment<br/>PL/SQL: ephemeral Oracle container<br/>via podman / docker")]
+        ENV --> H
+        H --> CHK["per case:<br/>safe entry point → diff vs expected<br/>raising entry point → consistent with safe<br/>output vs allowed constraints → warnings"]
     end
 
-    PKGSQL["build/compiled/&lt;package&gt;.sql"] --> DB
+    ART["build/compiled/ target artifact"] --> ENV
 ```
 
 *Detail: §Testing.*
 
-### 6. Tooling around the engine
+### 7. Tooling around the engine
 
 The desktop tool (M6) edits `.fn.yaml` and drives the same CLI and libraries; it adds no
 build logic of its own.
@@ -158,7 +209,7 @@ flowchart LR
     UI -->|"VCS"| GIT[("git")]
     FNY --> GIT
     MAPPY --> GIT
-    ART -->|"compiled/*.sql only"| GIT
+    ART -->|"compiled/ only"| GIT
 ```
 
 *Detail: §Functional Layer, §IDE setup for `.map.py` development.*
@@ -532,6 +583,32 @@ overlapping) — there is no equivalent of `optimizer.parallel_conflict` for fil
 since this rewrite is always correct and needs no configuration.
 
 ---
+
+## Target backends
+
+The engine core is target-agnostic; a **backend** is what makes it emit code for a
+particular language and runtime. The active one is `[project] target` in `mapper.toml`;
+its configuration lives in `[target.<name>]`, and the loader validates that section
+against the keys the backend requires (`TARGET_REQUIRED_KEYS` in `cli/config.py`).
+
+A backend contributes:
+
+| Concern | What the backend decides |
+|---|---|
+| Code generation | Annotated AST → target source (`CodeGenerator` in `compiler/backends/base.py`): type and string-size mapping, per-rule call site with error accumulation, loops, the twin entry points |
+| Built-ins | Native implementation of each built-in function (§Built-in functions) |
+| `@override` / `@parallel` | Resolution of `@override(target=...)` and the parallelism mechanism (§Decorators) |
+| Assembly and namespacing | How the mappings of a project become deployable artifact(s) (PL/SQL: one package; others may use a module or namespace per mapping) |
+| Error reporting | The failure mechanism behind the raising entry point (§Runtime error semantics, *Other targets*) |
+| Test environment | The image or runner used by the integration tests (§Testing) |
+
+**Status.** PL/SQL is the only implemented backend and the reference for the contract.
+The `CodeGenerator` interface exists, and everything before it is target-independent, but
+`compiler/pipeline.py` and `cli/build.py` still instantiate the PL/SQL generator and
+package assembler directly instead of dispatching on `[project] target`; likewise the
+integration-test harness and the `[test]` container settings are Oracle-specific.
+Selecting a backend by name, and putting assembly and the test environment behind the
+same interface, is part of adding a second target.
 
 ## Generated artifact (PL/SQL)
 

@@ -351,6 +351,10 @@ Independent of M6/M7; pick up in any order.
 - [ ] **Error isolation between nested members** (today the top-level element is the
       unit of failure).
 - [ ] **Multi-package grouping key** for PL/SQL (optional, like `export_rule_functions`).
+- [ ] **Backend dispatch on `[project] target`.** `compiler/pipeline.py` and `cli/build.py`
+      instantiate the PL/SQL generator/assembler directly; put code generation, package
+      assembly and the integration-test environment behind the backend interface (needed
+      before a second target).
 - [ ] **`enumerate(..., dense=True)` / loop `guard`** — deliberately deferred: the loop
       `filter` stays the only guard for now.
 
