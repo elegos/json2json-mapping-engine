@@ -35,7 +35,32 @@ jobs:
       - name: pytest (track 1 — no runtime dependency)
         run: uv run pytest tests/track1
 
-  # Track 2 (`mapper test --track 2`, harness in cli/track2.py) is not
-  # wired into CI yet — it needs a runner with docker-in-docker access to
-  # pull
-  # container-registry.oracle.com/database/adb-free.
+  # Track 2 (`mapper test --track 2`, harness in cli/track2.py) starts an
+  # ephemeral Oracle container (container-registry.oracle.com/database/adb-free)
+  # and connects to its published port on 127.0.0.1, so the job needs a
+  # docker daemon reachable from the job. Runners with the `docker-dind`
+  # label provide one.
+  track2:
+    runs-on: docker-dind
+    container:
+      image: python:3.12-slim
+    steps:
+      - name: Install node, git and docker CLI
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends nodejs git ca-certificates docker.io
+          rm -rf /var/lib/apt/lists/*
+
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        run: pip install --no-cache-dir uv
+
+      - name: Sync dependencies
+        run: uv sync --all-extras --dev
+
+      - name: mapper build
+        run: uv run mapper build
+
+      - name: mapper test (track 2 — Oracle container)
+        run: uv run mapper test --track 2
