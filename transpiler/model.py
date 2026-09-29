@@ -98,6 +98,7 @@ class LoopRule:
     sort_key: str | None = None
     sort_reverse: bool = False
     index_start: int = 0  # start-offset for `@index`
+    parallel: int | None = None  # `@parallel(degree=N)` on the loop's element function
     description: str | None = None
     rules: list[Rule] = dc_field(default_factory=list)
     kind: Literal["loop"] = "loop"
@@ -187,6 +188,7 @@ _LOOP_KEYS = _COMMON | {
     "sort",
     "output",
     "index_start",
+    "parallel",
     "rules",
 }
 _LOOKUP_KEYS = _COMMON | {"label", "entries"}
@@ -287,6 +289,22 @@ def _load_children(where: str, raw: dict[str, Any]) -> list[Rule]:
     return [_load_rule(f"{where}.rules[{i}]", r) for i, r in enumerate(children)]
 
 
+def _load_parallel(where: str, raw: dict[str, Any]) -> int | None:
+    """`parallel: N` or `parallel: {degree: N}` — the two spellings of
+    `@parallel(N)` / `@parallel(degree=N)`."""
+    value = raw.get("parallel")
+    if isinstance(value, dict):
+        _check_keys(f"{where}.parallel", value, {"degree"})
+        value = value.get("degree")
+    if value is None:
+        if "parallel" in raw:
+            raise _err(where, "'parallel' needs a degree (`parallel: 4`)")
+        return None
+    if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+        raise _err(where, "'parallel' degree must be an integer >= 1")
+    return value
+
+
 def _load_rule(where: str, raw: Any) -> Rule:
     if not isinstance(raw, dict):
         raise _err(where, "a rule must be a mapping")
@@ -327,6 +345,7 @@ def _load_rule(where: str, raw: Any) -> Rule:
             sort_key=sort_key,
             sort_reverse=sort_reverse,
             index_start=index_start,
+            parallel=_load_parallel(where, raw),
             description=_get_str(where, raw, "description"),
             rules=_load_children(where, raw),
         )

@@ -347,7 +347,8 @@ Independent of M6/M7; pick up in any order.
       emit — the old five-stage description did not match the code): `mapper transpile
       --stage N|alias`, `--dump-stages`, `--cached`; artifacts in
       `build/transpiled/stages/<mapping>/`.
-- [ ] **`@parallel` from `.fn.yaml`.**
+- [x] **`@parallel` from `.fn.yaml`.** Loop key `parallel: N` / `{degree: N}` → `@parallel(degree=N)`
+      on the loop's element function; `@parallel(N)` is an alias of `degree=N` in the DSL.
 - [ ] **Error isolation between nested members** (today the top-level element is the
       unit of failure).
 - [ ] **Multi-package grouping key** for PL/SQL (optional, like `export_rule_functions`).

@@ -501,6 +501,11 @@ The backend decides the mechanism:
 | PL/SQL pipelined | `PARALLEL_ENABLE (PARTITION BY ANY)` |
 
 The mapping file declares intent; the backend emits the appropriate scaffolding.
+`@parallel(4)` is an alias of `@parallel(degree=4)`.
+
+In a `.fn.yaml` the decorator comes from a loop key, `parallel: 4` or
+`parallel: {degree: 4}` (integer >= 1; loops only, at any nesting depth). The transpiler
+always emits the explicit `@parallel(degree=4)` on the loop's element function.
 
 **Conflict with Loop Fusion.** When the Loop Fusion Optimizer merges several field
 functions that iterate the same source array into a single generated loop, their
@@ -914,7 +919,7 @@ out:  OrderLine       # typed from output schema; untyped object without schema
 Null: type         # DSL sentinel — not Python None; usable in annotations as T | Null
 
 def override(*, plsql: str = ..., **targets: str) -> Any: ...
-def parallel(*, degree: int) -> Any: ...
+def parallel(degree: int) -> Any: ...
 def dataclass(cls: type) -> type: ...
 
 __all__ = ["root", "src", "out", "Null", "override", "parallel", "dataclass"]
@@ -1154,6 +1159,8 @@ loops to the compiler, so the generated `.map.py` stays plain Python.
 Other choices where the spec was silent or needed a decision:
 
 - `@index` start-offset is declared with a loop key `index_start: <int>` (default 0).
+- `parallel: N` / `parallel: {degree: N}` on a loop rule emits `@parallel(degree=N)` on its
+  element function (§`@parallel(degree=N)`); the compiler's fusion check reads it from there.
 - Generated identifiers use `_` where the fully-qualified id has `.`
   (`ord.sub.nam` → `ord_sub_nam`), including in the runtime error payload's `rule` key.
 - `format` wraps the expression in `round(x, n)` / `trunc(x, n)` per `choices.format` /

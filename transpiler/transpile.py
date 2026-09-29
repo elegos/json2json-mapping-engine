@@ -568,6 +568,8 @@ class _Builder:
         ).body[0]
         assert isinstance(fn, ast.FunctionDef)
         fn.body = body
+        if isinstance(node, LoopRule) and node.parallel is not None:
+            fn.decorator_list = [ast.parse(f"parallel(degree={node.parallel})", mode="eval").body]
         ast.fix_missing_locations(fn)
         self.functions.append(fn)
         return _Composite(ident, cls, needs)

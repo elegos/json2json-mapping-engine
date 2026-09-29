@@ -293,6 +293,35 @@ def test_filter_with_index_filters_before_enumerate():
     compile_source(text, "m")
 
 
+@pytest.mark.parametrize("spelling", [4, {"degree": 4}])
+def test_loop_parallel_emits_explicit_decorator(spelling):
+    text = tr([loop([field("i", "@.id", "Id")], parallel=spelling)])
+    assert "@parallel(degree=4)\ndef lp(" in text
+    compile_source(text, "m")
+
+
+def test_nested_loop_parallel_is_emitted():
+    inner = loop([field("i", "@.id", "Id")], id="sub", source="@.parts[*]", parallel=2)
+    text = tr([loop([inner], output="$.Lines[*]", parallel=3)])
+    assert "@parallel(degree=3)\ndef lp(" in text
+    assert "@parallel(degree=2)\ndef lp_sub(" in text
+
+
+@pytest.mark.parametrize("bad", [0, -1, True, "4", {"degree": 0}, {"n": 4}, {}, None])
+def test_loop_parallel_rejects_bad_degree(bad):
+    with pytest.raises(FnYamlError, match="parallel"):
+        model([loop([field("i", "@.id", "Id")], parallel=bad)])
+
+
+def test_conflicting_parallel_degrees_fail_fusion_from_yaml():
+    rules = [
+        loop([field("a", "@.id", "A")], id="l1", output="$.X[*]", parallel=2),
+        loop([field("b", "@.id", "B")], id="l2", output="$.Y[*]", parallel=4),
+    ]
+    with pytest.raises(Exception, match="@parallel"):
+        tr(rules)
+
+
 def test_index_parameter_only_when_referenced():
     text = tr([loop([field("i", "@.id", "Id")])])
     assert "def lp(root: Any, src: Any) -> LinesItem:" in text

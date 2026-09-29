@@ -210,3 +210,12 @@ def test_body_continue_after_a_filtering_comprehension_stays_behind_the_counter(
     text = ast.unparse(fuse_loops(tree.body, {})[0])
     # numbered first (Python: enumerate already counted it), then skipped
     assert text.index("__next_index__") < text.index("if not a.skip")
+
+
+def test_positional_parallel_is_an_alias_of_degree_keyword():
+    from compiler.loop_fusion import _parallel_degree
+
+    positional = ast.parse("@parallel(4)\ndef f() -> int:\n    return 1").body[0]
+    keyword = ast.parse("@parallel(degree=4)\ndef f() -> int:\n    return 1").body[0]
+    assert isinstance(positional, ast.FunctionDef) and isinstance(keyword, ast.FunctionDef)
+    assert _parallel_degree(positional) == _parallel_degree(keyword) == 4

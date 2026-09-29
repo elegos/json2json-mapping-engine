@@ -104,13 +104,11 @@ def _parallel_degree(fn_def: ast.FunctionDef) -> int | None:
             and isinstance(dec.func, ast.Name)
             and dec.func.id == "parallel"
         ):
-            for kw in dec.keywords:
-                if (
-                    kw.arg == "degree"
-                    and isinstance(kw.value, ast.Constant)
-                    and isinstance(kw.value.value, int)
-                ):
-                    return kw.value.value
+            # `@parallel(4)` is an alias of `@parallel(degree=4)`
+            values = [*dec.args, *(kw.value for kw in dec.keywords if kw.arg == "degree")]
+            for value in values:
+                if isinstance(value, ast.Constant) and isinstance(value.value, int):
+                    return value.value
     return None
 
 
