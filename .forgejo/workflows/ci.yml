@@ -10,6 +10,14 @@ jobs:
     container:
       image: python:3.12-slim
     steps:
+      # JavaScript actions (actions/checkout) run inside the job container,
+      # and python:3.12-slim ships neither node nor git.
+      - name: Install node and git
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends nodejs git ca-certificates
+          rm -rf /var/lib/apt/lists/*
+
       - uses: actions/checkout@v4
 
       - name: Install uv
