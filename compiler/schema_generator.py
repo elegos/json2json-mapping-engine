@@ -124,7 +124,8 @@ class _SchemaWalker:
         if base_type == "object":
             # patternProperties / no fixed `properties` → opaque JsonObj fallback.
             if "properties" not in schema and (
-                "patternProperties" in schema or schema.get("additionalProperties") not in (False, None)
+                "patternProperties" in schema
+                or schema.get("additionalProperties") not in (False, None)
             ):
                 expr = "JsonObj"
             else:
@@ -227,7 +228,9 @@ def _render_classes_as_dataclasses(classes: list[ClassDef]) -> str:
     return "\n".join(lines)
 
 
-def generate_output_dataclasses(schema: JsonSchema, root_name: str, source: str = "<schema>") -> str:
+def generate_output_dataclasses(
+    schema: JsonSchema, root_name: str, source: str = "<schema>"
+) -> str:
     """Generate a `@dataclass` module for an output JSON Schema (§Output type contract)."""
     walker = _SchemaWalker(root_name)
     root_type = walker.resolve_root(schema)

@@ -92,7 +92,11 @@ def _wrap_filter(filter_expr: ast.expr, body: list[ast.stmt]) -> list[ast.stmt]:
 
 def _parallel_degree(fn_def: ast.FunctionDef) -> int | None:
     for dec in fn_def.decorator_list:
-        if isinstance(dec, ast.Call) and isinstance(dec.func, ast.Name) and dec.func.id == "parallel":
+        if (
+            isinstance(dec, ast.Call)
+            and isinstance(dec.func, ast.Name)
+            and dec.func.id == "parallel"
+        ):
             for kw in dec.keywords:
                 if (
                     kw.arg == "degree"
@@ -183,7 +187,11 @@ def fuse_loops(
                     body = [renamer.visit(copy.deepcopy(n)) for n in body]
                     if filter_expr is not None:
                         filter_expr = renamer.visit(copy.deepcopy(filter_expr))
-                if index_var is not None and group.index_var is not None and index_var != group.index_var:
+                if (
+                    index_var is not None
+                    and group.index_var is not None
+                    and index_var != group.index_var
+                ):
                     idx_renamer = _RenameLoopVar(index_var, group.index_var)
                     body = [idx_renamer.visit(copy.deepcopy(n)) for n in body]
                     if filter_expr is not None:

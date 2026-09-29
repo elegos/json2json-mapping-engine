@@ -40,7 +40,11 @@ def parse_for_iter(node: ast.expr) -> ForIterSpec:
     enumerate_start: int | None = None
     inner = node
 
-    if isinstance(inner, ast.Call) and isinstance(inner.func, ast.Name) and inner.func.id == "enumerate":
+    if (
+        isinstance(inner, ast.Call)
+        and isinstance(inner.func, ast.Name)
+        and inner.func.id == "enumerate"
+    ):
         if not inner.args:
             raise LoopIterError("enumerate() requires an iterable argument")
         start = 0
@@ -54,14 +58,18 @@ def parse_for_iter(node: ast.expr) -> ForIterSpec:
 
     sort_key: str | None = None
     sort_reverse = False
-    if isinstance(inner, ast.Call) and isinstance(inner.func, ast.Name) and inner.func.id == "sorted":
+    if (
+        isinstance(inner, ast.Call)
+        and isinstance(inner.func, ast.Name)
+        and inner.func.id == "sorted"
+    ):
         if not inner.args:
             raise LoopIterError("sorted() requires an iterable argument")
         key_node = next((kw.value for kw in inner.keywords if kw.arg == "key"), None)
         if key_node is None:
             raise LoopIterError('sorted() requires key="<field name>"')
         if not (isinstance(key_node, ast.Constant) and isinstance(key_node.value, str)):
-            raise LoopIterError('sorted() key= must be a string literal field name')
+            raise LoopIterError("sorted() key= must be a string literal field name")
         sort_key = key_node.value
         for kw in inner.keywords:
             if kw.arg == "reverse":
@@ -79,7 +87,11 @@ def parse_for_iter(node: ast.expr) -> ForIterSpec:
 
 
 def _require_int_literal(node: ast.expr, what: str) -> int:
-    if isinstance(node, ast.Constant) and isinstance(node.value, int) and not isinstance(node.value, bool):
+    if (
+        isinstance(node, ast.Constant)
+        and isinstance(node.value, int)
+        and not isinstance(node.value, bool)
+    ):
         return node.value
     raise LoopIterError(f"{what} must be an int literal")
 
@@ -96,6 +108,4 @@ def parse_for_target(target: ast.expr) -> tuple[str, str | None]:
     ):
         idx_name, item_name = target.elts[0], target.elts[1]
         return item_name.id, idx_name.id
-    raise LoopIterError(
-        "for-loop target must be a simple name, or `index, item` (enumerate())"
-    )
+    raise LoopIterError("for-loop target must be a simple name, or `index, item` (enumerate())")

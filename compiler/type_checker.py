@@ -201,16 +201,12 @@ def check_module(
     else:
         scope_type[id(root_scope)] = ANY
 
-    rule_defs = {
-        stmt.name: stmt for stmt in ast.walk(tree) if isinstance(stmt, ast.FunctionDef)
-    }
+    rule_defs = {stmt.name: stmt for stmt in ast.walk(tree) if isinstance(stmt, ast.FunctionDef)}
     checker = _ExprTypeChecker(input_schema, output_schema, scope_type, rule_defs)
 
     # Resolve each loop's element type from its (already scope-resolved)
     # source expression, walking outer-to-inner so parent types are ready.
-    for _for_node, scope in sorted(
-        scope_resolution.for_scopes.items(), key=lambda kv: kv[1].depth
-    ):
+    for _for_node, scope in sorted(scope_resolution.for_scopes.items(), key=lambda kv: kv[1].depth):
         parent_scope = scope.parent or root_scope
         assert scope.source_expr is not None  # always set for a for-loop scope
         source_type = checker.type_of(scope.source_expr, parent_scope)
@@ -233,9 +229,7 @@ def check_module(
         root_cls = output_schema.classes[output_schema.root_type]
         missing = [f.name for f in root_cls.fields if f.required and f.name not in assigned_fields]
         if missing:
-            raise TypeCheckError(
-                f"required output field(s) not assigned: {', '.join(missing)}"
-            )
+            raise TypeCheckError(f"required output field(s) not assigned: {', '.join(missing)}")
 
 
 def _walk_body(
@@ -254,7 +248,12 @@ def _walk_body(
         if isinstance(stmt, ast.For):
             inner_scope = scope_resolution.for_scopes[id(stmt)]
             _walk_body(
-                stmt.body, inner_scope, scope_resolution, checker, rule_defs, output_schema,
+                stmt.body,
+                inner_scope,
+                scope_resolution,
+                checker,
+                rule_defs,
+                output_schema,
                 assigned_fields,
             )
             continue
@@ -264,11 +263,21 @@ def _walk_body(
             # writes inside still need checking/coverage-counting.
             _check_reads_in_expr(stmt.test, checker, scope)
             _walk_body(
-                stmt.body, scope, scope_resolution, checker, rule_defs, output_schema,
+                stmt.body,
+                scope,
+                scope_resolution,
+                checker,
+                rule_defs,
+                output_schema,
                 assigned_fields,
             )
             _walk_body(
-                stmt.orelse, scope, scope_resolution, checker, rule_defs, output_schema,
+                stmt.orelse,
+                scope,
+                scope_resolution,
+                checker,
+                rule_defs,
+                output_schema,
                 assigned_fields,
             )
             continue
@@ -293,7 +302,12 @@ def _walk_body(
             assigned_fields.add(field_name)
             if stmt.value.args:
                 _check_write(
-                    field_name, stmt.value.args[0], checker, scope, rule_defs, output_schema,
+                    field_name,
+                    stmt.value.args[0],
+                    checker,
+                    scope,
+                    rule_defs,
+                    output_schema,
                     unwrap_list=True,
                 )
                 _check_reads_in_expr(stmt.value.args[0], checker, scope)

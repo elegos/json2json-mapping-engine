@@ -9,16 +9,15 @@ Case layout (per mapping, by basename of `mappings/<name>.map.py`):
     tests/golden/<name>/<case>.input.json      required
     tests/golden/<name>/<case>.expected.json   optional — omitted = display only
 
-Mappings are deployed one at a time: generated rule functions are top-level
-`fn_<rule_id>` objects, so two mappings sharing a rule id would overwrite each
-other if deployed side by side.
+The project's single generated package (`build/compiled/<package>.sql`) is
+deployed once; each case calls `<package>.map_<id>_safe`. Rule functions are
+namespaced `fn_<mapping_id>_<rule_id>`, so mappings never collide.
 """
 
 from __future__ import annotations
 
 import difflib
 import json
-import re
 import secrets
 import shutil
 import subprocess
@@ -29,10 +28,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from cli.build import MAPPINGS_DIR, mapping_id_of, package_name, package_path
 from cli.config import MapperConfig
 
 GOLDEN_DIR = Path("tests/golden")
-COMPILED_DIR = Path("build/compiled")
 
 _ORACLE_PORT = 1521  # plain SQL*Net listener; 1522 is the wallet/TLS one (spike-notes.md)
 _SERVICE = "myatp"
@@ -87,13 +86,6 @@ def split_sql_script(sql: str) -> list[str]:
     if tail:
         statements.append(tail)
     return statements
-
-
-def safe_procedure_name(sql: str) -> str:
-    m = re.search(r"CREATE OR REPLACE PROCEDURE (\w+_safe)\b", sql)
-    if not m:
-        raise Track2Error("no map_<id>_safe procedure found in compiled SQL")
-    return m.group(1)
 
 
 def json_diff(expected: Any, actual: Any) -> str:
@@ -254,11 +246,9 @@ def run_track2(config: MapperConfig, mapping: str | None = None, log=print) -> l
     runtime = detect_runtime()
     if runtime is None:
         raise Track2Error("neither podman nor docker is available")
-    missing = sorted(
-        {c.mapping for c in cases if not (COMPILED_DIR / f"{c.mapping}.sql").is_file()}
-    )
-    if missing:
-        raise Track2Error(f"no compiled SQL for: {', '.join(missing)} (run `mapper build` first)")
+    package_sql = package_path(config)
+    if not package_sql.is_file():
+        raise Track2Error(f"{package_sql} not found (run `mapper build` first)")
 
     import oracledb
 
@@ -266,11 +256,12 @@ def run_track2(config: MapperConfig, mapping: str | None = None, log=print) -> l
     with ephemeral_oracle(runtime, config, log) as db:
         conn = oracledb.connect(user=db.user, password=db.password, dsn=db.dsn)
         try:
-            for m in sorted({c.mapping for c in cases}):
-                sql = (COMPILED_DIR / f"{m}.sql").read_text()
-                deploy(conn, sql)
-                proc = safe_procedure_name(sql)
-                results.extend(run_case(conn, proc, c) for c in cases if c.mapping == m)
+            deploy(conn, package_sql.read_text())
+            pkg = package_name(config)
+            for c in cases:
+                src = MAPPINGS_DIR / f"{c.mapping}.map.py"
+                mapping_id = mapping_id_of(src) if src.is_file() else c.mapping
+                results.append(run_case(conn, f"{pkg}.map_{mapping_id}_safe", c))
         finally:
             conn.close()
     return results

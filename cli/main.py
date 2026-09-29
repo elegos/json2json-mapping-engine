@@ -12,9 +12,12 @@ import typer
 
 from cli.build import (
     BuildError,
+    assemble,
     compile_fresh,
     compile_mapping,
     discover_mappings,
+    package_path,
+    write_package,
 )
 from cli.config import MapperConfigError, load_config
 from cli.stubs import generate_stubs
@@ -72,14 +75,11 @@ def _target_mappings(file: str | None) -> list[Path]:
     return mappings
 
 
-@app.command(name="compile")
-def compile_cmd(
-    file: str | None = typer.Argument(None, help="Single mapping file to compile"),
-    force: bool = typer.Option(False, "--force", help="Ignore the build cache"),
-) -> None:
-    """Compile .map.py -> build/compiled/*.sql (bootstrap mode)."""
-    config = _load_config_or_exit()
-    for path in _target_mappings(file):
+def _compile_all(config, targets: list[Path], force: bool = False):
+    """Compile every mapping (package assembly needs all of them); report
+    status for `targets` only. Returns all units."""
+    units = []
+    for path in discover_mappings():
         try:
             result = compile_mapping(path, config, force=force)
         except BuildError as exc:
@@ -88,28 +88,42 @@ def compile_cmd(
         except Exception as exc:
             typer.echo(f"error compiling {path}: {exc}", err=True)
             raise typer.Exit(code=1) from exc
-        status = "up-to-date" if result.skipped else "compiled"
-        typer.echo(f"{status}: {path} -> {result.path}")
+        units.append(result.unit)
+        if path in targets:
+            typer.echo(f"{'up-to-date' if result.skipped else 'compiled'}: {path}")
+    return units
+
+
+def _compile_and_package(config, file: str | None, force: bool = False) -> None:
+    targets = _target_mappings(file)
+    if not targets:
+        return
+    units = _compile_all(config, targets, force)
+    try:
+        out = write_package(units, config)
+    except BuildError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"package: {out} ({len(units)} mapping(s))")
+
+
+@app.command(name="compile")
+def compile_cmd(
+    file: str | None = typer.Argument(None, help="Report only this mapping (all are packaged)"),
+    force: bool = typer.Option(False, "--force", help="Ignore the build cache"),
+) -> None:
+    """Compile .map.py -> build/compiled/<package>.sql (bootstrap mode)."""
+    _compile_and_package(_load_config_or_exit(), file, force)
 
 
 @app.command()
 def build(
-    file: str | None = typer.Argument(None, help="Single mapping file to build"),
+    file: str | None = typer.Argument(None, help="Report only this mapping (all are packaged)"),
 ) -> None:
     """Full build: (transpile if driven, not yet implemented +) compile -> build/."""
     config = _load_config_or_exit()
     generate_stubs()
-    for path in _target_mappings(file):
-        try:
-            result = compile_mapping(path, config)
-        except BuildError as exc:
-            typer.echo(f"error: {exc}", err=True)
-            raise typer.Exit(code=1) from exc
-        except Exception as exc:
-            typer.echo(f"error compiling {path}: {exc}", err=True)
-            raise typer.Exit(code=1) from exc
-        status = "up-to-date" if result.skipped else "compiled"
-        typer.echo(f"{status}: {path} -> {result.path}")
+    _compile_and_package(config, file)
 
 
 @app.command()
@@ -173,26 +187,19 @@ def check() -> None:
     committed output still matches what current sources produce)."""
     config = _load_config_or_exit()
     mappings = discover_mappings()
-    ok = True
-    for path in mappings:
-        stem = path.stem.removesuffix(".map")
-        committed = Path("build/compiled") / f"{stem}.sql"
-        try:
-            fresh_sql = compile_fresh(path, config)
-        except Exception as exc:
-            typer.echo(f"error compiling {path}: {exc}", err=True)
-            ok = False
-            continue
-        if not committed.is_file():
-            typer.echo(f"missing: {committed} (run `mapper build`)")
-            ok = False
-            continue
-        if committed.read_text() != fresh_sql:
-            typer.echo(f"out of sync: {committed} (run `mapper build`)")
-            ok = False
-    if not ok:
+    committed = package_path(config)
+    try:
+        fresh = assemble([compile_fresh(p, config) for p in mappings], config)
+    except Exception as exc:
+        typer.echo(f"error compiling: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    if not committed.is_file():
+        typer.echo(f"missing: {committed} (run `mapper build`)")
         raise typer.Exit(code=1)
-    typer.echo(f"OK — build/compiled/ is in sync ({len(mappings)} mapping(s))")
+    if committed.read_text() != fresh:
+        typer.echo(f"out of sync: {committed} (run `mapper build`)")
+        raise typer.Exit(code=1)
+    typer.echo(f"OK — {committed} is in sync ({len(mappings)} mapping(s))")
 
 
 if __name__ == "__main__":

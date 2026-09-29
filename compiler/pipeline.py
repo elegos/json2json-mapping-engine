@@ -21,7 +21,8 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from compiler.backends.plsql.codegen import PlsqlCodeGenerator
+from compiler.backends.plsql.codegen import PlsqlCodeGenerator, PlsqlUnit
+from compiler.backends.plsql.package import assemble_package
 from compiler.function_linker import FunctionLinker
 from compiler.loop_fusion import fuse_loops
 from compiler.schema_generator import SchemaTypes
@@ -30,19 +31,8 @@ from compiler.type_checker import check_module
 from compiler.validator import Validator
 
 
-def compile_source(
-    source: str,
-    default_mapping_id: str,
-    error_code: int = -20000,
-    input_schema: SchemaTypes | None = None,
-    output_schema: SchemaTypes | None = None,
-    loop_fusion: bool = True,
-    parallel_conflict: str = "exception",
-) -> str:
-    tree = ast.parse(source)
-    Validator().validate(tree)  # security gate — must run first
-
-    mapping_id = default_mapping_id
+def extract_mapping_id(tree: ast.Module, default: str) -> str:
+    """The reserved `__id__ = '<literal>'` directive, else `default`."""
     for stmt in tree.body:
         if (
             isinstance(stmt, ast.Assign)
@@ -51,7 +41,23 @@ def compile_source(
         ):
             value = stmt.value
             assert isinstance(value, ast.Constant) and isinstance(value.value, str)
-            mapping_id = value.value
+            return value.value
+    return default
+
+
+def compile_unit(
+    source: str,
+    default_mapping_id: str,
+    error_code: int = -20000,
+    input_schema: SchemaTypes | None = None,
+    output_schema: SchemaTypes | None = None,
+    loop_fusion: bool = True,
+    parallel_conflict: str = "exception",
+) -> PlsqlUnit:
+    tree = ast.parse(source)
+    Validator().validate(tree)  # security gate — must run first
+
+    mapping_id = extract_mapping_id(tree, default_mapping_id)
 
     rule_defs = {stmt.name: stmt for stmt in tree.body if isinstance(stmt, ast.FunctionDef)}
     tree.body = fuse_loops(
@@ -65,6 +71,18 @@ def compile_source(
     linker = FunctionLinker()
     backend = PlsqlCodeGenerator(function_linker=linker, error_code=error_code)
     return backend.compile_module(tree, mapping_id, scope_resolution)
+
+
+def compile_source(
+    source: str,
+    default_mapping_id: str,
+    package: str = "MAPPING_RULES",
+    export_rule_functions: bool = False,
+    **kwargs,
+) -> str:
+    """Single-mapping convenience: compile and wrap in its own package."""
+    unit = compile_unit(source, default_mapping_id, **kwargs)
+    return assemble_package([unit], package, export_rule_functions)
 
 
 def compile_file(

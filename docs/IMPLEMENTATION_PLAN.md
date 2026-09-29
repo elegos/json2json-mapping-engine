@@ -225,9 +225,9 @@ any failure.
   file also fails if any rule errored.
 - **Deploy check**: `CREATE OR REPLACE` with a compile error doesn't raise
   client-side, so deploy reads `USER_ERRORS` and fails loudly.
-- **Mappings deploy one at a time**: rule functions are top-level
-  `fn_<rule_id>`, so two mappings sharing a rule id would overwrite each
-  other in one schema. Cases run right after their own mapping is deployed.
+- **Single package deploy**: the whole `build/compiled/<package>.sql` is
+  deployed once and cases call `<package>.map_<id>_safe` (see "Package
+  namespacing" below).
 - No runtime: `mapper test` prints "Track 2 unavailable" and succeeds;
   `--track 2` explicitly requested exits 1.
 - Deploys as `ADMIN` in its own schema; `[target.plsql] schema` is not used
@@ -237,6 +237,29 @@ any failure.
 `.fn.yaml` data model, M5); Track 2 in CI (needs a runner with Docker access
 to pull the Oracle image); exercising `map_<id>` (raising variant) — only the
 `_safe` twin is run.
+
+---
+
+## ✅ Package namespacing (follow-up to M3/M4)
+
+Rule ids are unique per mapping only, so standalone top-level `fn_<rule_id>`
+collided across mappings. Now all mappings compile into **one PL/SQL
+package** (`[target.plsql] package`): entry points
+`<package>.map_<id>` / `map_<id>_safe`, rule functions namespaced
+`fn_<mapping_id>_<rule_id>`, private unless `export_rule_functions`.
+
+- Codegen returns a `PlsqlUnit` per mapping (`compile_module`);
+  `compiler/backends/plsql/package.py` assembles units into spec + body.
+  `compile_source` remains as a single-mapping convenience.
+- Build output changed: one `build/compiled/<package>.sql` instead of
+  `<mapping>.sql` per mapping; the per-mapping cache stores the serialized
+  unit (`build/cache/<file>.unit.json`). `mapper build <file>` still
+  packages every mapping (needs all units); it only narrows the status report.
+- Duplicate mapping ids and identifiers over 128 bytes are build errors.
+- Trade-off: any mapping change recompiles the whole package body. Splitting
+  into several packages would need a grouping key in `mapper.toml`; not done.
+- Entry-point names kept as `map_<id>` (not bare `<id>`) to avoid clashing
+  with rule functions and reserved words.
 
 ---
 

@@ -71,9 +71,18 @@ def test_rejects_invalid_parallel_conflict():
 
 
 def test_defaults_when_sections_absent():
-    config = parse_config({"target": {"plsql": {
-        "schema": "S", "package": "P", "fn_package": "FP", "error_code": -20000,
-    }}})
+    config = parse_config(
+        {
+            "target": {
+                "plsql": {
+                    "schema": "S",
+                    "package": "P",
+                    "fn_package": "FP",
+                    "error_code": -20000,
+                }
+            }
+        }
+    )
     assert config.project.mode == "driven"
     assert config.optimizer.loop_fusion is True
     assert config.compiler.decimal_mode == "round"

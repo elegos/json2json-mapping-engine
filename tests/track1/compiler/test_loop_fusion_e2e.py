@@ -63,7 +63,5 @@ def test_parallel_conflict_resolved_by_config():
         "for b in root.items:\n"
         "    out.Y.append(rule_b(b))\n"
     )
-    sql = compile_source(
-        source, default_mapping_id="parallel_conflict", parallel_conflict="max"
-    )
+    sql = compile_source(source, default_mapping_id="parallel_conflict", parallel_conflict="max")
     assert sql.count("FOR v_i_") == 2

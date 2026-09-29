@@ -17,9 +17,7 @@ def test_root_scope_has_no_loop_var():
 
 def test_nested_for_loops_build_a_parent_chain():
     tree = ast.parse(
-        "for order in root.orders:\n"
-        "    for line in order.items:\n"
-        "        out.Amount = line.price\n"
+        "for order in root.orders:\n    for line in order.items:\n        out.Amount = line.price\n"
     )
     resolution = resolve_scopes(tree)
     outer_for = _as_for(tree.body[0])
@@ -37,9 +35,7 @@ def test_nested_for_loops_build_a_parent_chain():
 
 def test_resolve_name_walks_up_the_chain():
     tree = ast.parse(
-        "for order in root.orders:\n"
-        "    for line in order.items:\n"
-        "        out.Amount = line.price\n"
+        "for order in root.orders:\n    for line in order.items:\n        out.Amount = line.price\n"
     )
     resolution = resolve_scopes(tree)
     outer_for = _as_for(tree.body[0])

@@ -6,11 +6,9 @@ from typer.testing import CliRunner
 from cli import track2
 from cli.main import app
 from cli.track2 import (
-    Track2Error,
     discover_cases,
     generate_password,
     json_diff,
-    safe_procedure_name,
     split_sql_script,
 )
 
@@ -22,13 +20,6 @@ def test_split_sql_script_on_slash_lines():
 
 def test_split_sql_script_ignores_slash_inside_statement():
     assert split_sql_script("SELECT 1/2;\n/\n") == ["SELECT 1/2;"]
-
-
-def test_safe_procedure_name():
-    sql = "CREATE OR REPLACE PROCEDURE map_x (\n) AS\n/\nCREATE OR REPLACE PROCEDURE map_x_safe (\n"
-    assert safe_procedure_name(sql) == "map_x_safe"
-    with pytest.raises(Track2Error):
-        safe_procedure_name("CREATE OR REPLACE PROCEDURE map_x (")
 
 
 def test_json_diff_ignores_key_order():

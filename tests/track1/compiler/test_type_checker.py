@@ -105,11 +105,7 @@ def test_nullable_rule_into_nullable_field_is_fine():
 
 
 def test_loop_element_type_resolved_from_array_field():
-    _check(
-        "for order in root.orders:\n"
-        "    out.order_id = order.status\n"
-        "out.amount = root.amount\n"
-    )
+    _check("for order in root.orders:\n    out.order_id = order.status\nout.amount = root.amount\n")
 
 
 def test_loop_element_unknown_field_is_an_error():
@@ -132,10 +128,7 @@ def test_no_schema_means_unchecked():
 
 def test_coalesce_resolves_nullability_away():
     # coalesce(x, default) always produces a non-null value even if x is nullable.
-    _check(
-        "out.order_id = root.id\n"
-        "out.amount = coalesce(root.amount, 0.0)\n"
-    )
+    _check("out.order_id = root.id\nout.amount = coalesce(root.amount, 0.0)\n")
 
 
 def test_function_param_typed_to_nested_class_is_checked():

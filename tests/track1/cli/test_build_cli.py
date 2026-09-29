@@ -61,9 +61,7 @@ def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     (tmp_path / "mapper.toml").write_text(MAPPER_TOML)
     (tmp_path / "mappings" / "ping.map.py").write_text(PING_MAPPING)
     (tmp_path / "mappings" / "order_event.map.py").write_text(ORDER_MAPPING)
-    (tmp_path / "schemas" / "input" / "order_event.json").write_text(
-        json.dumps(ORDER_INPUT_SCHEMA)
-    )
+    (tmp_path / "schemas" / "input" / "order_event.json").write_text(json.dumps(ORDER_INPUT_SCHEMA))
     (tmp_path / "schemas" / "output" / "order_event.json").write_text(
         json.dumps(ORDER_OUTPUT_SCHEMA)
     )
@@ -71,12 +69,54 @@ def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return tmp_path
 
 
-def test_build_produces_compiled_sql_for_every_mapping(project: Path):
+PKG = "build/compiled/mapping_rules.sql"
+
+
+def test_build_produces_one_package_for_every_mapping(project: Path):
     result = runner.invoke(app, ["build"])
     assert result.exit_code == 0, result.output
-    assert (project / "build/compiled/ping.sql").is_file()
-    assert (project / "build/compiled/order_event.sql").is_file()
-    assert "map_ping" in (project / "build/compiled/ping.sql").read_text()
+    sql = (project / PKG).read_text()
+    assert "CREATE OR REPLACE PACKAGE MAPPING_RULES AS" in sql
+    assert "CREATE OR REPLACE PACKAGE BODY MAPPING_RULES AS" in sql
+    assert "PROCEDURE map_ping (" in sql
+    assert "PROCEDURE map_order_event_safe (" in sql
+    assert not (project / "build/compiled/ping.sql").exists()
+
+
+def test_same_rule_id_in_two_mappings_is_namespaced(project: Path):
+    (project / "mappings" / "other.map.py").write_text(
+        "from __mapping__ import *\n\n"
+        "def order_id(root: Any) -> str:\n"
+        "    return root.other\n\n"
+        "out.OrderId = order_id(root)\n"
+    )
+    result = runner.invoke(app, ["build"])
+    assert result.exit_code == 0, result.output
+    sql = (project / PKG).read_text()
+    assert "FUNCTION fn_order_event_order_id(" in sql
+    assert "FUNCTION fn_other_order_id(" in sql
+    # private by default: absent from the spec
+    spec = sql.split("PACKAGE BODY")[0]
+    assert "fn_" not in spec
+
+
+def test_export_rule_functions_lists_them_in_the_spec(project: Path):
+    toml = project / "mapper.toml"
+    toml.write_text(
+        toml.read_text().replace("export_rule_functions = false", "export_rule_functions = true")
+    )
+    runner.invoke(app, ["build"])
+    spec = (project / PKG).read_text().split("PACKAGE BODY")[0]
+    assert "FUNCTION fn_order_event_order_id(" in spec
+
+
+def test_duplicate_mapping_id_is_a_build_error(project: Path):
+    (project / "mappings" / "dup.map.py").write_text(
+        'from __mapping__ import *\n\n__id__ = "ping"\n\nout.Status = "X"\n'
+    )
+    result = runner.invoke(app, ["build"])
+    assert result.exit_code == 1
+    assert "duplicate mapping id 'ping'" in result.output
 
 
 def test_stubs_generates_schema_artifacts_and_ide_config(project: Path):
@@ -98,6 +138,7 @@ def test_rebuild_with_no_changes_is_a_cache_hit(project: Path):
     assert "up-to-date: mappings/ping.map.py" in result.output
     assert "up-to-date: mappings/order_event.map.py" in result.output
     assert "compiled:" not in result.output
+    assert "package: " in result.output
 
 
 def test_touching_mapper_toml_forces_full_rebuild(project: Path):
@@ -119,7 +160,7 @@ def test_check_passes_after_a_clean_build(project: Path):
 
 def test_check_fails_when_compiled_output_is_tampered(project: Path):
     runner.invoke(app, ["build"])
-    sql_path = project / "build/compiled/ping.sql"
+    sql_path = project / PKG
     sql_path.write_text(sql_path.read_text() + "\n-- tampered\n")
     result = runner.invoke(app, ["check"])
     assert result.exit_code == 1
@@ -132,24 +173,10 @@ def test_check_fails_when_compiled_output_is_missing(project: Path):
     assert "missing" in result.output
 
 
-def test_build_single_file(project: Path):
+def test_build_single_file_still_packages_every_mapping(project: Path):
     result = runner.invoke(app, ["build", "mappings/ping.map.py"])
     assert result.exit_code == 0, result.output
-    assert (project / "build/compiled/ping.sql").is_file()
-    assert not (project / "build/compiled/order_event.sql").exists()
-
-
-def test_driven_mode_gives_a_clear_error(project: Path):
-    toml_path = project / "mapper.toml"
-    toml_path.write_text(toml_path.read_text().replace('mode   = "bootstrap"', 'mode   = "driven"'))
-    result = runner.invoke(app, ["build"])
-    assert result.exit_code == 1
-    assert "driven" in result.output.lower()
-    assert "not implemented" in result.output.lower() or "isn't implemented" in result.output.lower()
-
-
-def test_invalid_mapper_toml_is_a_clear_error(project: Path):
-    (project / "mapper.toml").write_text("[project]\ntarget = \"cobol\"\n")
-    result = runner.invoke(app, ["build"])
-    assert result.exit_code == 1
-    assert "cobol" in result.output
+    assert "ping.map.py" in result.output
+    assert "order_event.map.py" not in result.output
+    sql = (project / PKG).read_text()
+    assert "map_ping" in sql and "map_order_event" in sql

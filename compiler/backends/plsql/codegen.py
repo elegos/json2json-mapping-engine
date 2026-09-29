@@ -14,11 +14,16 @@ enclosing loop variable. A function only ever sees what's passed to it:
     for itm in root.orders.items:
         out.Lines.append(line_rule(itm))
 
-**Standalone, package-assembly-ready functions.** Each `fn_<rule_id>` is
-emitted as its own `CREATE OR REPLACE FUNCTION`, a sibling of `map_<id>` /
-`map_<id>_safe` — not nested inside them. This is deliberate: package
-assembly (M3) will place `map_<id>`/`map_<id>_safe` and every `fn_<rule_id>`
-into one package body, exporting `fn_<rule_id>` in the spec too only when
+**Standalone, package-assembly-ready functions, namespaced per mapping.**
+Each rule function is emitted as its own subprogram, a sibling of
+`map_<id>` / `map_<id>_safe` — not nested inside them — and named
+`fn_<mapping_id>_<rule_id>`. Rule ids are only unique *within* a mapping, so
+the mapping id is the namespace: all mappings of a project share one PL/SQL
+package (`[target.plsql] package`), and the prefix keeps their private rule
+functions from colliding. `compile_module` returns a `PlsqlUnit` (this
+mapping's subprograms, not yet wrapped in any `CREATE`);
+`compiler.backends.plsql.package.assemble_package` puts every unit into one
+package spec + body, listing `fn_*` in the spec too only when
 `[target.plsql] export_rule_functions = true` (§Generated artifact,
 "Rule-function visibility") — that only works cleanly if rule functions are
 already independent subprograms, not closures nested inside a specific
@@ -98,7 +103,7 @@ from __future__ import annotations
 
 import ast
 import itertools
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 from compiler.annotations import AnnotationError, resolve_dsl_type
 from compiler.backends.base import CodeGenerator, FieldRule
@@ -173,6 +178,50 @@ _BUILTIN_ARG_EXPECTED: dict[str, list[str | None]] = {
 # ~1899-byte ceiling observed for `DBMS_UTILITY.FORMAT_ERROR_STACK` against a
 # real Oracle 23ai instance (M0.5 spike) — see the comment at `raising_tail`.
 _ERROR_PAYLOAD_BYTE_BUDGET = 1800
+
+
+@dataclass(frozen=True)
+class PlsqlSubprogram:
+    """One package subprogram: `spec` is the declaration (ends with `;`, as
+    it appears in the package spec), `body` the full definition."""
+
+    name: str
+    spec: str
+    body: str
+
+
+@dataclass(frozen=True)
+class PlsqlUnit:
+    """One compiled mapping, ready for package assembly."""
+
+    mapping_id: str
+    rule_functions: list[PlsqlSubprogram]
+    entry_points: list[PlsqlSubprogram]  # map_<id>, map_<id>_safe
+
+    def to_json(self) -> dict:
+        return asdict(self)
+
+    @staticmethod
+    def from_json(data: dict) -> PlsqlUnit:
+        return PlsqlUnit(
+            mapping_id=data["mapping_id"],
+            rule_functions=[PlsqlSubprogram(**d) for d in data["rule_functions"]],
+            entry_points=[PlsqlSubprogram(**d) for d in data["entry_points"]],
+        )
+
+
+# Oracle identifier limit (12.2+): 128 bytes.
+_MAX_IDENTIFIER_BYTES = 128
+
+
+def _check_identifier(name: str) -> str:
+    if len(name.encode()) > _MAX_IDENTIFIER_BYTES:
+        raise CodeGenError(
+            f"generated identifier '{name}' exceeds Oracle's {_MAX_IDENTIFIER_BYTES}-byte "
+            "limit — shorten the mapping id or rule name"
+        )
+    return name
+
 
 class CodeGenError(Exception):
     pass
@@ -454,12 +503,14 @@ class _ExprTranslator:
 
 
 def _is_dataclass_construction(node: ast.expr, dataclasses: dict[str, _DataclassDef]) -> bool:
-    return isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in dataclasses
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id in dataclasses
+    )
 
 
-def _materialize_dataclass(
-    call: ast.Call, translator: _ExprTranslator, tmp_var: str
-) -> list[str]:
+def _materialize_dataclass(call: ast.Call, translator: _ExprTranslator, tmp_var: str) -> list[str]:
     """Build a dataclass value **in memory**, field by field, into
     `tmp_var` — no text round-trip through `JSON_OBJECT()`/CLOB/VARCHAR2 at
     all, so no 4000-byte ceiling and no PLS-00684 (native PL/SQL rejects
@@ -496,7 +547,11 @@ _EXPECTED_TO_JSON_ELEMENT_EXTRACTOR = {
 
 
 def _is_aggregate_call(node: ast.expr) -> bool:
-    return isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in _AGGREGATE_FUNCS
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id in _AGGREGATE_FUNCS
+    )
 
 
 def _materialize_aggregate(
@@ -649,8 +704,12 @@ def _translate_fn_body(
                     ctx.declarations.append(f"{tmp_var} {decl_type};")
                 out.extend(
                     _materialize_aggregate(
-                        stmt.value, translator, tmp_var, return_expected,
-                        next(loop_counter), ctx.declarations,
+                        stmt.value,
+                        translator,
+                        tmp_var,
+                        return_expected,
+                        next(loop_counter),
+                        ctx.declarations,
                     )
                 )
                 out.append(f"RETURN {tmp_var};")
@@ -671,18 +730,24 @@ def _translate_fn_if(
     loop_counter: itertools.count,
 ) -> list[str]:
     lines = [f"IF {translator.translate(stmt.test, 'BOOLEAN')} THEN"]
-    lines.extend(_indent(_translate_fn_body(stmt.body, ctx, return_expected, translator, loop_counter)))
+    lines.extend(
+        _indent(_translate_fn_body(stmt.body, ctx, return_expected, translator, loop_counter))
+    )
     orelse = stmt.orelse
     while len(orelse) == 1 and isinstance(orelse[0], ast.If):
         elif_stmt = orelse[0]
         lines.append(f"ELSIF {translator.translate(elif_stmt.test, 'BOOLEAN')} THEN")
         lines.extend(
-            _indent(_translate_fn_body(elif_stmt.body, ctx, return_expected, translator, loop_counter))
+            _indent(
+                _translate_fn_body(elif_stmt.body, ctx, return_expected, translator, loop_counter)
+            )
         )
         orelse = elif_stmt.orelse
     if orelse:
         lines.append("ELSE")
-        lines.extend(_indent(_translate_fn_body(orelse, ctx, return_expected, translator, loop_counter)))
+        lines.extend(
+            _indent(_translate_fn_body(orelse, ctx, return_expected, translator, loop_counter))
+        )
     lines.append("END IF;")
     return lines
 
@@ -720,7 +785,11 @@ class PlsqlCodeGenerator(CodeGenerator):
 
     # -- module compilation -----------------------------------------------
 
-    def compile_module(self, tree: ast.Module, mapping_id: str, scope_resolution=None) -> str:
+    def _fn_name(self, rule_id: str) -> str:
+        return _check_identifier(f"fn_{self._mapping_id}_{rule_id}")
+
+    def compile_module(self, tree: ast.Module, mapping_id: str, scope_resolution=None) -> PlsqlUnit:
+        self._mapping_id = mapping_id
         self._loop_counter = itertools.count()
         dataclasses = _collect_dataclasses(tree)
         rule_defs: dict[str, ast.FunctionDef] = {}
@@ -754,7 +823,11 @@ class PlsqlCodeGenerator(CodeGenerator):
             list_accumulators=list_accumulators,
         )
 
-        return self._render(mapping_id, function_texts, body_lines, list_accumulators)
+        return PlsqlUnit(
+            mapping_id=mapping_id,
+            rule_functions=function_texts,
+            entry_points=self._render(mapping_id, body_lines, list_accumulators),
+        )
 
     def _compile_rule_function(
         self,
@@ -762,13 +835,15 @@ class PlsqlCodeGenerator(CodeGenerator):
         fn_def: ast.FunctionDef,
         rule_signatures: dict[str, _RuleSignature],
         dataclasses: dict[str, _DataclassDef],
-    ) -> str:
+    ) -> PlsqlSubprogram:
         sig = rule_signatures[name]
         ctx = _FnCtx(params=sig.param_names, local_prefix=name)
         translator = _ExprTranslator(ctx, rule_signatures, dataclasses, self.function_linker)
         body_lines = ["p_omitted := FALSE;"]
         body_lines.extend(
-            _translate_fn_body(fn_def.body, ctx, sig.return_expected, translator, self._loop_counter)
+            _translate_fn_body(
+                fn_def.body, ctx, sig.return_expected, translator, self._loop_counter
+            )
         )
 
         params = [
@@ -778,12 +853,15 @@ class PlsqlCodeGenerator(CodeGenerator):
         params.append("p_omitted OUT BOOLEAN")
         decls = "\n    ".join(ctx.declarations)
 
-        header = f"FUNCTION fn_{name}(" + ", ".join(params) + f") RETURN {sig.return_plsql_type} IS\n"
+        fn_name = self._fn_name(name)
+        signature = f"FUNCTION {fn_name}(" + ", ".join(params) + f") RETURN {sig.return_plsql_type}"
+        header = f"{signature} IS\n"
         if decls:
             header += f"    {decls}\n"
-        return (
-            f"CREATE OR REPLACE {header}"
-            "BEGIN\n" + "\n".join(_indent(body_lines)) + f"\nEND fn_{name};\n/"
+        return PlsqlSubprogram(
+            name=fn_name,
+            spec=f"{signature};",
+            body=header + "BEGIN\n" + "\n".join(_indent(body_lines)) + f"\nEND {fn_name};",
         )
 
     def _emit_flow(
@@ -810,7 +888,11 @@ class PlsqlCodeGenerator(CodeGenerator):
                 field_name = target.attr
                 lines.extend(
                     self._emit_out_write(
-                        field_name, stmt.value, ctx, translator, rule_signatures,
+                        field_name,
+                        stmt.value,
+                        ctx,
+                        translator,
+                        rule_signatures,
                         sink=lambda expr, f=field_name: f"v_out_obj.put({_quote(f)}, {expr});",
                     )
                 )
@@ -833,7 +915,11 @@ class PlsqlCodeGenerator(CodeGenerator):
                 var_name = list_accumulators[field_name].var_name
                 lines.extend(
                     self._emit_out_write(
-                        field_name, call.args[0], ctx, translator, rule_signatures,
+                        field_name,
+                        call.args[0],
+                        ctx,
+                        translator,
+                        rule_signatures,
                         sink=lambda expr, v=var_name: f"{v}.append({expr});",
                     )
                 )
@@ -911,10 +997,13 @@ class PlsqlCodeGenerator(CodeGenerator):
             ]
             result_var = f"v_result_{rule_id}"
             omitted_var = f"v_omitted_{rule_id}"
-            call_expr = f"fn_{rule_id}(" + ", ".join([*arg_exprs, omitted_var]) + ")"
+            call_expr = f"{self._fn_name(rule_id)}(" + ", ".join([*arg_exprs, omitted_var]) + ")"
             return self._guarded(
                 rule_id,
-                declare=[f"{result_var} {_decl_type(sig.return_expected)};", f"{omitted_var} BOOLEAN;"],
+                declare=[
+                    f"{result_var} {_decl_type(sig.return_expected)};",
+                    f"{omitted_var} BOOLEAN;",
+                ],
                 body=[
                     f"{result_var} := {call_expr};",
                     f"IF NOT {omitted_var} THEN",
@@ -975,7 +1064,9 @@ class PlsqlCodeGenerator(CodeGenerator):
             raise CodeGenError(str(exc)) from exc
 
         outer_ctx = _FlowCtx(loop_vars)
-        outer_translator = _ExprTranslator(outer_ctx, rule_signatures, dataclasses, self.function_linker)
+        outer_translator = _ExprTranslator(
+            outer_ctx, rule_signatures, dataclasses, self.function_linker
+        )
         source_expr = outer_translator.translate(iter_spec.array_expr, "ARRAY")
 
         idx = next(self._loop_counter)
@@ -1068,10 +1159,9 @@ class PlsqlCodeGenerator(CodeGenerator):
     def _render(
         self,
         mapping_id: str,
-        function_texts: list[str],
         body_lines: list[str],
         list_accumulators: dict[str, _ListAccumulator],
-    ) -> str:
+    ) -> list[PlsqlSubprogram]:
         accumulator_decl_lines = [
             f"{acc.var_name} JSON_ARRAY_T := JSON_ARRAY_T();" for acc in list_accumulators.values()
         ]
@@ -1164,33 +1254,36 @@ class PlsqlCodeGenerator(CodeGenerator):
             "p_out := v_out_obj.TO_CLOB();",
         ]
 
+        raising_name = _check_identifier(f"map_{mapping_id}")
+        safe_name = _check_identifier(f"map_{mapping_id}_safe")
+        raising_sig = f"PROCEDURE {raising_name} (\n    p_src IN  CLOB,\n    p_out OUT CLOB\n)"
+        safe_sig = (
+            f"PROCEDURE {safe_name} (\n"
+            "    p_src IN  CLOB,\n    p_out OUT CLOB,\n    p_err OUT CLOB\n)"
+        )
+
         raising_proc = (
-            f"CREATE OR REPLACE PROCEDURE map_{mapping_id} (\n"
-            "    p_src IN  CLOB,\n"
-            "    p_out OUT CLOB\n"
-            ") AS\n"
+            f"{raising_sig} AS\n"
             f"{_indent_block(shared_decls)}\n"
             "BEGIN\n"
             f"{_indent_block(body)}\n\n"
             f"{_indent_block(chr(10).join(raising_tail_lines))}\n"
-            f"END map_{mapping_id};\n/"
+            f"END {raising_name};"
         )
 
         safe_proc = (
-            f"CREATE OR REPLACE PROCEDURE map_{mapping_id}_safe (\n"
-            "    p_src IN  CLOB,\n"
-            "    p_out OUT CLOB,\n"
-            "    p_err OUT CLOB\n"
-            ") AS\n"
+            f"{safe_sig} AS\n"
             f"{_indent_block(shared_decls)}\n"
             "BEGIN\n"
             f"{_indent_block(body)}\n\n"
             f"{_indent_block(chr(10).join(safe_tail_lines))}\n"
-            f"END map_{mapping_id}_safe;\n/"
+            f"END {safe_name};"
         )
 
-        parts = [*function_texts, raising_proc, safe_proc]
-        return "\n\n".join(parts) + "\n"
+        return [
+            PlsqlSubprogram(raising_name, f"{raising_sig};", raising_proc),
+            PlsqlSubprogram(safe_name, f"{safe_sig};", safe_proc),
+        ]
 
 
 def _decl_type(expected_kind: str) -> str:

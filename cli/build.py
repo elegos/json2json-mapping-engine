@@ -18,13 +18,16 @@ configuration, easy to override later with an explicit mapping table in
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
 
 from cli.config import MapperConfig
-from compiler.pipeline import compile_source
+from compiler.backends.plsql.codegen import CodeGenError, PlsqlUnit
+from compiler.backends.plsql.package import assemble_package
+from compiler.pipeline import compile_unit, extract_mapping_id
 from compiler.schema_generator import SchemaTypes, resolve_schema_types
 
 MAPPINGS_DIR = Path("mappings")
@@ -66,7 +69,7 @@ def compute_hash(source: bytes, config_raw: dict) -> str:
     return h.hexdigest()
 
 
-def compile_fresh(path: Path, config: MapperConfig) -> str:
+def compile_fresh(path: Path, config: MapperConfig) -> PlsqlUnit:
     """Compile `path` unconditionally — no cache lookup. Used by both the
     caching path (on a cache miss) and `mapper check` (which must never
     trust the cache, since the cache only tracks *source* hashes, not
@@ -80,7 +83,7 @@ def compile_fresh(path: Path, config: MapperConfig) -> str:
     target_config = config.target_config()
     input_schema = resolve_schema_for(stem, SCHEMAS_INPUT_DIR)
     output_schema = resolve_schema_for(stem, SCHEMAS_OUTPUT_DIR)
-    return compile_source(
+    return compile_unit(
         path.read_text(),
         default_mapping_id=stem,
         error_code=target_config["error_code"],
@@ -91,30 +94,59 @@ def compile_fresh(path: Path, config: MapperConfig) -> str:
     )
 
 
+def mapping_id_of(path: Path) -> str:
+    stem = path.stem.removesuffix(".map")
+    return extract_mapping_id(ast.parse(path.read_text()), stem)
+
+
+def package_name(config: MapperConfig) -> str:
+    return config.target_config()["package"]
+
+
+def package_path(config: MapperConfig) -> Path:
+    return BUILD_COMPILED_DIR / f"{package_name(config).lower()}.sql"
+
+
+def assemble(units: list[PlsqlUnit], config: MapperConfig) -> str:
+    try:
+        return assemble_package(
+            units, package_name(config), config.target_config()["export_rule_functions"]
+        )
+    except CodeGenError as exc:
+        raise BuildError(str(exc)) from exc
+
+
 @dataclass
 class CompileResult:
     path: Path
     skipped: bool
+    unit: PlsqlUnit
 
 
 def compile_mapping(path: Path, config: MapperConfig, force: bool = False) -> CompileResult:
-    stem = path.stem.removesuffix(".map")
+    """Compile one mapping to its `PlsqlUnit`, cached in `build/cache/` keyed on
+    source hash + full `mapper.toml`. Units are assembled into the project's
+    single package by `write_package`."""
     source = path.read_bytes()
     digest = compute_hash(source, config.raw)
-    cache_file = BUILD_CACHE_DIR / f"{path.name}.sha256"
-    out_file = BUILD_COMPILED_DIR / f"{stem}.sql"
+    cache_file = BUILD_CACHE_DIR / f"{path.name}.unit.json"
 
-    if (
-        not force
-        and cache_file.is_file()
-        and out_file.is_file()
-        and cache_file.read_text().strip() == digest
-    ):
-        return CompileResult(path=out_file, skipped=True)
+    if not force and cache_file.is_file():
+        try:
+            cached = json.loads(cache_file.read_text())
+            if cached["hash"] == digest:
+                return CompileResult(path, True, PlsqlUnit.from_json(cached["unit"]))
+        except (ValueError, KeyError, TypeError):
+            pass  # corrupt cache entry — recompile
 
-    sql = compile_fresh(path, config)
-    out_file.parent.mkdir(parents=True, exist_ok=True)
-    out_file.write_text(sql)
+    unit = compile_fresh(path, config)
     cache_file.parent.mkdir(parents=True, exist_ok=True)
-    cache_file.write_text(digest)
-    return CompileResult(path=out_file, skipped=False)
+    cache_file.write_text(json.dumps({"hash": digest, "unit": unit.to_json()}, indent=1))
+    return CompileResult(path, False, unit)
+
+
+def write_package(units: list[PlsqlUnit], config: MapperConfig) -> Path:
+    out = package_path(config)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(assemble(units, config))
+    return out

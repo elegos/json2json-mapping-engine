@@ -403,10 +403,23 @@ interpretation, no JSON rule parsing at runtime. Every mapping additionally comp
 twin procedure, `map_<id>_safe`, with different failure behaviour — see §Runtime error
 semantics.
 
+**Namespacing.** Rule ids are unique only *within* a mapping, so two mappings may
+both define a rule called `order_id`. The mapping id is the namespace, and how it is
+applied is backend-specific. For PL/SQL, all mappings of a project are compiled into
+**one** package (`[target.plsql] package`), entered as
+`MAPPING_RULES.map_<mapping_id>(p_src, p_out)` /
+`MAPPING_RULES.map_<mapping_id>_safe(...)`, with rule functions prefixed by mapping id
+(`fn_<mapping_id>_<rule_id>`). The output is a single file,
+`build/compiled/<package>.sql` (lowercase package name). Consequences: mapping ids must
+be unique project-wide (a duplicate is a build error); any mapping change recompiles the
+whole package body on deploy; generated identifiers must fit Oracle's 128-byte limit
+(checked at compile time). Other backends may choose differently (e.g. a module or
+namespace per mapping).
+
 **Rule-function visibility.** Every `.map` rule function (one per field/array-element
 rule, §Compiler pipeline) is compiled into the package body alongside `map_<id>` /
 `map_<id>_safe`. By default only the two entry-point procedures appear in the package
-**spec** — every `fn_<rule_id>` is package-private, callable from other code in the same
+**spec** — every `fn_<mapping_id>_<rule_id>` is package-private, callable from other code in the same
 package body but not from outside it. Setting
 
 ```toml
@@ -414,7 +427,7 @@ package body but not from outside it. Setting
 export_rule_functions = true   # default: false
 ```
 
-additionally lists every `fn_<rule_id>` in the package spec, making each rule function
+additionally lists every `fn_<mapping_id>_<rule_id>` in the package spec, making each rule function
 independently callable — e.g. for external reuse or for unit-testing an individual
 rule's logic in isolation from the full mapping. This is a package-assembly-time
 decision (which names go in the spec), not a code-generation-time one: the rule

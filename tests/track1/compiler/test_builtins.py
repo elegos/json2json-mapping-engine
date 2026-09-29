@@ -74,7 +74,10 @@ def test_plsql_rendering(name: str, args: list[str], expected: str):
 
 def test_lookup_plsql_rendering_with_and_without_default():
     impl = BUILTIN_FUNCTIONS["lookup"]
-    assert impl.render("plsql", ["A", "T"]) == "(CASE WHEN T.has(A) THEN T.get_String(A) ELSE NULL END)"
+    assert (
+        impl.render("plsql", ["A", "T"])
+        == "(CASE WHEN T.has(A) THEN T.get_String(A) ELSE NULL END)"
+    )
     assert (
         impl.render("plsql", ["A", "T", "'EUR'"])
         == "(CASE WHEN T.has(A) THEN T.get_String(A) ELSE 'EUR' END)"
