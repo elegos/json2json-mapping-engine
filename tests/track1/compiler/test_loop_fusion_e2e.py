@@ -65,3 +65,11 @@ def test_parallel_conflict_resolved_by_config():
     )
     sql = compile_source(source, default_mapping_id="parallel_conflict", parallel_conflict="max")
     assert sql.count("FOR v_i_") == 2
+
+
+def test_filtered_index_matches_golden_sql():
+    sql = compile_file(FIXTURES / "filtered_index.map.py")
+    assert sql == (GOLDEN / "filtered_index.sql").read_text()
+    # fused into one pass with a counter per branch, each advanced only when its filter passes
+    assert sql.count("FOR v_i_0 IN") == 2  # one loop in each of the twin procedures, not four
+    assert "v_cnt_0 NUMBER := 1;" in sql and "v_cnt_1 NUMBER := 0;" in sql

@@ -16,6 +16,7 @@ class LinesItem:
 
 @dataclass
 class ActiveItem:
+    ActivePos: int
     ActiveId: str
 
 def hdr(root: Any) -> str:
@@ -34,13 +35,12 @@ def dsc(root: Any) -> Discount:
 def lin(root: Any, src: Any, index: int) -> LinesItem:
     return LinesItem(Position=index, LineId=src.id, Currency=lookup(root.country, {'IT': 'EUR', 'US': 'USD'}))
 
-def act(root: Any, src: Any) -> ActiveItem:
-    return ActiveItem(ActiveId=src.id)
+def act(root: Any, src: Any, index: int) -> ActiveItem:
+    return ActiveItem(ActivePos=index, ActiveId=src.id)
 out.OrderId = hdr(root)
 out.Total = tot(root)
 out.Discount = dsc(root)
 for index, src in enumerate(sorted(root.items, key='price', reverse=True), start=1):
     out.Lines.append(lin(root, src, index))
-for src in root.items:
-    if src.status != 'CANCELLED':
-        out.Active.append(act(root, src))
+for index, src in enumerate([src for src in root.items if src.status != 'CANCELLED'], start=1):
+    out.Active.append(act(root, src, index))

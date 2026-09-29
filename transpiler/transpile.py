@@ -353,7 +353,18 @@ class _Builder:
                 raise FnYamlError(f"{where}: sort key must be a field of the item ('@.field')")
             rev = ", reverse=True" if rule.sort_reverse else ""
             iterable = f'sorted({iterable}, key="{m.group(1)}"{rev})'
+        filter_text = None
+        if rule.filter:
+            f = resolve_anchors(rule.filter, scope, f"{where} filter")
+            if f.uses_index:
+                raise FnYamlError(f"{where}: filter cannot reference @index")
+            filter_text = f.text
         if uses_index:
+            # The index numbers the elements that pass the filter, so the filter must
+            # come *before* enumerate(): in real Python a `continue` in the body would
+            # leave gaps. The compiler lowers this form (per-branch counter when fused).
+            if filter_text:
+                iterable = f"[src for src in {iterable} if {filter_text}]"
             start = f", start={rule.index_start}" if rule.index_start else ""
             iterable = f"enumerate({iterable}{start})"
         target = "index, src" if uses_index else "src"
@@ -361,17 +372,8 @@ class _Builder:
         loop_src = f"for {target} in {iterable}:\n    out.{out_field}.append({ident}({call_args}))"
         loop = self._stmts(loop_src)[0]
         assert isinstance(loop, ast.For)
-        if rule.filter:
-            if uses_index:
-                raise FnYamlError(
-                    f"{where}: `filter` together with `@index` is not supported yet — the spec "
-                    "numbers only the elements that pass the filter, but the compiler's "
-                    "enumerate() numbers every iterated element"
-                )
-            f = resolve_anchors(rule.filter, scope, f"{where} filter")
-            if f.uses_index:
-                raise FnYamlError(f"{where}: filter cannot reference @index")
-            guard = self._stmts(f"if not ({f.text}):\n    continue")[0]
+        if filter_text and not uses_index:
+            guard = self._stmts(f"if not ({filter_text}):\n    continue")[0]
             loop.body.insert(0, guard)
         ast.fix_missing_locations(loop)
         self.flow.append(loop)
@@ -393,7 +395,12 @@ def transpile_file_model(
     if options.loop_fusion:
         fixed = header + b.classes + b.functions
         rule_defs = {s.name: s for s in b.functions if isinstance(s, ast.FunctionDef)}
-        body = [*fixed, *fuse_loops(b.flow, rule_defs, options.parallel_conflict, True)]
+        body = [
+            *fixed,
+            *fuse_loops(
+                b.flow, rule_defs, options.parallel_conflict, True, lower_filtered_iters=False
+            ),
+        ]
     module = ast.Module(body=body, type_ignores=[])
     module = _CollapseDoubleNot().visit(module)
     ast.fix_missing_locations(module)

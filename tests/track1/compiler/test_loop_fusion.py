@@ -172,3 +172,41 @@ def test_enumerate_loops_fuse_and_rename_both_index_and_item():
     assert len(for_stmts) == 1
     dumped = ast.dump(fused[0])
     assert "id='j'" not in dumped and "id='b'" not in dumped
+
+
+def test_filtered_indexed_loops_fuse_with_one_counter_each():
+    import ast
+
+    from compiler.loop_fusion import fuse_loops
+
+    tree = ast.parse(
+        "for i, a in enumerate([a for a in root.items if a.x], start=1):\n"
+        "    out.A.append(r1(i, a))\n"
+        "for j, b in enumerate([b for b in root.items if b.y]):\n"
+        "    out.B.append(r2(j, b))\n"
+        "for c in root.items:\n"
+        "    out.C.append(r3(c))\n"
+    )
+    fused = fuse_loops(tree.body, {})
+    assert len(fused) == 1  # all three fused into one pass over root.items
+    text = ast.unparse(fused[0])
+    assert "i = __next_index__(1, 0)" in text
+    assert "j = __next_index__(0, 1)" in text
+    assert text.count("__next_index__") == 2  # the plain loop has no counter
+    assert "if a.x:" in text and "if a.y:" in text  # `NOT (NOT ...)` collapsed
+
+
+def test_body_continue_after_a_filtering_comprehension_stays_behind_the_counter():
+    import ast
+
+    from compiler.loop_fusion import fuse_loops
+
+    tree = ast.parse(
+        "for i, a in enumerate([a for a in root.items if a.x]):\n"
+        "    if a.skip:\n"
+        "        continue\n"
+        "    out.A.append(r1(i, a))\n"
+    )
+    text = ast.unparse(fuse_loops(tree.body, {})[0])
+    # numbered first (Python: enumerate already counted it), then skipped
+    assert text.index("__next_index__") < text.index("if not a.skip")

@@ -66,3 +66,40 @@ def test_enumerate_of_sorted_composes():
 def test_bad_target_shape_raises():
     with pytest.raises(LoopIterError):
         parse_for_target(_target("for a, b, c in y: pass"))
+
+
+def test_parse_filtering_comprehension_inside_enumerate_and_around_sorted():
+    import ast
+
+    from compiler.loop_iter import parse_for_iter
+
+    node = ast.parse(
+        'enumerate([x for x in sorted(root.items, key="p", reverse=True) if x.a == 1 if x.b], start=1)',
+        mode="eval",
+    ).body
+    spec = parse_for_iter(node)
+    assert (spec.enumerate_start, spec.sort_key, spec.sort_reverse, spec.filter_var) == (
+        1,
+        "p",
+        True,
+        "x",
+    )
+    assert ast.unparse(spec.array_expr) == "root.items"
+    assert ast.unparse(spec.filter_expr) == "x.a == 1 and x.b"  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "src",
+    [
+        "[x.id for x in root.items if x.a]",  # a projection, not a filter
+        "[x for x in root.items]",  # no condition
+        "[x for x in root.items for y in x.sub if y]",  # two `for` clauses
+    ],
+)
+def test_parse_rejects_non_filter_comprehensions(src: str):
+    import ast
+
+    from compiler.loop_iter import LoopIterError, parse_for_iter
+
+    with pytest.raises(LoopIterError):
+        parse_for_iter(ast.parse(src, mode="eval").body)

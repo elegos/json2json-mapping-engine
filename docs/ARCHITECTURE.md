@@ -826,12 +826,26 @@ What the transpiler emits is bounded by what the compiler can express today. Not
 supported, each rejected with an error naming the rule: nested `loop`/`object` rules
 inside a `loop` or `object`; output paths deeper than one field of the output root
 (`$.Orders[*]` works, `$.Output.Orders[*]` does not); source paths relative to a loop
-(`@.items[*]`); `@2` / `@index.N`; a loop `filter` combined with `@index` (the spec
-numbers only the elements that pass the filter, but the compiler's `enumerate()` numbers
-every iterated element — silently emitting different numbers would be worse than an
-error). Fields of a `loop`/`object` share one generated function, so they cannot use bare
+(`@.items[*]`); `@2` / `@index.N`. Fields of a `loop`/`object` share one generated function, so they cannot use bare
 `return` / `return Null` (use `if_else` / `coalesce`) and an error is reported under the
 loop/object rule's id.
+
+**Filter + `@index`.** `@index` numbers the elements that *pass* the filter (after
+`sort`), as specified. In `.map.py` this is real-Python semantics, written explicitly:
+the filter goes in the iterable, before `enumerate()`:
+
+```python
+for index, src in enumerate([src for src in sorted(root.items, key="price") if src.st == "A"], start=1):
+```
+
+whereas `if cond: continue` in the body leaves `enumerate()` numbering the skipped
+elements too, exactly as Python would — a hand-written `.map.py` has no compiler-specific
+side effects, so the developer picks the behavior by how they write it. The comprehension
+may only filter (`[x for x in <iterable> if <cond>]`; no projection, one `for` clause).
+The Loop Fusion Optimizer lowers it to a per-branch guard plus a counter owned by that
+branch, advanced only when the branch's filter passes; N fused loops that use an index
+get N counters. The transpiler emits the comprehension form and leaves fusing those
+loops to the compiler, so the generated `.map.py` stays plain Python.
 
 Other choices where the spec was silent or needed a decision:
 

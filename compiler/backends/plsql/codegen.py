@@ -109,6 +109,7 @@ from dataclasses import asdict, dataclass
 from compiler.annotations import AnnotationError, resolve_dsl_type
 from compiler.backends.base import CodeGenerator, FieldRule
 from compiler.function_linker import FunctionLinker
+from compiler.loop_fusion import NEXT_INDEX
 from compiler.loop_iter import LoopIterError, parse_for_iter, parse_for_target
 
 # PL/SQL requires a VARCHAR2 *variable* declaration to carry a size (unlike
@@ -320,6 +321,45 @@ def _resolve_signature(fn_def: ast.FunctionDef) -> _RuleSignature:
         return_plsql_type=_plsql_unconstrained_type(return_base),
         nullable=nullable,
     )
+
+
+def _is_next_index(stmt: ast.stmt) -> bool:
+    return (
+        isinstance(stmt, ast.Assign)
+        and isinstance(stmt.value, ast.Call)
+        and isinstance(stmt.value.func, ast.Name)
+        and stmt.value.func.id == NEXT_INDEX
+    )
+
+
+def _name_of(node: ast.expr) -> str:
+    assert isinstance(node, ast.Name)
+    return node.id
+
+
+def _const_int(node: ast.expr) -> int:
+    assert isinstance(node, ast.Constant) and isinstance(node.value, int)
+    return node.value
+
+
+def _counted_indexes(stmts: list[ast.stmt]) -> list[tuple[str, int, int]]:
+    """`(index name, start, counter id)` for every `i = __next_index__(...)`
+    directly owned by this loop body (nested `for` loops own their own)."""
+    found: list[tuple[str, int, int]] = []
+    for stmt in stmts:
+        if _is_next_index(stmt):
+            assert isinstance(stmt, ast.Assign) and isinstance(stmt.value, ast.Call)
+            found.append(
+                (
+                    _name_of(stmt.targets[0]),
+                    _const_int(stmt.value.args[0]),
+                    _const_int(stmt.value.args[1]),
+                )
+            )
+        elif isinstance(stmt, ast.If):
+            found += _counted_indexes(stmt.body)
+            found += _counted_indexes(stmt.orelse)
+    return found
 
 
 class _IndexVar(str):
@@ -911,7 +951,13 @@ class PlsqlCodeGenerator(CodeGenerator):
         lines: list[str] = []
 
         for stmt in stmts:
-            if isinstance(stmt, ast.Assign):
+            if _is_next_index(stmt):
+                assert isinstance(stmt, ast.Assign) and isinstance(stmt.value, ast.Call)
+                name = _name_of(stmt.targets[0])
+                k = _const_int(stmt.value.args[1])
+                lines.append(f"v_{name} := v_cnt_{k};")
+                lines.append(f"v_cnt_{k} := v_cnt_{k} + 1;")
+            elif isinstance(stmt, ast.Assign):
                 target = stmt.targets[0]
                 if not (
                     isinstance(target, ast.Attribute)
@@ -1097,6 +1143,11 @@ class PlsqlCodeGenerator(CodeGenerator):
         except LoopIterError as exc:
             raise CodeGenError(str(exc)) from exc
 
+        if iter_spec.filter_expr is not None:
+            raise CodeGenError(
+                "a filtering comprehension in a `for` iterable must be lowered by the "
+                "Loop Fusion Optimizer before code generation"
+            )
         outer_ctx = _FlowCtx(loop_vars)
         outer_translator = _ExprTranslator(
             outer_ctx, rule_signatures, dataclasses, self.function_linker
@@ -1119,12 +1170,20 @@ class PlsqlCodeGenerator(CodeGenerator):
             sort_lines = self._emit_sort(arr_var, iter_spec.sort_key, iter_spec.sort_reverse, idx)
 
         inner_loop_vars = [*loop_vars, item_var]
+        counted = _counted_indexes(stmt.body)
+        counter_decl = ""
+        for name, start, k in counted:
+            setup_lines.append(f"v_cnt_{k} NUMBER := {start};")
+            if name not in inner_loop_vars:
+                inner_loop_vars.append(_IndexVar(name))
+                counter_decl += f"\n            v_{name} NUMBER;"
         index_decl = ""
         if index_var is not None:
             inner_loop_vars.append(_IndexVar(index_var))
             offset = iter_spec.enumerate_start or 0
             offset_expr = f"{idx_var}" if offset == 0 else f"{idx_var} + {offset}"
             index_decl = f"\n            v_{index_var} NUMBER := {offset_expr};"
+        index_decl += counter_decl
 
         inner_lines = self._emit_flow(
             stmt.body, inner_loop_vars, rule_signatures, dataclasses, list_accumulators

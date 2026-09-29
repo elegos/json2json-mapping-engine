@@ -299,8 +299,13 @@ via Track 2, not by unit tests):
 - The build cache key now includes the mapping's input/output schema files (a schema
   edit used to leave stale output).
 
-**Not done**: nested loops/objects and deeper output paths (compiler); `filter` +
-`@index` numbering over survivors (compiler); per-stage on-disk artifacts;
+- **Filter + `@index`** numbers the survivors: `.map.py` says so explicitly with
+  `enumerate([x for x in <iter> if <cond>])` (real-Python semantics; a body `continue`
+  still numbers skipped elements). `loop_fusion` lowers it to a guard plus an internal
+  `i = __next_index__(start, k)` statement — one counter per fused branch — and codegen
+  emits `v_cnt_k` (verified on Oracle, fused and unfused).
+
+**Not done**: nested loops/objects and deeper output paths (compiler); per-stage on-disk artifacts;
 `@parallel` from `.fn.yaml`; the desktop tool's use of `apply_decay` (M6);
 `allowed` warnings on Track 2 output.
 

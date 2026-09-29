@@ -44,9 +44,10 @@ from __future__ import annotations
 
 import ast
 import copy
+import itertools
 from dataclasses import dataclass, field
 
-from compiler.loop_iter import LoopIterError, parse_for_target
+from compiler.loop_iter import LoopIterError, parse_for_iter, parse_for_target
 
 
 class LoopFusionError(Exception):
@@ -86,7 +87,13 @@ def _extract_filter(body: list[ast.stmt]) -> tuple[ast.expr | None, list[ast.stm
 
 
 def _wrap_filter(filter_expr: ast.expr, body: list[ast.stmt]) -> list[ast.stmt]:
-    guard = ast.If(test=ast.UnaryOp(op=ast.Not(), operand=filter_expr), body=body, orelse=[])
+    # `continue when not X` -> `if X`: same truthiness (a NULL condition still skips),
+    # without the `NOT (NOT ...)` the naive wrap would emit.
+    if isinstance(filter_expr, ast.UnaryOp) and isinstance(filter_expr.op, ast.Not):
+        test = filter_expr.operand
+    else:
+        test = ast.UnaryOp(op=ast.Not(), operand=filter_expr)
+    guard = ast.If(test=test, body=body, orelse=[])
     return [ast.fix_missing_locations(guard)]
 
 
@@ -151,11 +158,96 @@ class _Group:
     members: list[tuple[ast.expr | None, list[ast.stmt]]] = field(default_factory=list)
 
 
+NEXT_INDEX = "__next_index__"
+
+
+def next_index_call(start: int, counter_id: int) -> ast.Call:
+    return ast.Call(
+        func=ast.Name(id=NEXT_INDEX, ctx=ast.Load()),
+        args=[ast.Constant(value=start), ast.Constant(value=counter_id)],
+        keywords=[],
+    )
+
+
+def _has_filtered_iter(stmt: ast.For) -> bool:
+    try:
+        return parse_for_iter(stmt.iter).filter_expr is not None
+    except LoopIterError:
+        return False
+
+
+def _lower_filtered_iter(stmt: ast.For, counter: itertools.count) -> ast.For:
+    """`for [i,] x in [enumerate(][x for x in A if c][)]:` -> `for x in A:` whose
+    body opens with `if not c: continue`, then (when indexed) the internal
+    statement `i = __next_index__(start, k)`. `k` names a counter owned by this
+    one branch, advanced only for elements that passed `c` — which is why fusing
+    several such loops over one array gives each its own counter."""
+    try:
+        spec = parse_for_iter(stmt.iter)
+        item_var, index_var = parse_for_target(stmt.target)
+    except LoopIterError as exc:
+        raise LoopFusionError(str(exc)) from exc
+    if spec.filter_expr is None:
+        return stmt
+    assert spec.filter_var is not None
+    cond = copy.deepcopy(spec.filter_expr)
+    if spec.filter_var != item_var:
+        cond = _RenameLoopVar(spec.filter_var, item_var).visit(cond)
+
+    iterable: ast.expr = spec.array_expr
+    if spec.sort_key is not None:
+        keywords = [ast.keyword(arg="key", value=ast.Constant(value=spec.sort_key))]
+        if spec.sort_reverse:
+            keywords.append(ast.keyword(arg="reverse", value=ast.Constant(value=True)))
+        iterable = ast.Call(
+            func=ast.Name(id="sorted", ctx=ast.Load()), args=[iterable], keywords=keywords
+        )
+
+    body: list[ast.stmt] = []
+    if index_var is not None:
+        target = ast.Name(id=index_var, ctx=ast.Store())
+        body.append(
+            ast.Assign(
+                targets=[target], value=next_index_call(spec.enumerate_start or 0, next(counter))
+            )
+        )
+    # A body-level `if c2: continue` runs *after* the element was numbered (real
+    # Python: `enumerate()` counted it), so it stays nested behind the marker.
+    body_filter, rest = _extract_filter(stmt.body)
+    body += _wrap_filter(body_filter, rest) if body_filter is not None else stmt.body
+    guard = ast.If(test=ast.UnaryOp(op=ast.Not(), operand=cond), body=[ast.Continue()], orelse=[])
+    lowered = ast.For(
+        target=ast.Name(id=item_var, ctx=ast.Store()),
+        iter=iterable,
+        body=[guard, *body],
+        orelse=[],
+    )
+    return ast.fix_missing_locations(ast.copy_location(lowered, stmt))
+
+
 def fuse_loops(
     stmts: list[ast.stmt],
     rule_defs: dict[str, ast.FunctionDef],
     parallel_conflict: str = "exception",
     fusion_enabled: bool = True,
+    lower_filtered_iters: bool = True,
+) -> list[ast.stmt]:
+    """See `_fuse`. `lower_filtered_iters=False` leaves loops whose iterable is a
+    filtering comprehension untouched (not lowered, not fused): the transpiler
+    uses it so its `.map.py` output stays plain, readable Python — the compiler
+    lowers and fuses those loops itself."""
+    return _fuse(
+        stmts, rule_defs, parallel_conflict, fusion_enabled, itertools.count(), lower_filtered_iters
+    )
+
+
+def _fuse(
+    stmts: list[ast.stmt],
+    rule_defs: dict[str, ast.FunctionDef],
+    parallel_conflict: str,
+    fusion_enabled: bool,
+    counter: itertools.count,
+    lower_filtered: bool = True,
 ) -> list[ast.stmt]:
     """Rewrite `stmts`: merge sibling same-source `for` loops (if
     `fusion_enabled`) and normalize `if cond: continue` filters into
@@ -167,6 +259,10 @@ def fuse_loops(
 
     for stmt in stmts:
         if isinstance(stmt, ast.For):
+            if not lower_filtered and _has_filtered_iter(stmt):
+                result.append(stmt)
+                continue
+            stmt = _lower_filtered_iter(stmt, counter)
             try:
                 item_var, index_var = parse_for_target(stmt.target)
             except LoopIterError as exc:
@@ -211,6 +307,8 @@ def fuse_loops(
 
     for stmt in result:
         if isinstance(stmt, ast.For):
-            stmt.body = fuse_loops(stmt.body, rule_defs, parallel_conflict, fusion_enabled)
+            stmt.body = _fuse(
+                stmt.body, rule_defs, parallel_conflict, fusion_enabled, counter, lower_filtered
+            )
 
     return result

@@ -66,7 +66,14 @@ rules:
     source: "$.items[*]"
     output: "$.Active[*]"
     filter: "@.status != 'CANCELLED'"
+    index_start: 1
     rules:
+      - id: apos
+        kind: field
+        field: ActivePos
+        type: int
+        transform:
+          expression: "@index"
       - id: aid
         kind: field
         field: ActiveId

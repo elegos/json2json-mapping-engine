@@ -252,6 +252,25 @@ def test_loop_with_sort_index_and_start():
     compile_source(text, "m")
 
 
+def test_filter_with_index_filters_before_enumerate():
+    text = tr(
+        [
+            loop(
+                [field("p", "@index", "Pos", "int"), field("i", "@.id", "Id")],
+                filter="@.st == 'A'",
+                sort={"key": "@.price"},
+                index_start=1,
+            )
+        ]
+    )
+    assert (
+        "for index, src in enumerate([src for src in sorted(root.items, key='price') "
+        "if src.st == 'A'], start=1):"
+    ) in text
+    assert "continue" not in text
+    compile_source(text, "m")
+
+
 def test_index_parameter_only_when_referenced():
     text = tr([loop([field("i", "@.id", "Id")])])
     assert "def lp(root: Any, src: Any) -> LinesItem:" in text
@@ -338,7 +357,6 @@ def test_input_schema_types_the_parameters():
         ([loop([])], "at least one field"),
         ([loop([field("a", "@.x")], sort={"key": "$.a + 1"})], "sort key"),
         ([loop([field("a", "@.x")], filter="@index > 1")], "filter cannot reference @index"),
-        ([loop([field("a", "@index", "A", "int")], filter="@.x")], "not supported yet"),
     ],
 )
 def test_unsupported_shapes_fail_with_a_clear_error(rules, message):
