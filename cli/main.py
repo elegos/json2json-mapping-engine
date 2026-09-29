@@ -94,6 +94,8 @@ def _compile_all(config, targets: list[Path], force: bool = False):
         units.append(result.unit)
         if path in targets:
             typer.echo(f"{'up-to-date' if result.skipped else 'compiled'}: {path}")
+            for w in result.warnings:
+                typer.echo(f"  warning: {w}")
     return units
 
 
@@ -124,14 +126,17 @@ def transpile(
         )
         raise typer.Exit(code=1)
     for path in _target_mappings(file, config):
+        warnings: list[str] = []
         try:
-            transpile_functional(path, config)
+            transpile_functional(path, config, warnings=warnings)
         except BuildError as exc:
             typer.echo(f"error: {exc}", err=True)
             raise typer.Exit(code=1) from exc
         typer.echo(
             f"transpiled: {path} -> build/transpiled/{path.name.removesuffix('.fn.yaml')}.map.py"
         )
+        for w in warnings:
+            typer.echo(f"  warning: {w}")
 
 
 @app.command(name="compile")

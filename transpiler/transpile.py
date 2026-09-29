@@ -205,6 +205,7 @@ class _Builder:
     def __init__(self, file: FunctionalFile, options: TranspileOptions, schema: SchemaTypes | None):
         self.file = file
         self.opt = options
+        self.warnings: list[str] = []
         self.schema = schema
         self.lookups: dict[str, dict] = {}
         self.classes: list[ast.stmt] = []
@@ -237,13 +238,36 @@ class _Builder:
         the rule's `choices`, else the project default."""
         steps: list[tuple[str, str, Callable[[ast.expr], ast.expr]]] = []
         multiple = (rule.allowed or {}).get("multipleOf")
-        if multiple is not None and (
-            isinstance(multiple, bool) or not isinstance(multiple, (int, float)) or multiple <= 0
-        ):
-            raise FnYamlError(
-                f"{where}: allowed.multipleOf must be a number > 0 — got {multiple!r}"
+        if multiple is not None:
+            if (
+                isinstance(multiple, bool)
+                or not isinstance(multiple, (int, float))
+                or multiple == 0
+            ):
+                raise FnYamlError(
+                    f"{where}: allowed.multipleOf must be a non-zero number — got {multiple!r}"
+                )
+            if rule.type not in ("number", "int"):
+                raise FnYamlError(
+                    f"{where}: allowed.multipleOf applies to number/int fields only "
+                    f"(this one is {rule.type})"
+                )
+            if multiple < 0:
+                self.warnings.append(
+                    f"{where}: allowed.multipleOf {multiple} is negative; a multiple has no "
+                    f"sign, using {abs(multiple)}"
+                )
+                multiple = abs(multiple)
+        c = rule.choices
+        if c.multiple_of is not None and multiple is None:
+            self.warnings.append(f"{where}: choices.multipleOf has no allowed.multipleOf to act on")
+        if c.format is not None and not (rule.type == "number" and rule.format):
+            self.warnings.append(f"{where}: choices.format has no format to act on")
+        if c.conflicts and not (multiple is not None and rule.format):
+            self.warnings.append(
+                f"{where}: choices.conflicts has no format + allowed.multipleOf pair to act on"
             )
-        do_multiple = multiple is not None and rule.type in ("number", "int")
+        do_multiple = multiple is not None
         do_format = rule.type == "number" and rule.format is not None
         if do_multiple and do_format:
             assert rule.format is not None
@@ -611,11 +635,16 @@ def transpile_file_model(
     options: TranspileOptions | None = None,
     input_schema: SchemaTypes | None = None,
     source_name: str = "<fn.yaml>",
+    warnings: list[str] | None = None,
 ) -> str:
+    """`warnings`, when given, receives the non-fatal findings (unused `choices`,
+    negative `multipleOf`, ...)."""
     options = options or TranspileOptions()
     assign_ids(file)
     b = _Builder(file, options, input_schema)
     b.build()
+    if warnings is not None:
+        warnings.extend(b.warnings)
 
     header = ast.parse(f"from __mapping__ import *\n\n__id__ = {file.id!r}").body
     body: list[ast.stmt] = [*header, *b.classes, *b.functions, *b.flow]
@@ -642,8 +671,11 @@ def transpile_file(
     path: Path,
     options: TranspileOptions | None = None,
     input_schema: SchemaTypes | None = None,
+    warnings: list[str] | None = None,
 ) -> str:
-    return transpile_file_model(load_functional_file(path), options, input_schema, path.name)
+    return transpile_file_model(
+        load_functional_file(path), options, input_schema, path.name, warnings
+    )
 
 
 __all__ = ["Rule", "TranspileOptions", "transpile_file", "transpile_file_model"]

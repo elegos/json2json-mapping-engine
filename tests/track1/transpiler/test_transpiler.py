@@ -368,6 +368,38 @@ def test_invalid_choices_rejected():
         tr(_num(multiple=0))
 
 
+def _warn(rules: list[dict]) -> list[str]:
+    w: list[str] = []
+    transpile_file_model(model(rules), TranspileOptions(), warnings=w)
+    return w
+
+
+def test_choices_without_subject_warn():
+    w = _warn(_num(choices={"format": "truncate", "multipleOf": "round"}))
+    assert [x.split(": ", 1)[1] for x in w] == [
+        "choices.multipleOf has no allowed.multipleOf to act on",
+        "choices.format has no format to act on",
+    ]
+    assert len(_warn(_num("0.00", choices={"conflicts": {"format+multipleOf": "both"}}))) == 1
+    assert _warn(_num("0.00", 0.05, choices={"format": "truncate", "multipleOf": "round"})) == []
+    assert _warn(_num("0.00")) == []
+
+
+def test_negative_multiple_of_warns_and_uses_absolute_value():
+    rules = _num(multiple=-0.05)
+    assert "negative" in _warn(rules)[0]
+    assert "return round(root.v / 0.05, 0) * 0.05" in tr(rules)
+
+
+def test_multiple_of_type_and_value_errors():
+    with pytest.raises(FnYamlError, match="number/int fields only"):
+        tr([field("a", "$.v", "V", "str", allowed={"multipleOf": 5})])
+    with pytest.raises(FnYamlError, match="non-zero number"):
+        tr(_num(multiple="x"))
+    ints = tr([field("a", "$.v", "V", "int", allowed={"multipleOf": 5})])
+    assert "return round(root.v / 5, 0) * 5" in ints
+
+
 def test_object_with_guard_omits_via_bare_return():
     text = tr(
         [

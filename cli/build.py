@@ -24,7 +24,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from cli.config import MapperConfig
@@ -98,7 +98,9 @@ def _schema_bytes(stem: str) -> list[bytes]:
     ]
 
 
-def transpile_functional(path: Path, config: MapperConfig, write: bool = True) -> str:
+def transpile_functional(
+    path: Path, config: MapperConfig, write: bool = True, warnings: list[str] | None = None
+) -> str:
     """`.fn.yaml` -> `.map.py` source text (driven mode). With `write`, also
     saved to `build/transpiled/<stem>.map.py`."""
     stem = source_stem(path)
@@ -112,6 +114,7 @@ def transpile_functional(path: Path, config: MapperConfig, write: bool = True) -
                 multiple_of_choice=config.compiler.default_choices.multiple_of,
             ),
             input_schema=resolve_schema_for(stem, SCHEMAS_INPUT_DIR),
+            warnings=warnings,
         )
     except FnYamlError as exc:
         raise BuildError(f"{path}: {exc}") from exc
@@ -126,11 +129,15 @@ def compile_fresh(path: Path, config: MapperConfig) -> PlsqlUnit:
     caching path (on a cache miss) and `mapper check` (which must never
     trust the cache, since the cache only tracks *source* hashes, not
     whether the committed output still matches)."""
+    return _compile_fresh(path, config, [])
+
+
+def _compile_fresh(path: Path, config: MapperConfig, warnings: list[str]) -> PlsqlUnit:
     stem = source_stem(path)
     if is_functional(path):
         if config.project.mode != "driven":
             raise BuildError(f"{path}: .fn.yaml files are only built in mode = 'driven'")
-        source = transpile_functional(path, config)
+        source = transpile_functional(path, config, warnings=warnings)
     else:
         source = path.read_text()
     target_config = config.target_config()
@@ -183,6 +190,7 @@ class CompileResult:
     path: Path
     skipped: bool
     unit: PlsqlUnit
+    warnings: list[str] = field(default_factory=list)  # transpiler findings, cached with the unit
 
 
 def compile_mapping(path: Path, config: MapperConfig, force: bool = False) -> CompileResult:
@@ -197,14 +205,19 @@ def compile_mapping(path: Path, config: MapperConfig, force: bool = False) -> Co
         try:
             cached = json.loads(cache_file.read_text())
             if cached["hash"] == digest:
-                return CompileResult(path, True, PlsqlUnit.from_json(cached["unit"]))
+                return CompileResult(
+                    path, True, PlsqlUnit.from_json(cached["unit"]), cached.get("warnings", [])
+                )
         except (ValueError, KeyError, TypeError):
             pass  # corrupt cache entry — recompile
 
-    unit = compile_fresh(path, config)
+    warnings: list[str] = []
+    unit = _compile_fresh(path, config, warnings)
     cache_file.parent.mkdir(parents=True, exist_ok=True)
-    cache_file.write_text(json.dumps({"hash": digest, "unit": unit.to_json()}, indent=1))
-    return CompileResult(path, False, unit)
+    cache_file.write_text(
+        json.dumps({"hash": digest, "unit": unit.to_json(), "warnings": warnings}, indent=1)
+    )
+    return CompileResult(path, False, unit, warnings)
 
 
 def write_package(units: list[PlsqlUnit], config: MapperConfig) -> Path:
