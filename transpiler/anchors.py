@@ -1,4 +1,4 @@
-"""Stage 2 — Anchor Resolver (docs/ARCHITECTURE.md, §Scope anchors).
+"""Anchor resolver (used by the `build` stage) (docs/ARCHITECTURE.md, §Scope anchors).
 
 Rewrites the functional dialect into the developer dialect, textually:
 

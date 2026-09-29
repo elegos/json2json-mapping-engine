@@ -33,6 +33,7 @@ from compiler.backends.plsql.package import assemble_package
 from compiler.pipeline import compile_unit, extract_mapping_id
 from compiler.schema_generator import SchemaTypes, resolve_schema_types
 from transpiler.model import FnYamlError, load_functional_file
+from transpiler.stages import STAGES, run_stages
 from transpiler.transpile import TranspileOptions, transpile_file
 
 MAPPINGS_DIR = Path("mappings")
@@ -98,27 +99,59 @@ def _schema_bytes(stem: str) -> list[bytes]:
     ]
 
 
+def transpile_options(config: MapperConfig) -> TranspileOptions:
+    return TranspileOptions(
+        loop_fusion=config.optimizer.loop_fusion,
+        parallel_conflict=config.optimizer.parallel_conflict,
+        format_choice=config.compiler.default_choices.format,
+        multiple_of_choice=config.compiler.default_choices.multiple_of,
+    )
+
+
+def stages_dir(path: Path) -> Path:
+    return BUILD_TRANSPILED_DIR / "stages" / source_stem(path)
+
+
 def transpile_functional(
-    path: Path, config: MapperConfig, write: bool = True, warnings: list[str] | None = None
+    path: Path,
+    config: MapperConfig,
+    write: bool = True,
+    warnings: list[str] | None = None,
+    stage: int | None = None,
+    dump_stages: bool = False,
+    cached: bool = False,
+    log: list[str] | None = None,
 ) -> str:
     """`.fn.yaml` -> `.map.py` source text (driven mode). With `write`, also
-    saved to `build/transpiled/<stem>.map.py`."""
+    saved to `build/transpiled/<stem>.map.py`.
+
+    `stage` (1-4) stops after that stage and writes the stage artifacts to
+    `build/transpiled/stages/<stem>/` (removing later ones); `dump_stages`
+    writes all four; `cached` (needs `stage`) resumes from the previous
+    stage's artifact. The final `.map.py` is only written when the run
+    reaches the last stage."""
     stem = source_stem(path)
+    options = transpile_options(config)
+    schema = resolve_schema_for(stem, SCHEMAS_INPUT_DIR)
     try:
-        text = transpile_file(
-            path,
-            TranspileOptions(
-                loop_fusion=config.optimizer.loop_fusion,
-                parallel_conflict=config.optimizer.parallel_conflict,
-                format_choice=config.compiler.default_choices.format,
-                multiple_of_choice=config.compiler.default_choices.multiple_of,
-            ),
-            input_schema=resolve_schema_for(stem, SCHEMAS_INPUT_DIR),
-            warnings=warnings,
-        )
+        if stage is None and not dump_stages:
+            text = transpile_file(path, options, input_schema=schema, warnings=warnings)
+            last = len(STAGES)
+        else:
+            last = stage or len(STAGES)
+            text = run_stages(
+                path,
+                options,
+                last,
+                stages_dir(path),
+                input_schema=schema,
+                cached=cached,
+                warnings=warnings,
+                log=log,
+            )
     except FnYamlError as exc:
         raise BuildError(f"{path}: {exc}") from exc
-    if write:
+    if write and last == len(STAGES):
         BUILD_TRANSPILED_DIR.mkdir(parents=True, exist_ok=True)
         (BUILD_TRANSPILED_DIR / f"{stem}.map.py").write_text(text)
     return text

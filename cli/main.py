@@ -14,6 +14,7 @@ from cli.build import (
     compile_mapping,
     discover_mappings,
     package_path,
+    stages_dir,
     transpile_functional,
     write_package,
 )
@@ -21,6 +22,8 @@ from cli.config import MapperConfigError, load_config
 from cli.stubs import generate_stubs
 from cli.track1 import run_track1
 from cli.track2 import Track2Error, detect_runtime, run_track2, runtime_diagnostic
+from transpiler.model import FnYamlError
+from transpiler.stages import STAGES, artifact, parse_stage
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
 
@@ -115,8 +118,32 @@ def _compile_and_package(config, file: str | None, force: bool = False) -> None:
 @app.command()
 def transpile(
     file: str | None = typer.Argument(None, help="Single .fn.yaml file to transpile"),
+    stage: str | None = typer.Option(
+        None,
+        "--stage",
+        help="Stop after this stage (1-4 or load|build|fuse|emit), writing the stage "
+        "artifacts up to it to build/transpiled/stages/<mapping>/ and removing later ones",
+    ),
+    dump_stages: bool = typer.Option(
+        False, "--dump-stages", help="Write the artifacts of all four stages"
+    ),
+    cached: bool = typer.Option(
+        False,
+        "--cached",
+        help="With --stage: start from the previous stage's artifact when it exists",
+    ),
 ) -> None:
     """Transpile .fn.yaml -> build/transpiled/*.map.py (driven mode only)."""
+    if cached and stage is None:
+        typer.echo("error: --cached needs --stage", err=True)
+        raise typer.Exit(code=2)
+    stage_no = None
+    if stage is not None:
+        try:
+            stage_no = parse_stage(stage)
+        except FnYamlError as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=2) from exc
     config = _load_config_or_exit()
     if config.project.mode != "driven":
         typer.echo(
@@ -127,14 +154,30 @@ def transpile(
         raise typer.Exit(code=1)
     for path in _target_mappings(file, config):
         warnings: list[str] = []
+        notes: list[str] = []
         try:
-            transpile_functional(path, config, warnings=warnings)
+            transpile_functional(
+                path,
+                config,
+                warnings=warnings,
+                stage=stage_no,
+                dump_stages=dump_stages,
+                cached=cached,
+                log=notes,
+            )
         except BuildError as exc:
             typer.echo(f"error: {exc}", err=True)
             raise typer.Exit(code=1) from exc
-        typer.echo(
-            f"transpiled: {path} -> build/transpiled/{path.name.removesuffix('.fn.yaml')}.map.py"
-        )
+        stem = path.name.removesuffix(".fn.yaml")
+        for n in notes:
+            typer.echo(n)
+        if stage_no is not None and stage_no < len(STAGES):
+            typer.echo(
+                f"stage {stage_no} ({STAGES[stage_no - 1]}): {path} -> "
+                f"{artifact(stages_dir(path), stage_no)}"
+            )
+        else:
+            typer.echo(f"transpiled: {path} -> build/transpiled/{stem}.map.py")
         for w in warnings:
             typer.echo(f"  warning: {w}")
 

@@ -343,7 +343,10 @@ Independent of M6/M7; pick up in any order.
       `format_mode`) + `[compiler.default_choices]` (replaces `decimal_mode`); conflict with
       `format` must be resolved via `choices.conflicts`. Steps are explained by comments in
       the `.map.py`. Schema-derived `multipleOf` and the editor UI wait for M6.
-- [ ] **Per-stage on-disk artifacts** of the transpiler.
+- [x] **Per-stage on-disk artifacts** of the transpiler. Four stages (load, build, fuse,
+      emit — the old five-stage description did not match the code): `mapper transpile
+      --stage N|alias`, `--dump-stages`, `--cached`; artifacts in
+      `build/transpiled/stages/<mapping>/`.
 - [ ] **`@parallel` from `.fn.yaml`.**
 - [ ] **Error isolation between nested members** (today the top-level element is the
       unit of failure).

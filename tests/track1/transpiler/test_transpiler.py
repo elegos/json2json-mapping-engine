@@ -673,3 +673,21 @@ def test_nested_fixture_matches_golden_and_compiles():
     text = transpile_file(FIXTURES / "nested.fn.yaml")
     assert text == (FIXTURES / "nested.map.py.golden").read_text()
     compile_source(text, "nested")
+
+
+def test_cached_stages_match_a_direct_run(tmp_path: Path):
+    """Resuming from any stage artifact gives the same final text as a full run
+    — including the explanatory comments, which survive the .map.py round trip."""
+    from transpiler.stages import artifact, run_stages
+
+    src = FIXTURES / "order_event.fn.yaml"
+    options = TranspileOptions()
+    direct = transpile_file(src, options)
+    out = tmp_path / "stages"
+    assert run_stages(src, options, 4, out) == direct
+    assert "# Total: format '0.00'" in artifact(out, 2).read_text()
+    for stage in (2, 3, 4):
+        assert run_stages(src, options, stage, out, cached=True) == artifact(out, stage).read_text()
+    assert run_stages(src, options, 4, out, cached=True) == direct
+    # the load artifact round-trips into the same tree
+    assert run_stages(src, options, 2, out, cached=True) == artifact(out, 2).read_text()

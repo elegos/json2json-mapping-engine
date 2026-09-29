@@ -1,10 +1,10 @@
-"""Stage 1 — YAML Loader (docs/ARCHITECTURE.md, §Transpiler pipeline,
+"""Stage `load` — YAML Loader (docs/ARCHITECTURE.md, §Transpiler pipeline,
 §Functional file schema).
 
 Reads a `.fn.yaml` into a typed Rule Tree. Strict about structure (unknown
 keys, wrong kinds, missing required keys are errors, reported with the path to
 the offending rule) but knows nothing about expression syntax — that is
-Stages 2-3.
+the `build` stage.
 
 Metadata the transpiler never reads (`allowed`, `example`, `description`,
 `version`, `source.path`) is still loaded and kept, so the desktop tool (M6)
@@ -14,7 +14,7 @@ and the decay helper (`apply_decay`) work off the same model.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from dataclasses import field as dc_field
 from pathlib import Path
 from typing import Any, Literal
@@ -384,3 +384,36 @@ def apply_decay(old: FieldRule, new: FieldRule) -> FieldRule:
     if not functional_change:
         return new
     return replace(new, validation=replace(new.validation, validated=False, needs_review=True))
+
+
+# -- (de)serialization of the loaded tree (stage artifact `load`) -------------
+
+
+def functional_to_dict(file: FunctionalFile) -> dict[str, Any]:
+    """The Rule Tree as plain data; every rule carries its `kind` tag."""
+    data = asdict(file)
+    data["path"] = str(file.path) if file.path else None
+    return data
+
+
+def functional_from_dict(data: dict[str, Any]) -> FunctionalFile:
+    return FunctionalFile(
+        name=data["name"],
+        id=data["id"],
+        rules=[_rule_from_dict(r) for r in data["rules"]],
+        path=Path(data["path"]) if data.get("path") else None,
+    )
+
+
+def _rule_from_dict(data: dict[str, Any]) -> Rule:
+    data = dict(data)
+    kind = data.pop("kind")
+    if kind == "field":
+        data["choices"] = Choices(**data["choices"])
+        data["transform"] = Transform(**data["transform"])
+        data["validation"] = Validation(**data["validation"])
+        return FieldRule(**data)
+    if kind == "lookup":
+        return LookupRule(**data)
+    data["rules"] = [_rule_from_dict(r) for r in data["rules"]]
+    return ObjectRule(**data) if kind == "object" else LoopRule(**data)

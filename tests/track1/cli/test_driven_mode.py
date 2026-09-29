@@ -83,3 +83,47 @@ def test_transpile_refuses_bootstrap_mode(project: Path):
     result = runner.invoke(app, ["transpile"])
     assert result.exit_code == 1
     assert "driven" in result.output
+
+
+def _stages(project: Path) -> list[str]:
+    d = project / "build/transpiled/stages/order_summary"
+    return sorted(p.name for p in d.iterdir()) if d.is_dir() else []
+
+
+def test_no_stage_option_writes_no_artifacts(project: Path):
+    assert runner.invoke(app, ["transpile"]).exit_code == 0
+    assert _stages(project) == []
+
+
+def test_stage_writes_artifacts_up_to_it_and_removes_later_ones(project: Path):
+    assert runner.invoke(app, ["transpile", "--dump-stages"]).exit_code == 0
+    assert _stages(project) == ["1-load.json", "2-build.map.py", "3-fuse.map.py", "4-emit.map.py"]
+    result = runner.invoke(app, ["transpile", "--stage", "fuse"])
+    assert result.exit_code == 0, result.output
+    assert _stages(project) == ["1-load.json", "2-build.map.py", "3-fuse.map.py"]
+    assert runner.invoke(app, ["transpile", "--stage", "1"]).exit_code == 0
+    assert _stages(project) == ["1-load.json"]
+
+
+def test_cached_resumes_from_previous_stage(project: Path):
+    assert runner.invoke(app, ["transpile", "--stage", "build"]).exit_code == 0
+    build = project / "build/transpiled/stages/order_summary/2-build.map.py"
+    build.write_text(build.read_text() + "# marker-from-artifact\n")
+    assert runner.invoke(app, ["transpile", "--stage", "fuse", "--cached"]).exit_code == 0
+    fused = project / "build/transpiled/stages/order_summary/3-fuse.map.py"
+    assert "# marker-from-artifact" in fused.read_text()  # read from the artifact
+    out = runner.invoke(app, ["transpile", "--stage", "emit", "--cached"])
+    assert out.exit_code == 0, out.output
+    assert (project / "build/transpiled/order_summary.map.py").is_file()
+
+
+def test_cached_without_previous_artifact_runs_from_the_start(project: Path):
+    result = runner.invoke(app, ["transpile", "--stage", "fuse", "--cached"])
+    assert result.exit_code == 0, result.output
+    assert "running from stage 1" in result.output
+    assert _stages(project) == ["1-load.json", "2-build.map.py", "3-fuse.map.py"]
+
+
+def test_stage_option_errors(project: Path):
+    assert runner.invoke(app, ["transpile", "--cached"]).exit_code == 2
+    assert runner.invoke(app, ["transpile", "--stage", "9"]).exit_code == 2

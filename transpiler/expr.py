@@ -1,4 +1,4 @@
-"""Stage 3 — Expression Parser (docs/ARCHITECTURE.md, §Expression language).
+"""Expression blocks (used by the `build` stage) (docs/ARCHITECTURE.md, §Expression language).
 
 An expression block is Python: optional local assignments, then a value
 (`return` is optional on the last line). After anchor resolution `ast.parse()`
