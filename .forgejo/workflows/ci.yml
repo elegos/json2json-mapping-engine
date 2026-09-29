@@ -48,7 +48,7 @@ jobs:
       - name: Install node, git and docker CLI
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends nodejs git ca-certificates docker.io
+          apt-get install -y --no-install-recommends nodejs git ca-certificates docker-cli
           rm -rf /var/lib/apt/lists/*
 
       - uses: actions/checkout@v4
