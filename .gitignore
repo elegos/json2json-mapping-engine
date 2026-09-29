@@ -14,3 +14,6 @@ build/python/
 
 *.egg-info/
 dist/
+
+.env
+.envrc
