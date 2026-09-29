@@ -11,6 +11,160 @@ There is no DSL interpretation at runtime — the output is ordinary compiled co
 
 ---
 
+## Architecture at a glance
+
+High-level views of the system. Each diagram is detailed in the section named under it;
+this chapter is the map, not the specification.
+
+### 1. Sources, build and artifacts
+
+Two ways in (§Operational modes): **bootstrap** — the developer hand-writes `.map.py`;
+**driven** — the `.fn.yaml` is the source of truth and the `.map.py` is generated. From
+the `.map.py` on, the path is the same.
+
+```mermaid
+flowchart LR
+    subgraph inputs["Inputs (committed)"]
+        FNY[".fn.yaml<br/>functional rules"]
+        MAPPY_H[".map.py<br/>hand-written (bootstrap)"]
+        FN[".fn library<br/>+ @override"]
+        SCH["JSON Schemas<br/>input / output"]
+        TOML["mapper.toml"]
+    end
+
+    subgraph build["mapper build"]
+        TR["Transpiler<br/>(driven mode only)"]
+        GEN["Schema Generator"]
+        COMP["Compiler"]
+    end
+
+    FNY --> TR --> MAPPY_G[".map.py<br/>build/transpiled/ (ephemeral)"]
+    SCH --> GEN --> STUBS[".pyi stubs +<br/>@dataclass<br/>(IDE + type checking)"]
+    MAPPY_H --> COMP
+    MAPPY_G --> COMP
+    FN --> COMP
+    STUBS --> COMP
+    TOML -.->|options, hash| TR
+    TOML -.->|options, hash| COMP
+    COMP --> SQL["build/compiled/&lt;package&gt;.sql<br/>PL/SQL package (committed)"]
+    SQL --> DEPLOY[("Oracle DB<br/>MAPPING_RULES")]
+```
+
+*Detail: §Compiler pipeline, §Build CLI, §Build folder and incremental compilation.*
+
+### 2. Transpiler: `.fn.yaml` → `.map.py`
+
+Four stages; each can be dumped to `build/transpiled/stages/<mapping>/` and re-run from
+that artifact (`--stage`, `--dump-stages`, `--cached`).
+
+```mermaid
+flowchart LR
+    A[".fn.yaml"] --> S1["1 · load<br/>strict YAML → Rule Tree"]
+    S1 -->|"1-load.json"| S2["2 · build<br/>ids, anchors, expressions,<br/>choices steps → .map.py"]
+    S2 -->|"2-build.map.py"| S3["3 · fuse<br/>loop fusion"]
+    S3 -->|"3-fuse.map.py"| S4["4 · emit<br/>header, final touches"]
+    S4 -->|"4-emit.map.py"| OUT["build/transpiled/<br/>&lt;mapping&gt;.map.py"]
+
+    SCH["input JSON Schema"] -.-> S2
+    CFG["mapper.toml<br/>optimizer, default_choices"] -.-> S2
+    CFG -.-> S3
+    S2 -.->|non-fatal| W["warnings"]
+```
+
+*Detail: §Transpiler pipeline, §choices.*
+
+### 3. Compiler: `.map.py` → PL/SQL
+
+Language-agnostic front end; the Code Generator is the only target-specific part.
+
+```mermaid
+flowchart TB
+    subgraph phase1["Phase 1 — function library"]
+        FNL[".fn files + @override"] --> SYM["symbol table<br/>(name → param/return types)"]
+    end
+
+    subgraph phase2["Phase 2 — mapping rules"]
+        SRC[".map.py"] --> VAL["Validator<br/>subset gate (security)"]
+        VAL --> FUS["Loop Fusion Optimizer"]
+        FUS --> SCOPE["Scope Resolver<br/>root / src / out chain"]
+        SCOPE --> TC["Type Checker<br/>reads vs stubs,<br/>writes vs dataclasses"]
+        TC --> LINK["Function Linker"]
+        LINK --> CG["Code Generator<br/>(PL/SQL backend)"]
+    end
+
+    STUBS["stubs + dataclasses<br/>(from JSON Schemas)"] --> TC
+    SYM --> LINK
+    CG --> PKG["Package assembly<br/>one package per project"]
+    PKG --> SQL["&lt;package&gt;.sql"]
+```
+
+*Detail: §Compiler pipeline, §Loop Fusion Optimizer.*
+
+### 4. Generated code at runtime
+
+Every mapping compiles to two entry points over the same rule functions. The engine calls
+one of them; there is no rule interpretation at runtime.
+
+```mermaid
+flowchart LR
+    IN["p_src (CLOB)"] --> R["map_&lt;id&gt;<br/>(raising)"]
+    IN --> S["map_&lt;id&gt;_safe"]
+
+    R --> RF["rule functions<br/>fn_&lt;id&gt;_&lt;rule&gt;<br/>(one call per rule,<br/>wrapped individually)"]
+    S --> RF
+
+    RF -->|"all rules ok"| OUT["p_out (CLOB)"]
+    RF -->|"rule failed"| ACC["error accumulator<br/>first failure per rule,<br/>execution continues"]
+    ACC -->|"safe"| SOUT["p_out + errors<br/>(no exception)"]
+    ACC -->|"raising"| RAISE["raises reserved error code<br/>payload: total_errors + errors"]
+```
+
+*Detail: §Generated artifact (PL/SQL), §Runtime error semantics.*
+
+### 5. Testing
+
+```mermaid
+flowchart TB
+    subgraph off["Offline tests — mapper test --offline"]
+        T1["pytest: fixtures → transpiler / compiler<br/>snapshots (goldens)"]
+    end
+
+    subgraph integ["Integration tests — mapper test --integration"]
+        C["tests/golden/&lt;mapping&gt;/*.input.json<br/>(+ optional *.expected.json)"] --> H["harness"]
+        H --> DB[("ephemeral Oracle container<br/>podman / docker")]
+        DB --> H
+        H --> CHK["per case:<br/>map_&lt;id&gt;_safe → diff vs expected<br/>map_&lt;id&gt; → consistent with _safe<br/>output vs allowed constraints → warnings"]
+    end
+
+    PKGSQL["build/compiled/&lt;package&gt;.sql"] --> DB
+```
+
+*Detail: §Testing.*
+
+### 6. Tooling around the engine
+
+The desktop tool (M6) edits `.fn.yaml` and drives the same CLI and libraries; it adds no
+build logic of its own.
+
+```mermaid
+flowchart LR
+    DEV(["Developer"]) --> UI["Desktop tool (M6)<br/>rule grid, validation, LLM assist"]
+    DEV --> IDE["IDE<br/>(.map.py + generated stubs)"]
+    DEV --> CLI["mapper CLI<br/>transpile · compile · build · check · test"]
+    UI -->|"edits"| FNY[".fn.yaml"]
+    UI --> CLI
+    IDE -->|"edits (bootstrap)"| MAPPY[".map.py"]
+    CLI --> ART["build/ artifacts"]
+    UI -->|"VCS"| GIT[("git")]
+    FNY --> GIT
+    MAPPY --> GIT
+    ART -->|"compiled/*.sql only"| GIT
+```
+
+*Detail: §Functional Layer, §IDE setup for `.map.py` development.*
+
+---
+
 ## Design principles
 
 - **Python as syntax, not runtime.** The `.map` files are valid Python that is never executed as Python. The Python AST is the compiler frontend.
@@ -531,12 +685,11 @@ json2json-mapper/
 │       └── plsql/
 │           ├── codegen.py
 │           └── builtins.py    ← hardcoded built-in function implementations
-├── transpiler/            ← transpiler source (Python, 5-stage pipeline)
-│   ├── loader.py          ← Stage 1
-│   ├── anchor_resolver.py ← Stage 2
-│   ├── expr_parser.py     ← Stage 3
-│   ├── loop_fusion.py     ← Stage 4 (optional)
-│   └── emitter.py         ← Stage 5
+├── transpiler/            ← transpiler source (Python, 4-stage pipeline)
+│   ├── model.py           ← stage load: .fn.yaml → Rule Tree
+│   ├── ids.py, anchors.py, expr.py  ← used by stage build
+│   ├── transpile.py       ← stages build / fuse / emit
+│   └── stages.py          ← stage artifacts (--stage, --dump-stages, --cached)
 ├── runtime/               ← static IDE stubs (non-generated)
 │   └── __mapping__.pyi    ← placeholder; real stub is generated into build/python/stubs/
 ├── schemas/
@@ -928,7 +1081,8 @@ build/
 ├── cache/
 │   └── <mapping>.fn.yaml.sha256     ← content hash of source
 ├── transpiled/
-│   └── <mapping>.map.py             ← Stage 1-5 output
+│   ├── <mapping>.map.py             ← transpiler output (stage 4)
+│   └── stages/<mapping>/            ← optional per-stage artifacts
 └── compiled/
     └── <mapping>.sql                ← compiler output (PL/SQL)
 ```
@@ -936,7 +1090,7 @@ build/
 At each build invocation:
 1. Hash the `.fn.yaml` **together with the full contents of `mapper.toml`**. If it
    matches the cached hash **and** `build/transpiled/<mapping>.map.py` exists, skip
-   Stages 1–5. If either condition fails (hash changed or file missing), re-transpile.
+   the transpiler. If either condition fails (hash changed or file missing), re-transpile.
 2. Hash the `.map.py` **together with `mapper.toml`**. If it matches the cached hash
    **and** `build/compiled/<mapping>.sql` exists, skip compilation. If either condition
    fails, recompile.
