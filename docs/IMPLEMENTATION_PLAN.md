@@ -336,7 +336,11 @@ Independent of M6/M7; pick up in any order.
 - [x] **Track 2: exercise `map_<id>`** (raising variant). Each case also runs `map_<id>`
       and checks it agrees with `_safe`: same output when no rule errors, else raises the
       reserved code with `total_errors` = number of rule errors.
-- [ ] **`allowed`-constraint warnings** on Track 2 output (data model exists since M5).
+- [x] **`allowed`-constraint warnings** on integration-test output (`cli/allowed.py`; only
+      `.fn.yaml` `allowed`, schema-derived constraints wait for M6). Warnings never fail a case;
+      keywords not evaluable on a scalar field are reported, not ignored.
+- [ ] **Implicit `multipleOf` rounding** in the transpiler (`schema_options`, project default +
+      per-rule override) — see the design discussion; not yet implemented.
 - [ ] **Per-stage on-disk artifacts** of the transpiler.
 - [ ] **`@parallel` from `.fn.yaml`.**
 - [ ] **Error isolation between nested members** (today the top-level element is the

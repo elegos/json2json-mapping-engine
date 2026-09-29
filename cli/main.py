@@ -215,6 +215,8 @@ def test(
                     typer.echo(f"FAIL   {label} {r.message}")
                     if r.diff:
                         typer.echo(r.diff)
+                for w in r.warnings:
+                    typer.echo(f"  warning: allowed: {w}")
                 if r.rule_errors:
                     typer.echo(f"  rule errors: {json.dumps(r.rule_errors, ensure_ascii=False)}")
     if failed:

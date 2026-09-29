@@ -34,8 +34,10 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from cli.build import find_source, mapping_id_of, package_name, package_path
+from cli.allowed import check_allowed, collect_constraints, unsupported_keywords
+from cli.build import find_source, is_functional, mapping_id_of, package_name, package_path
 from cli.config import MapperConfig
+from transpiler.model import load_functional_file
 
 GOLDEN_DIR = Path("tests/golden")
 
@@ -255,6 +257,7 @@ class CaseResult:
     rule_errors: list[dict[str, Any]] = field(default_factory=list)
     diff: str = ""
     message: str = ""
+    warnings: list[str] = field(default_factory=list)  # `allowed` violations
 
 
 def _lob_text(v: Any) -> str | None:
@@ -308,6 +311,7 @@ def run_case(
     case: TestCase,
     raising_proc: str | None = None,
     error_code: int = -20000,
+    constraints: dict[tuple[str, ...], dict[str, Any]] | None = None,
 ) -> CaseResult:
     import oracledb
 
@@ -324,6 +328,11 @@ def run_case(
     err_raw = err_text.read() if hasattr(err_text, "read") else err_text
     rule_errors = json.loads(err_raw) if err_raw else []
 
+    warnings = (
+        [*unsupported_keywords(constraints), *check_allowed(actual, constraints)]
+        if constraints
+        else []
+    )
     twin = (
         check_raising(conn, raising_proc, case, actual, rule_errors, error_code)
         if raising_proc
@@ -331,13 +340,13 @@ def run_case(
     )
     if case.expected_path is None:
         if twin:
-            return CaseResult(case, False, actual, rule_errors, message=twin)
-        return CaseResult(case, None, actual, rule_errors)
+            return CaseResult(case, False, actual, rule_errors, message=twin, warnings=warnings)
+        return CaseResult(case, None, actual, rule_errors, warnings=warnings)
     expected = json.loads(case.expected_path.read_text())
     diff = json_diff(expected, actual)
     ok = not diff and not rule_errors and not twin
     msg = twin or ("rule errors reported" if rule_errors and not diff else "")
-    return CaseResult(case, ok, actual, rule_errors, diff, msg)
+    return CaseResult(case, ok, actual, rule_errors, diff, msg, warnings)
 
 
 def run_track2(config: MapperConfig, mapping: str | None = None, log=print) -> list[CaseResult]:
@@ -363,6 +372,11 @@ def run_track2(config: MapperConfig, mapping: str | None = None, log=print) -> l
             for c in cases:
                 src = find_source(c.mapping, config)
                 mapping_id = mapping_id_of(src) if src else c.mapping
+                constraints = (
+                    collect_constraints(load_functional_file(src))
+                    if src and is_functional(src)
+                    else None
+                )
                 results.append(
                     run_case(
                         conn,
@@ -370,6 +384,7 @@ def run_track2(config: MapperConfig, mapping: str | None = None, log=print) -> l
                         c,
                         raising_proc=f"{pkg}.map_{mapping_id}",
                         error_code=int(config.target_config()["error_code"]),
+                        constraints=constraints,
                     )
                 )
         finally:
