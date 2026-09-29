@@ -1,53 +1,69 @@
-"""Target-backend interface (docs/ARCHITECTURE.md, §Compiler components).
+"""Target-backend interface (docs/ARCHITECTURE.md, §Target backends).
 
-The Code Generator is the only target-specific compiler component; every
-phase before it (Validator, Scope Resolver, Type Checker, Function Linker,
-Loop Fusion Optimizer) is language-agnostic. Only `plsql` ships today, but
-the boundary is fixed now because the architecture's `@override(target=...)`
-mechanism and the multi-target `[target.<name>]` `mapper.toml` shape already
-assume a backend interface exists.
+The backend is the only target-specific part of the compiler; every phase
+before it (Validator, Loop Fusion Optimizer, Scope Resolver, Type Checker,
+Function Linker) is language-agnostic. The interface is deliberately coarse:
+a backend receives the checked, annotated tree of one mapping and returns a
+`CompiledUnit`; it later assembles the units of a whole project into the
+deployable artifact. How it emits code inside a unit (per-rule call sites,
+loops, entry points, ...) is its own business — targets differ too much for a
+shared line-level contract to stay honest.
+
+A backend declares its name in the `target` class attribute (`"plsql"` for
+`PlsqlBackend`); `compiler.backends.registry` finds every `Backend` subclass
+by importing the modules under `compiler.backends`, so adding a target means
+adding a subpackage — nothing is registered by hand.
 """
 
 from __future__ import annotations
 
+import ast
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, ClassVar
+
+from compiler.scope_resolver import ScopeResolution
 
 
-@dataclass(frozen=True)
-class FieldRule:
-    """One compiled field rule, ready for emission (§Rule id generation:
-    in bootstrap mode `id` is simply the rule's function/field name)."""
-
-    id: str
-    return_type: str  # DSL type name: str | int | number | bool | date | datetime
-    body: str  # backend-native function body text, already translated
+class CodeGenError(Exception):
+    """A mapping cannot be compiled or assembled for the target."""
 
 
-class CodeGenerator(ABC):
-    """One backend implements this per target language."""
+class CompiledUnit(ABC):
+    """One compiled mapping, ready for assembly. Serializable: the build cache
+    stores units between runs."""
 
-    target: str
+    mapping_id: str
 
     @abstractmethod
-    def size_string_type(self, max_length: int | None) -> str:
-        """Map a DSL `str` field (with optional JSON Schema `maxLength`) to
-        this target's native string type."""
+    def to_json(self) -> dict[str, Any]: ...
+
+
+class Backend(ABC):
+    """One per target language. Built from its `[target.<name>]` section."""
+
+    target: ClassVar[str]
+    required_keys: ClassVar[tuple[str, ...]] = ()
+    defaults: ClassVar[dict[str, Any]] = {}
+
+    def __init__(self, config: dict[str, Any]):
+        self.config = config
 
     @abstractmethod
-    def emit_field_guard(self, rule: FieldRule, out_field: str) -> str:
-        """Emit the per-rule call site: invoke the rule, apply the
-        skip/null/value emission contract, and accumulate (not raise) on
-        failure (§Runtime error semantics)."""
+    def compile_module(
+        self, tree: ast.Module, mapping_id: str, scope_resolution: ScopeResolution | None = None
+    ) -> CompiledUnit:
+        """Compile one checked mapping. Raises `CodeGenError`."""
 
     @abstractmethod
-    def emit_loop(self, loop_var: str, source_expr: str, body: str) -> str:
-        """Emit a single generated loop over a source array."""
+    def unit_from_json(self, data: dict[str, Any]) -> CompiledUnit:
+        """Inverse of `CompiledUnit.to_json` (build-cache entries)."""
 
     @abstractmethod
-    def emit_procedure_pair(
-        self, mapping_id: str, declarations: str, body: str, error_code: int
-    ) -> str:
-        """Emit the twin `map_<id>` (raises) / `map_<id>_safe` (never
-        raises) procedures sharing the same core logic (§Generated artifact,
-        §Runtime error semantics)."""
+    def assemble(self, units: list[CompiledUnit]) -> str:
+        """All units of the project -> the text of the deployable artifact.
+        Raises `CodeGenError` (e.g. duplicate mapping ids)."""
+
+    @abstractmethod
+    def artifact_path(self, compiled_dir: Path) -> Path:
+        """Where `assemble`'s output is written, under `compiled_dir`."""

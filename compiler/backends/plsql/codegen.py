@@ -22,7 +22,7 @@ the mapping id is the namespace: all mappings of a project share one PL/SQL
 package (`[target.plsql] package`), and the prefix keeps their private rule
 functions from colliding. `compile_module` returns a `PlsqlUnit` (this
 mapping's subprograms, not yet wrapped in any `CREATE`);
-`compiler.backends.plsql.package.assemble_package` puts every unit into one
+`compiler.backends.plsql.package.assemble_package` (called by `PlsqlBackend.assemble`) puts every unit into one
 package spec + body, listing `fn_*` in the spec too only when
 `[target.plsql] export_rule_functions = true` (§Generated artifact,
 "Rule-function visibility") — that only works cleanly if rule functions are
@@ -110,7 +110,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 
 from compiler.annotations import AnnotationError, resolve_dsl_type
-from compiler.backends.base import CodeGenerator, FieldRule
+from compiler.backends.base import CodeGenError, CompiledUnit
 from compiler.function_linker import FunctionLinker
 from compiler.loop_fusion import (
     NEXT_INDEX,
@@ -204,7 +204,7 @@ class PlsqlSubprogram:
 
 
 @dataclass(frozen=True)
-class PlsqlUnit:
+class PlsqlUnit(CompiledUnit):
     """One compiled mapping, ready for package assembly."""
 
     mapping_id: str
@@ -234,10 +234,6 @@ def _check_identifier(name: str) -> str:
             "limit — shorten the mapping id or rule name"
         )
     return name
-
-
-class CodeGenError(Exception):
-    pass
 
 
 def _quote(s: str) -> str:
@@ -1066,30 +1062,10 @@ class _ListAccumulator:
     var_name: str
 
 
-class PlsqlCodeGenerator(CodeGenerator):
-    target = "plsql"
-
+class PlsqlCodeGenerator:
     def __init__(self, function_linker: FunctionLinker, error_code: int = -20000):
         self.function_linker = function_linker
         self.error_code = error_code
-
-    # -- CodeGenerator interface -----------------------------------------
-
-    def size_string_type(self, max_length: int | None) -> str:
-        if max_length is not None and max_length <= 4000:
-            return f"VARCHAR2({max_length} CHAR)"
-        return "CLOB"
-
-    def emit_field_guard(self, rule: FieldRule, out_field: str) -> str:
-        raise NotImplementedError("use compile_module — kept for interface completeness")
-
-    def emit_loop(self, loop_var: str, source_expr: str, body: str) -> str:
-        raise NotImplementedError("use compile_module — kept for interface completeness")
-
-    def emit_procedure_pair(
-        self, mapping_id: str, declarations: str, body: str, error_code: int
-    ) -> str:
-        raise NotImplementedError("use compile_module — kept for interface completeness")
 
     # -- module compilation -----------------------------------------------
 

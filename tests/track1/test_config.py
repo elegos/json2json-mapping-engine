@@ -113,3 +113,11 @@ def test_default_choices_validated():
     for bad in ({"format": "up"}, {"nope": "round"}):
         with pytest.raises(MapperConfigError):
             parse_config({**base, "compiler": {"default_choices": bad}})
+
+
+def test_rejects_unknown_target_section():
+    bad = EXAMPLE_TOML.replace("[target.plsql]", "[target.cobol]").replace(
+        'target = "plsql"', 'target = "cobol"'
+    )
+    with pytest.raises(MapperConfigError, match="unknown target 'cobol'"):
+        parse_config(tomllib.loads(bad))

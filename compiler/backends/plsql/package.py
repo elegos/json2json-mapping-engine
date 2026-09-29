@@ -13,7 +13,8 @@ several packages would need a grouping key in `mapper.toml`; not offered yet.
 
 from __future__ import annotations
 
-from compiler.backends.plsql.codegen import CodeGenError, PlsqlUnit, _indent_block
+from compiler.backends.base import CodeGenError
+from compiler.backends.plsql.codegen import PlsqlUnit, _indent_block
 
 
 def assemble_package(

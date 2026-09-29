@@ -21,9 +21,8 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from compiler.backends.plsql.codegen import PlsqlCodeGenerator, PlsqlUnit
-from compiler.backends.plsql.package import assemble_package
-from compiler.function_linker import FunctionLinker
+from compiler.backends.base import Backend, CompiledUnit
+from compiler.backends.registry import DEFAULT_TARGET, create_backend
 from compiler.loop_fusion import fuse_loops
 from compiler.schema_generator import SchemaTypes
 from compiler.scope_resolver import resolve_scopes
@@ -48,12 +47,12 @@ def extract_mapping_id(tree: ast.Module, default: str) -> str:
 def compile_unit(
     source: str,
     default_mapping_id: str,
-    error_code: int = -20000,
+    backend: Backend,
     input_schema: SchemaTypes | None = None,
     output_schema: SchemaTypes | None = None,
     loop_fusion: bool = True,
     parallel_conflict: str = "exception",
-) -> PlsqlUnit:
+) -> CompiledUnit:
     tree = ast.parse(source)
     Validator().validate(tree)  # security gate — must run first
 
@@ -68,37 +67,21 @@ def compile_unit(
     scope_resolution = resolve_scopes(tree)
     check_module(tree, scope_resolution, input_schema, output_schema)
 
-    linker = FunctionLinker()
-    backend = PlsqlCodeGenerator(function_linker=linker, error_code=error_code)
     return backend.compile_module(tree, mapping_id, scope_resolution)
 
 
 def compile_source(
     source: str,
     default_mapping_id: str,
-    package: str = "MAPPING_RULES",
-    export_rule_functions: bool = False,
+    backend: Backend | None = None,
     **kwargs,
 ) -> str:
-    """Single-mapping convenience: compile and wrap in its own package."""
-    unit = compile_unit(source, default_mapping_id, **kwargs)
-    return assemble_package([unit], package, export_rule_functions)
+    """Single-mapping convenience: compile and assemble one unit into its
+    artifact text. Without `backend`, the default target with its defaults."""
+    backend = backend or create_backend(DEFAULT_TARGET)
+    unit = compile_unit(source, default_mapping_id, backend, **kwargs)
+    return backend.assemble([unit])
 
 
-def compile_file(
-    path: Path,
-    error_code: int = -20000,
-    input_schema: SchemaTypes | None = None,
-    output_schema: SchemaTypes | None = None,
-    loop_fusion: bool = True,
-    parallel_conflict: str = "exception",
-) -> str:
-    return compile_source(
-        path.read_text(),
-        default_mapping_id=path.stem,
-        error_code=error_code,
-        input_schema=input_schema,
-        output_schema=output_schema,
-        loop_fusion=loop_fusion,
-        parallel_conflict=parallel_conflict,
-    )
+def compile_file(path: Path, backend: Backend | None = None, **kwargs) -> str:
+    return compile_source(path.read_text(), default_mapping_id=path.stem, backend=backend, **kwargs)

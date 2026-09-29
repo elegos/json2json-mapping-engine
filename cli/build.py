@@ -28,8 +28,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from cli.config import MapperConfig
-from compiler.backends.plsql.codegen import CodeGenError, PlsqlUnit
-from compiler.backends.plsql.package import assemble_package
+from compiler.backends.base import Backend, CodeGenError, CompiledUnit
+from compiler.backends.registry import create_backend
 from compiler.pipeline import compile_unit, extract_mapping_id
 from compiler.schema_generator import SchemaTypes, resolve_schema_types
 from transpiler.model import FnYamlError, load_functional_file
@@ -157,7 +157,7 @@ def transpile_functional(
     return text
 
 
-def compile_fresh(path: Path, config: MapperConfig) -> PlsqlUnit:
+def compile_fresh(path: Path, config: MapperConfig) -> CompiledUnit:
     """Compile `path` unconditionally — no cache lookup. Used by both the
     caching path (on a cache miss) and `mapper check` (which must never
     trust the cache, since the cache only tracks *source* hashes, not
@@ -165,7 +165,7 @@ def compile_fresh(path: Path, config: MapperConfig) -> PlsqlUnit:
     return _compile_fresh(path, config, [])
 
 
-def _compile_fresh(path: Path, config: MapperConfig, warnings: list[str]) -> PlsqlUnit:
+def _compile_fresh(path: Path, config: MapperConfig, warnings: list[str]) -> CompiledUnit:
     stem = source_stem(path)
     if is_functional(path):
         if config.project.mode != "driven":
@@ -173,13 +173,13 @@ def _compile_fresh(path: Path, config: MapperConfig, warnings: list[str]) -> Pls
         source = transpile_functional(path, config, warnings=warnings)
     else:
         source = path.read_text()
-    target_config = config.target_config()
+    backend = backend_for(config)
     input_schema = resolve_schema_for(stem, SCHEMAS_INPUT_DIR)
     output_schema = resolve_schema_for(stem, SCHEMAS_OUTPUT_DIR)
     return compile_unit(
         source,
         default_mapping_id=stem,
-        error_code=target_config["error_code"],
+        backend=backend,
         input_schema=input_schema,
         output_schema=output_schema,
         loop_fusion=config.optimizer.loop_fusion,
@@ -201,19 +201,22 @@ def find_source(stem: str, config: MapperConfig) -> Path | None:
     return None
 
 
-def package_name(config: MapperConfig) -> str:
-    return config.target_config()["package"]
-
-
-def package_path(config: MapperConfig) -> Path:
-    return BUILD_COMPILED_DIR / f"{package_name(config).lower()}.sql"
-
-
-def assemble(units: list[PlsqlUnit], config: MapperConfig) -> str:
+def backend_for(config: MapperConfig) -> Backend:
+    """The backend of the configured `[project] target`, built from its
+    `[target.<name>]` section."""
     try:
-        return assemble_package(
-            units, package_name(config), config.target_config()["export_rule_functions"]
-        )
+        return create_backend(config.project.target, config.target_config())
+    except CodeGenError as exc:
+        raise BuildError(str(exc)) from exc
+
+
+def artifact_path(config: MapperConfig) -> Path:
+    return backend_for(config).artifact_path(BUILD_COMPILED_DIR)
+
+
+def assemble(units: list[CompiledUnit], config: MapperConfig) -> str:
+    try:
+        return backend_for(config).assemble(units)
     except CodeGenError as exc:
         raise BuildError(str(exc)) from exc
 
@@ -222,14 +225,14 @@ def assemble(units: list[PlsqlUnit], config: MapperConfig) -> str:
 class CompileResult:
     path: Path
     skipped: bool
-    unit: PlsqlUnit
+    unit: CompiledUnit
     warnings: list[str] = field(default_factory=list)  # transpiler findings, cached with the unit
 
 
 def compile_mapping(path: Path, config: MapperConfig, force: bool = False) -> CompileResult:
-    """Compile one mapping to its `PlsqlUnit`, cached in `build/cache/` keyed on
+    """Compile one mapping to its `CompiledUnit`, cached in `build/cache/` keyed on
     source hash + full `mapper.toml`. Units are assembled into the project's
-    single package by `write_package`."""
+    artifact by `write_package`."""
     source = path.read_bytes()
     digest = compute_hash(source, config.raw, _schema_bytes(source_stem(path)))
     cache_file = BUILD_CACHE_DIR / f"{path.name}.unit.json"
@@ -239,7 +242,10 @@ def compile_mapping(path: Path, config: MapperConfig, force: bool = False) -> Co
             cached = json.loads(cache_file.read_text())
             if cached["hash"] == digest:
                 return CompileResult(
-                    path, True, PlsqlUnit.from_json(cached["unit"]), cached.get("warnings", [])
+                    path,
+                    True,
+                    backend_for(config).unit_from_json(cached["unit"]),
+                    cached.get("warnings", []),
                 )
         except (ValueError, KeyError, TypeError):
             pass  # corrupt cache entry — recompile
@@ -253,8 +259,8 @@ def compile_mapping(path: Path, config: MapperConfig, force: bool = False) -> Co
     return CompileResult(path, False, unit, warnings)
 
 
-def write_package(units: list[PlsqlUnit], config: MapperConfig) -> Path:
-    out = package_path(config)
+def write_package(units: list[CompiledUnit], config: MapperConfig) -> Path:
+    out = artifact_path(config)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(assemble(units, config))
     return out

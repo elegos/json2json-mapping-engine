@@ -117,9 +117,10 @@ flowchart TB
 
 ### 4. Target backends
 
-What a backend contributes. The engine core selects one via `[project] target` and
-validates its `[target.<name>]` section against the keys the backend declares. PL/SQL is
-implemented today; the other rows are illustrative (§Target backends).
+What a backend contributes. The engine core discovers the backends under
+`compiler.backends`, selects one via `[project] target` and validates its
+`[target.<name>]` section against the keys the backend declares. PL/SQL is
+implemented today; Python and Go are illustrative (§Target backends).
 
 ```mermaid
 flowchart LR
@@ -590,27 +591,47 @@ particular language and runtime. The active one is `[project] target` in `mapper
 its configuration lives in `[target.<name>]`, and the loader validates that section
 against the keys the backend requires (`TARGET_REQUIRED_KEYS` in `cli/config.py`).
 
+**The interface is coarse on purpose** (`compiler/backends/base.py`). A backend
+receives one checked, annotated mapping and returns a `CompiledUnit`; later it
+assembles all the units of the project into the deployable artifact. How it emits code
+inside a unit is its own business — targets differ too much for a shared line-level
+contract to stay honest.
+
+```python
+class Backend(ABC):
+    target: ClassVar[str]                 # "plsql" for PlsqlBackend
+    required_keys: ClassVar[tuple[str, ...]]   # [target.<name>] keys it needs
+    defaults: ClassVar[dict[str, Any]]         # ... and their defaults
+    def compile_module(tree, mapping_id, scope_resolution) -> CompiledUnit
+    def unit_from_json(data) -> CompiledUnit   # build-cache entries
+    def assemble(units) -> str                 # the artifact text
+    def artifact_path(compiled_dir) -> Path    # where it is written
+```
+
 A backend contributes:
 
 | Concern | What the backend decides |
 |---|---|
-| Code generation | Annotated AST → target source (`CodeGenerator` in `compiler/backends/base.py`): type and string-size mapping, per-rule call site with error accumulation, loops, the twin entry points |
-| Built-ins | Native implementation of each built-in function (§Built-in functions) |
+| Code generation | Annotated AST → target source for one mapping: type and string-size mapping, per-rule call site with error accumulation, loops, the twin entry points |
+| Built-ins | Native implementation of each built-in function (§Built-in functions); the backend hands them to the target-agnostic Function Linker |
 | `@override` / `@parallel` | Resolution of `@override(target=...)` and the parallelism mechanism (§Decorators) |
-| Assembly and namespacing | How the mappings of a project become deployable artifact(s) (PL/SQL: one package; others may use a module or namespace per mapping) |
+| Assembly and namespacing | How the units of a project become the deployable artifact (PL/SQL: one package, `<package>.sql`; others may use a module or namespace per mapping) |
 | Error reporting | The failure mechanism behind the raising entry point (§Runtime error semantics, *Other targets*) |
+| Configuration | Required keys and defaults of its `[target.<name>]` section |
 | Integration tests | Its own golden-case tests and test environment (image or runner), §Testing |
 
-**Status.** PL/SQL is the only implemented backend and the reference for the contract.
-The `CodeGenerator` interface exists, and everything before it is target-independent, but
-nothing selects a backend from `[project] target` yet: `compiler/pipeline.py` and
-`cli/build.py` instantiate the PL/SQL generator and package assembler directly, so any
-target value would still produce PL/SQL. Dispatching on the configured target (code
-generation and package assembly) is part of adding a second backend.
+**Discovery.** The registry (`compiler/backends/registry.py`) is self-maintaining: it
+imports every module under `compiler.backends` and registers each concrete `Backend`
+subclass under its `target` attribute. Adding a target means adding a subpackage
+(`compiler/backends/go/`) with a `Backend` subclass that sets `target = "go"`; nothing is
+registered by hand. Two backends claiming the same name, or a config naming an unknown
+target, are errors that list what is available. The build (`cli/build.py`) and the
+pipeline only talk to the `Backend` interface, selected by `[project] target`.
 
 **Integration tests are per target.** Each backend brings its own integration tests and
 test environment (PL/SQL: golden cases against an ephemeral Oracle container). The
-current harness and the `[test]` container settings are the PL/SQL ones.
+current harness (`cli/track2.py`) and the `[test]` container settings are the PL/SQL
+ones.
 
 ## Generated artifact (PL/SQL)
 

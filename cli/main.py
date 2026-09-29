@@ -9,11 +9,11 @@ import typer
 
 from cli.build import (
     BuildError,
+    artifact_path,
     assemble,
     compile_fresh,
     compile_mapping,
     discover_mappings,
-    package_path,
     stages_dir,
     transpile_functional,
     write_package,
@@ -279,7 +279,7 @@ def check() -> None:
     committed output still matches what current sources produce)."""
     config = _load_config_or_exit()
     mappings = discover_mappings(config)
-    committed = package_path(config)
+    committed = artifact_path(config)
     try:
         fresh = assemble([compile_fresh(p, config) for p in mappings], config)
     except Exception as exc:

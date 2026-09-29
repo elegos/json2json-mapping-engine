@@ -6,11 +6,10 @@ Resolution priority per function name, per target:
   3. Built-in hardcoded implementation for the current target
   4. None of the above → compile error
 
-`FunctionImpl` is target-agnostic infrastructure; the actual built-in
-implementations for the `plsql` target live in
-`compiler/backends/plsql/builtins.py` (M2b — full built-in library). Project
-`fn/` file loading is not implemented yet — the registry always falls
-through to built-ins for now.
+`FunctionImpl` and the linker are target-agnostic; the built-in
+implementations belong to the backend, which passes them in (for `plsql`:
+`compiler/backends/plsql/builtins.py`). Project `fn/` file loading is not
+implemented yet — resolution always falls through to built-ins for now.
 """
 
 from __future__ import annotations
@@ -46,14 +45,16 @@ class FunctionImpl:
 
 
 class FunctionLinker:
-    def __init__(self, project_functions: dict[str, FunctionImpl] | None = None):
+    def __init__(
+        self,
+        builtins: dict[str, FunctionImpl],
+        project_functions: dict[str, FunctionImpl] | None = None,
+    ):
+        self._builtins = builtins
         # Project fn/ overrides (highest priority) — empty until the .fn
         # loader exists; kept as a constructor param so callers/tests can
         # inject them ahead of that.
         self._project_functions = project_functions or {}
-        from compiler.backends.plsql.builtins import BUILTIN_FUNCTIONS
-
-        self._builtins = BUILTIN_FUNCTIONS
 
     def resolve(self, name: str) -> FunctionImpl:
         if name in self._project_functions:

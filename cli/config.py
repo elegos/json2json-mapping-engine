@@ -13,23 +13,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
+from compiler.backends.base import CodeGenError
+from compiler.backends.registry import backend_class
+
 CONFIG_FILENAME = "mapper.toml"
-
-# Registry of required keys per compilation target. Extending to a new target
-# means adding an entry here; the loader enforces it uniformly.
-TARGET_REQUIRED_KEYS: dict[str, tuple[str, ...]] = {
-    "plsql": ("schema", "package", "fn_package", "error_code"),
-}
-
-TARGET_DEFAULTS: dict[str, dict[str, Any]] = {
-    "plsql": {
-        "fn_prefix": "",
-        "fn_suffix": "",
-        # true = also list every fn_<rule_id> in the package spec (not just
-        # map_<id>/map_<id>_safe) — §Generated artifact, "Rule-function visibility".
-        "export_rule_functions": False,
-    },
-}
 
 
 class MapperConfigError(Exception):
@@ -128,14 +115,17 @@ def _validate_mode(value: Any) -> Literal["driven", "bootstrap"]:
 
 
 def _validate_target_section(target: str, section: dict[str, Any]) -> dict[str, Any]:
-    required = TARGET_REQUIRED_KEYS.get(target, ())
-    missing = [key for key in required if key not in section]
+    """Required keys and defaults come from the target's backend."""
+    try:
+        cls = backend_class(target)
+    except CodeGenError as exc:
+        raise MapperConfigError(f"[target.{target}]: {exc}") from exc
+    missing = [key for key in cls.required_keys if key not in section]
     if missing:
         raise MapperConfigError(
             f"[target.{target}] is missing required key(s): {', '.join(missing)}"
         )
-    merged = {**TARGET_DEFAULTS.get(target, {}), **section}
-    return merged
+    return {**cls.defaults, **section}
 
 
 def parse_config(raw: dict[str, Any]) -> MapperConfig:

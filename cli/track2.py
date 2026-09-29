@@ -35,7 +35,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from cli.allowed import check_allowed, collect_constraints, unsupported_keywords
-from cli.build import find_source, is_functional, mapping_id_of, package_name, package_path
+from cli.build import artifact_path, find_source, is_functional, mapping_id_of
 from cli.config import MapperConfig
 from transpiler.model import load_functional_file
 
@@ -357,7 +357,7 @@ def run_track2(config: MapperConfig, mapping: str | None = None, log=print) -> l
     runtime = detect_runtime()
     if runtime is None:
         raise Track2Error("neither podman nor docker is available")
-    package_sql = package_path(config)
+    package_sql = artifact_path(config)
     if not package_sql.is_file():
         raise Track2Error(f"{package_sql} not found (run `mapper build` first)")
 
@@ -368,7 +368,7 @@ def run_track2(config: MapperConfig, mapping: str | None = None, log=print) -> l
         conn = oracledb.connect(user=db.user, password=db.password, dsn=db.dsn)
         try:
             deploy(conn, package_sql.read_text())
-            pkg = package_name(config)
+            pkg = config.target_config()["package"]
             for c in cases:
                 src = find_source(c.mapping, config)
                 mapping_id = mapping_id_of(src) if src else c.mapping
