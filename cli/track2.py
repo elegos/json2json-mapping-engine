@@ -2,7 +2,11 @@
 
 Detects Podman/Docker, starts an ephemeral Oracle container, deploys the
 compiled `build/compiled/<mapping>.sql`, runs `map_<id>_safe` for every test
-case and diffs the actual output against an optional expected file.
+case and diffs the actual output against an optional expected file. The raising
+twin `map_<id>` is then run on the same input and must agree with `_safe`:
+it succeeds with the same output when `_safe` reported no rule errors, and
+raises the reserved error code (payload `total_errors` = number of rule
+errors) otherwise.
 
 Case layout (per mapping, by basename of `mappings/<name>.map.py`):
 
@@ -253,7 +257,58 @@ class CaseResult:
     message: str = ""
 
 
-def run_case(conn: Any, proc: str, case: TestCase) -> CaseResult:
+def _lob_text(v: Any) -> str | None:
+    return v.read() if hasattr(v, "read") else v
+
+
+def check_raising(
+    conn: Any,
+    proc: str,
+    case: TestCase,
+    safe_out: Any,
+    rule_errors: list[dict[str, Any]],
+    error_code: int,
+) -> str:
+    """Run the raising twin `proc` and compare with the `_safe` result.
+    Returns "" when consistent, else a description of the mismatch."""
+    import oracledb
+
+    cur = conn.cursor()
+    src = conn.createlob(oracledb.DB_TYPE_CLOB, case.input_path.read_text())
+    out = cur.var(oracledb.DB_TYPE_CLOB)
+    try:
+        cur.execute(f"BEGIN {proc}(:s, :o); END;", s=src, o=out)
+    except oracledb.Error as exc:
+        (err,) = exc.args
+        code = getattr(err, "code", None)
+        if not rule_errors:
+            return f"{proc} raised but _safe reported no rule errors: {exc}"
+        if code != abs(error_code) and code != error_code:
+            return f"{proc} raised ORA{code}, expected {error_code}: {exc}"
+        try:
+            payload = json.loads(str(err.message).split(": ", 1)[-1])
+        except ValueError:
+            return f"{proc} error payload is not JSON: {exc}"
+        if payload.get("total_errors") != len(rule_errors):
+            return (
+                f"{proc} payload total_errors={payload.get('total_errors')}, "
+                f"_safe reported {len(rule_errors)}"
+            )
+        return ""
+    if rule_errors:
+        return f"{proc} did not raise but _safe reported {len(rule_errors)} rule error(s)"
+    actual = json.loads(_lob_text(out.getvalue()) or "null")
+    diff = json_diff(safe_out, actual)
+    return f"{proc} output differs from _safe:\n{diff}" if diff else ""
+
+
+def run_case(
+    conn: Any,
+    proc: str,
+    case: TestCase,
+    raising_proc: str | None = None,
+    error_code: int = -20000,
+) -> CaseResult:
     import oracledb
 
     cur = conn.cursor()
@@ -269,12 +324,19 @@ def run_case(conn: Any, proc: str, case: TestCase) -> CaseResult:
     err_raw = err_text.read() if hasattr(err_text, "read") else err_text
     rule_errors = json.loads(err_raw) if err_raw else []
 
+    twin = (
+        check_raising(conn, raising_proc, case, actual, rule_errors, error_code)
+        if raising_proc
+        else ""
+    )
     if case.expected_path is None:
+        if twin:
+            return CaseResult(case, False, actual, rule_errors, message=twin)
         return CaseResult(case, None, actual, rule_errors)
     expected = json.loads(case.expected_path.read_text())
     diff = json_diff(expected, actual)
-    ok = not diff and not rule_errors
-    msg = "" if ok else ("rule errors reported" if rule_errors and not diff else "")
+    ok = not diff and not rule_errors and not twin
+    msg = twin or ("rule errors reported" if rule_errors and not diff else "")
     return CaseResult(case, ok, actual, rule_errors, diff, msg)
 
 
@@ -301,7 +363,15 @@ def run_track2(config: MapperConfig, mapping: str | None = None, log=print) -> l
             for c in cases:
                 src = find_source(c.mapping, config)
                 mapping_id = mapping_id_of(src) if src else c.mapping
-                results.append(run_case(conn, f"{pkg}.map_{mapping_id}_safe", c))
+                results.append(
+                    run_case(
+                        conn,
+                        f"{pkg}.map_{mapping_id}_safe",
+                        c,
+                        raising_proc=f"{pkg}.map_{mapping_id}",
+                        error_code=int(config.target_config()["error_code"]),
+                    )
+                )
         finally:
             conn.close()
     return results

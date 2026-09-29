@@ -91,3 +91,70 @@ def test_remote_daemon_host():
     assert track2.remote_daemon_host({"DOCKER_HOST": "tcp://docker:2375"}) == "docker"
     assert track2.remote_daemon_host({"DOCKER_HOST": "unix:///var/run/docker.sock"}) is None
     assert track2.remote_daemon_host({}) is None
+
+
+class _FakeVar:
+    def __init__(self, text: str):
+        self._text = text
+
+    def getvalue(self) -> str:
+        return self._text
+
+
+class _FakeCursor:
+    def __init__(self, raises: Exception | None, out: str):
+        self._raises, self._out = raises, out
+
+    def var(self, _type):
+        return _FakeVar(self._out)
+
+    def execute(self, *_a, **_k):
+        if self._raises:
+            raise self._raises
+
+
+class _FakeConn:
+    def __init__(self, raises: Exception | None = None, out: str = "{}"):
+        self._cur = _FakeCursor(raises, out)
+
+    def cursor(self):
+        return self._cur
+
+    def createlob(self, _type, text):
+        return text
+
+
+def _case(tmp_path: Path) -> track2.TestCase:
+    p = tmp_path / "a.input.json"
+    p.write_text("{}")
+    return track2.TestCase("m", "a", p, None)
+
+
+def test_check_raising_agrees_on_success(tmp_path: Path):
+    conn = _FakeConn(out='{"a": 1}')
+    assert track2.check_raising(conn, "P.map_m", _case(tmp_path), {"a": 1}, [], -20000) == ""
+    msg = track2.check_raising(conn, "P.map_m", _case(tmp_path), {"a": 2}, [], -20000)
+    assert "differs from _safe" in msg
+
+
+def test_check_raising_flags_missing_raise(tmp_path: Path):
+    conn = _FakeConn()
+    msg = track2.check_raising(conn, "P.map_m", _case(tmp_path), {}, [{"rule": "r"}], -20000)
+    assert "did not raise" in msg
+
+
+def test_check_raising_validates_error_payload(tmp_path: Path):
+    import oracledb
+
+    class _Err:
+        code = 20000
+        message = 'ORA-20000: {"total_errors": 1, "errors": []}'
+
+    exc = oracledb.DatabaseError(_Err())
+    case = _case(tmp_path)
+    ok = track2.check_raising(_FakeConn(exc), "P.map_m", case, {}, [{"rule": "r"}], -20000)
+    assert ok == ""
+    bad = track2.check_raising(_FakeConn(exc), "P.map_m", case, {}, [{}, {}], -20000)
+    assert "total_errors=1" in bad
+    unexpected = track2.check_raising(_FakeConn(exc), "P.map_m", case, {}, [], -20000)
+    assert "raised but _safe reported no rule errors" in unexpected

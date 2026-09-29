@@ -333,7 +333,9 @@ Independent of M6/M7; pick up in any order.
       (`.forgejo/workflows/ci.yml`), green. Needs `docker-cli` in the job image; the
       harness probes docker with a minimal `info --format` and, with a remote
       `DOCKER_HOST=tcp://…`, connects to that host instead of `127.0.0.1`.
-- [ ] **Track 2: exercise `map_<id>`** (raising variant); only the `_safe` twin runs.
+- [x] **Track 2: exercise `map_<id>`** (raising variant). Each case also runs `map_<id>`
+      and checks it agrees with `_safe`: same output when no rule errors, else raises the
+      reserved code with `total_errors` = number of rule errors.
 - [ ] **`allowed`-constraint warnings** on Track 2 output (data model exists since M5).
 - [ ] **Per-stage on-disk artifacts** of the transpiler.
 - [ ] **`@parallel` from `.fn.yaml`.**
