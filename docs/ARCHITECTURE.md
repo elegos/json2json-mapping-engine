@@ -624,14 +624,18 @@ A backend contributes:
 imports every module under `compiler.backends` and registers each concrete `Backend`
 subclass under its `target` attribute. Adding a target means adding a subpackage
 (`compiler/backends/go/`) with a `Backend` subclass that sets `target = "go"`; nothing is
-registered by hand. Two backends claiming the same name, or a config naming an unknown
-target, are errors that list what is available. The build (`cli/build.py`) and the
+registered by hand. A project can add its own backends, or **override** a built-in one,
+with a `compiler/backends/` folder in the project root, discovered the same way; a
+project backend whose `target` equals a built-in's replaces it (project code, run at
+build time like any build script). Two backends of the same origin claiming one name, or a
+config naming an unknown target, are errors that list what is available. The build (`cli/build.py`) and the
 pipeline only talk to the `Backend` interface, selected by `[project] target`.
 
 **Integration tests are per target.** Each backend brings its own integration tests and
 test environment (PL/SQL: golden cases against an ephemeral Oracle container). The
 current harness (`cli/track2.py`) and the `[test]` container settings are the PL/SQL
-ones.
+ones; once there are several backends, integration tests will cover each target —
+PL/SQL included — rather than being PL/SQL-only.
 
 ## Generated artifact (PL/SQL)
 
