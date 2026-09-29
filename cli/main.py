@@ -20,7 +20,7 @@ from cli.build import (
 from cli.config import MapperConfigError, load_config
 from cli.stubs import generate_stubs
 from cli.track1 import run_track1
-from cli.track2 import Track2Error, detect_runtime, run_track2
+from cli.track2 import Track2Error, detect_runtime, run_track2, runtime_diagnostic
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
 
@@ -179,6 +179,7 @@ def test(
         typer.echo("== Track 2 ==")
         if detect_runtime() is None:
             typer.echo("no podman/docker available — Track 2 unavailable")
+            typer.echo(f"  {runtime_diagnostic()}")
             failed = failed or track == 2
         else:
             try:

@@ -125,6 +125,24 @@ def detect_runtime() -> str | None:
     return None
 
 
+def runtime_diagnostic() -> str:
+    """Why `detect_runtime` found nothing (for the 'unavailable' message)."""
+    lines = []
+    for name in ("podman", "docker"):
+        path = shutil.which(name)
+        if path is None:
+            lines.append(f"{name}: not in PATH")
+            continue
+        try:
+            done = subprocess.run([name, "info"], capture_output=True, text=True, timeout=30)
+            err = (done.stderr or done.stdout).strip().splitlines()
+            lines.append(f"{name}: `info` exit {done.returncode}: {err[-1] if err else ''}")
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            lines.append(f"{name}: `info` failed: {exc}")
+    lines.append(f"DOCKER_HOST={os.environ.get('DOCKER_HOST', '<unset>')}")
+    return "; ".join(lines)
+
+
 def _image_ref(config: MapperConfig) -> str:
     image, tag = config.test.container_image, config.test.container_tag
     if not image:
