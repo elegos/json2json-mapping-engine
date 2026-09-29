@@ -17,12 +17,14 @@ dialect — same shape, no anchors) and `guard`.
 from __future__ import annotations
 
 import ast
+import re
 import textwrap
 from dataclasses import dataclass
 
 from transpiler.model import FnYamlError
 
-_RESERVED_PARAMS = {"root", "src", "out", "index", "Null"}
+_RESERVED_PARAMS = {"root", "out", "Null"}
+_RESERVED_PATTERN = re.compile(r"^(src|index)\d*$")
 
 
 @dataclass
@@ -119,7 +121,7 @@ def parse_block(text: str, prefix: str, where: str) -> Block:
     _check_shape(tree.body, where)
 
     names = _assigned_names(tree.body)
-    clash = names & _RESERVED_PARAMS
+    clash = {n for n in names if n in _RESERVED_PARAMS or _RESERVED_PATTERN.match(n)}
     if clash:
         raise FnYamlError(f"{where}: cannot assign reserved name(s): {', '.join(sorted(clash))}")
     renamer = _Rename({n: f"{prefix}_{n}" for n in names})

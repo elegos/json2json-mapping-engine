@@ -34,6 +34,13 @@ def resolve_dsl_type(annotation: ast.expr) -> tuple[str, bool]:
         if len(non_null) != 1:
             raise AnnotationError("unsupported union annotation")
         node = non_null[0]
+    if (
+        isinstance(node, ast.Subscript)
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "list"
+        and isinstance(node.slice, ast.Name)
+    ):
+        return f"list[{node.slice.id}]", nullable
     if not isinstance(node, ast.Name):
         raise AnnotationError(f"unsupported type annotation: {ast.dump(node)}")
     return node.id, nullable

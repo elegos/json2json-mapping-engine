@@ -4,41 +4,45 @@
 blocks -> build the `.map.py` AST -> Stage 4 Loop Fusion (the compiler's own
 `compiler.loop_fusion`, no reimplementation) -> Stage 5 `ast.unparse`.
 
-**What the compiler can express bounds what this can emit.** Output today is:
-top-level scalar fields, top-level objects (fields only, optional guard), and
-single-level loops over a source array (fields only). Nested loops/objects
-inside a loop or object are rejected with a clear error naming the rule.
+**Shape of the generated code.** One rule function per *output element*:
 
-**Shape of the generated code** (one rule function per *output element*):
-
-- a top-level `field` rule -> `def <ident>(root) -> T` + `out.<Field> = <ident>(root)`;
-- an `object` rule -> a `@dataclass` of its fields + one function building it
+- a top-level `field` rule -> `def <id>(root) -> T` + `out.<Field> = <id>(root)`;
+- an `object` rule -> a `@dataclass` of its members + one function building it
   (a false `guard` is a bare `return`, which omits the object);
-- a `loop` rule -> a `@dataclass` of its fields + one function per item, called
-  from a single `for` loop.
+- a `loop` rule -> a `@dataclass` of one element + one function building it;
+  a top-level loop is a single `for` in the mapping body.
 
-Fields of a loop/object share one function, so a failing field is reported
-under the loop/object rule's id, not the field's — the compiler has no way to
-isolate them inside a composite. Fields there also cannot use bare `return`
-/ `return Null` (a composite has no "omit one field" form): express that with
-`coalesce`/`if_else`.
+Objects and loops nest. A nested object is a call to the child's function
+(`Sub=sub_fn(root, src)`); a nested loop is a list built by a `for` inside the
+parent's function (`lines = []` / `for ...: lines.append(child_fn(...))`) and
+passed as a field (`Lines=lines`). Children are emitted before their parent
+(`def` order is call order).
 
-Parameter convention (§Generated function parameter naming): `root`; loops add
-`src` (the item) and `index`, the latter only if some field references it.
+A failing member is reported under the *outermost* composite rule (one
+`out.<Field>.append(...)` per top-level element), since the compiler cannot
+isolate members inside a composite. Members there cannot use bare `return` /
+`return Null` (a composite has no "omit one member" form): express that with
+`coalesce`/`if_else`, or a nested `object` with a `guard`.
+
+**Parameters** (§Generated function parameter naming): every function takes
+`root`, then the element of each enclosing loop, outermost first, ending with
+its own (`src2, src1, src` — `src` is always the nearest loop's element), then
+the positions (`index2, index1, index`) that its subtree actually references.
 """
 
 from __future__ import annotations
 
 import ast
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 from compiler.loop_fusion import fuse_loops
 from compiler.schema_generator import SchemaTypes
-from transpiler.anchors import AnchorScope, resolve_anchors
+from transpiler.anchors import AnchorScope, LoopRef, resolve_anchors
 from transpiler.expr import Block, parse_block
-from transpiler.ids import assign_ids, ident_of
+from transpiler.ids import assign_ids, ident_of, walk
 from transpiler.model import (
     FieldRule,
     FnYamlError,
@@ -63,30 +67,20 @@ def _pascal(name: str) -> str:
     return "".join(p[:1].upper() + p[1:] for p in parts if p) or "Anon"
 
 
-_PATH = re.compile(r"^(?P<anchor>[$@])(?P<rest>(?:\.[A-Za-z_]\w*)*)(?:\[\*?\])?$")
-
-
-def _source_expr(path: str, where: str) -> str:
-    m = _PATH.match(path.strip())
-    if not m:
-        raise FnYamlError(f"{where}: unsupported source path {path!r}")
-    if m.group("anchor") == "@":
-        raise FnYamlError(
-            f"{where}: relative source path {path!r} means a nested loop, which the "
-            "compiler does not support yet"
-        )
-    return "root" + m.group("rest")
+_OUT_PATH = re.compile(r"^[$@]\.(?P<name>[A-Za-z_]\w*)(?:\[\*?\])?$")
+_ATTR_CHAIN = re.compile(r"^[A-Za-z_]\w*(\.[A-Za-z_]\w*)*$")
+_INDEX_NAME = re.compile(r"^index(\d*)$")
 
 
 def _output_field(path: str, where: str) -> str:
-    m = _PATH.match(path.strip())
-    segs = m.group("rest").split(".")[1:] if m else []
-    if len(segs) != 1:
+    m = _OUT_PATH.match(path.strip())
+    if not m:
         raise FnYamlError(
-            f"{where}: output path {path!r} must be a single field of the output root "
-            "(e.g. '$.Orders[*]') — deeper output paths need nested-output support in the compiler"
+            f"{where}: output path {path!r} must be one field of the enclosing element "
+            "('$.Orders[*]' at top level, '@.Lines[*]' / '@.Discount' inside a loop or object) — "
+            "nest rules instead of writing a deeper path"
         )
-    return segs[0]
+    return m.group("name")
 
 
 def _annotation(base: str, nullable: bool, null_sentinel: bool) -> str:
@@ -133,27 +127,56 @@ class _Wrap(ast.NodeTransformer):
         return ast.copy_location(ast.Return(value=call), node)
 
 
-def _type_name_at(schema: SchemaTypes | None, source_expr: str) -> str | None:
-    """Element type of `root.a.b` (an array) per the input schema, else None."""
-    if schema is None:
-        return None
-    cls = schema.classes.get(schema.root_type)
-    type_expr = schema.root_type
-    for seg in source_expr.split(".")[1:]:
-        if cls is None:
-            return None
-        fld = next((f for f in cls.fields if f.name == seg), None)
-        if fld is None:
-            return None
-        type_expr = fld.type_expr
-        parts = [p.strip() for p in type_expr.split("|") if p.strip() not in ("None", "Null")]
-        if len(parts) != 1:
-            return None
-        type_expr = parts[0]
-        cls = schema.classes.get(type_expr)
-    if type_expr.startswith("list[") and type_expr.endswith("]"):
-        return type_expr[5:-1]
-    return None
+def _index_offsets(nodes: Sequence[ast.AST]) -> set[int]:
+    """Which of `index`, `index1`, ... the code reads (0 = nearest loop)."""
+    found: set[int] = set()
+    for node in nodes:
+        for n in ast.walk(node):
+            if isinstance(n, ast.Name):
+                m = _INDEX_NAME.match(n.id)
+                if m:
+                    found.add(int(m.group(1) or 0))
+    return found
+
+
+@dataclass(frozen=True)
+class _Frame:
+    """The loops enclosing a rule, outermost first, with each element's schema
+    type name (None = untyped / no schema)."""
+
+    labels: tuple[str | None, ...] = ()
+    types: tuple[str | None, ...] = ()
+
+    @property
+    def depth(self) -> int:
+        return len(self.labels)
+
+    @staticmethod
+    def item_name(offset: int) -> str:
+        return "src" if offset == 0 else f"src{offset}"
+
+    @staticmethod
+    def index_name(offset: int) -> str:
+        return "index" if offset == 0 else f"index{offset}"
+
+    def item_names(self) -> list[str]:
+        return [self.item_name(o) for o in range(self.depth - 1, -1, -1)]
+
+    def loop_refs(self) -> tuple[LoopRef, ...]:
+        return tuple(
+            LoopRef(label, self.item_name(self.depth - 1 - i), self.index_name(self.depth - 1 - i))
+            for i, label in enumerate(self.labels)
+        )
+
+    def child(self, label: str | None, type_name: str | None) -> _Frame:
+        return _Frame((*self.labels, label), (*self.types, type_name))
+
+
+@dataclass
+class _Composite:
+    ident: str
+    cls: str
+    needs: set[int]  # index offsets (in the composite's own frame) its function takes
 
 
 class _Builder:
@@ -181,6 +204,9 @@ class _Builder:
     def _stmts(src: str) -> list[ast.stmt]:
         return ast.parse(src).body
 
+    def _scope(self, frame: _Frame) -> AnchorScope:
+        return AnchorScope(loops=frame.loop_refs(), lookups=self.lookups)
+
     def _field_block(self, rule: FieldRule, fq: str, scope: AnchorScope) -> Block:
         where = f"rule '{fq}'"
         t = rule.transform
@@ -199,19 +225,49 @@ class _Builder:
                 ast.fix_missing_locations(s)
         return block
 
-    def _ret_annotation(self, rule: FieldRule, block: Block) -> str:
-        return _annotation(rule.type, not rule.required, block.returns_null)
+    def _walk_type(self, start: str | None, segs: list[str]) -> str | None:
+        """Type expression reached from class `start` via attribute `segs`."""
+        if self.schema is None or start is None:
+            return None
+        type_expr = start
+        for seg in segs:
+            parts = [p.strip() for p in type_expr.split("|") if p.strip() not in ("None", "Null")]
+            cls = self.schema.classes.get(parts[0]) if len(parts) == 1 else None
+            fld = next((f for f in cls.fields if f.name == seg), None) if cls else None
+            if fld is None:
+                return None
+            type_expr = fld.type_expr
+        parts = [p.strip() for p in type_expr.split("|") if p.strip() not in ("None", "Null")]
+        return parts[0] if len(parts) == 1 else None
 
-    def _param_types(self, source_expr: str | None) -> tuple[str, str]:
-        root = self.schema.root_type if self.schema else "Any"
-        src = (_type_name_at(self.schema, source_expr) if source_expr else None) or "Any"
-        return root, src
+    def _element_type(self, source_text: str, frame: _Frame) -> str | None:
+        """Element type of the array at `root.a.b` / `src.items` (a resolved path)."""
+        names: dict[str, str | None] = {"root": self.schema.root_type if self.schema else None}
+        for off in range(frame.depth):
+            names[frame.item_name(off)] = frame.types[frame.depth - 1 - off]
+        first, *segs = source_text.split(".")
+        t = self._walk_type(names.get(first), segs)
+        if t and t.startswith("list[") and t.endswith("]"):
+            return t[5:-1]
+        return None
+
+    def _params(self, frame: _Frame, needs: set[int]) -> str:
+        root_t = self.schema.root_type if self.schema else "Any"
+        parts = [f"root: {root_t}"]
+        for off in range(frame.depth - 1, -1, -1):
+            parts.append(f"{frame.item_name(off)}: {frame.types[frame.depth - 1 - off] or 'Any'}")
+        parts += [f"{frame.index_name(o)}: int" for o in sorted(needs, reverse=True)]
+        return ", ".join(parts)
+
+    def _make_class(self, base: str, fields: list[tuple[str, str]]) -> str:
+        name = self._unique_class(base)
+        body = "\n".join(f"    {n}: {a}" for n, a in fields)
+        self.classes += self._stmts(f"@dataclass\nclass {name}:\n{body}")
+        return name
 
     # -- rules -------------------------------------------------------------
 
     def build(self) -> None:
-        from transpiler.ids import walk
-
         for _fq, rule in walk(self.file.rules):
             if isinstance(rule, LookupRule):
                 self.lookups[rule.label] = dict(rule.entries)
@@ -229,126 +285,72 @@ class _Builder:
             if isinstance(rule, FieldRule):
                 self._top_field(rule)
             elif isinstance(rule, ObjectRule):
-                self._object(rule)
+                self._top_object(rule)
             else:
-                self._loop(rule)
+                self._top_loop(rule)
 
     def _top_field(self, rule: FieldRule) -> None:
         assert rule.id is not None
         fq, ident = rule.id, ident_of(rule.id)
-        block = self._field_block(rule, fq, AnchorScope(lookups=self.lookups))
-        root_t, _ = self._param_types(None)
-        ret = self._ret_annotation(rule, block)
-        fn = ast.parse(f"def {ident}(root: {root_t}) -> {ret}:\n    pass").body[0]
+        block = self._field_block(rule, fq, self._scope(_Frame()))
+        ret = _annotation(rule.type, not rule.required, block.returns_null)
+        fn = ast.parse(f"def {ident}({self._params(_Frame(), set())}) -> {ret}:\n    pass").body[0]
         assert isinstance(fn, ast.FunctionDef)
         fn.body = block.stmts
         self.functions.append(fn)
         self.flow += self._stmts(f"out.{rule.field} = {ident}(root)")
 
-    def _composite_fields(
-        self, parent: ObjectRule | LoopRule, parent_fq: str, scope: AnchorScope
-    ) -> tuple[list[ast.stmt], list[tuple[str, str, str]]]:
-        pre: list[ast.stmt] = []
-        fields: list[tuple[str, str, str]] = []  # (name, annotation, value source)
-        kw: list[ast.keyword] = []
-        seen: set[str] = set()
-        for child in parent.rules:
-            assert child.id is not None
-            fq = f"{parent_fq}.{child.id}"
-            if isinstance(child, LookupRule):
-                continue
-            if not isinstance(child, FieldRule):
-                raise FnYamlError(
-                    f"rule '{fq}': a {child.kind} rule nested in a {parent.kind} needs "
-                    "nested-output support in the compiler, which does not exist yet"
-                )
-            if child.field in seen:
-                raise FnYamlError(f"rule '{fq}': duplicate field '{child.field}'")
-            seen.add(child.field)
-            block = self._field_block(child, fq, scope)
-            if not block.is_simple:
-                raise FnYamlError(
-                    f"rule '{fq}': inside a {parent.kind} a field must be assignments followed by "
-                    "one value (no if/return/Null) — use if_else()/coalesce() instead"
-                )
-            pre += block.pre
-            kw.append(ast.keyword(arg=child.field, value=block.value))
-            fields.append((child.field, self._ret_annotation(child, block), ""))
-        if not fields:
-            raise FnYamlError(f"rule '{parent_fq}': a {parent.kind} rule needs at least one field")
-        self._kw = kw
-        return pre, fields
-
-    def _make_class(self, base: str, fields: list[tuple[str, str, str]]) -> str:
-        name = self._unique_class(base)
-        body = "\n".join(f"    {n}: {a}" for n, a, _ in fields)
-        self.classes += self._stmts(f"@dataclass\nclass {name}:\n{body}")
-        return name
-
-    def _object(self, rule: ObjectRule) -> None:
+    def _top_object(self, rule: ObjectRule) -> None:
         assert rule.id is not None
-        fq, ident = rule.id, ident_of(rule.id)
-        out_field = _output_field(rule.output, f"rule '{fq}'")
-        scope = AnchorScope(lookups=self.lookups)
-        pre, fields = self._composite_fields(rule, fq, scope)
-        kw = self._kw
-        cls = self._make_class(_pascal(out_field), fields)
-        root_t, _ = self._param_types(None)
-        fn = ast.parse(f"def {ident}(root: {root_t}) -> {cls}:\n    pass").body[0]
-        assert isinstance(fn, ast.FunctionDef)
-        build: list[ast.stmt] = [
-            *pre,
-            ast.Return(value=ast.Call(func=ast.Name(cls, ast.Load()), args=[], keywords=kw)),
-        ]
-        body: list[ast.stmt] = build
-        if rule.guard:
-            g = parse_block(
-                resolve_anchors(rule.guard, scope, f"rule '{fq}' guard").text,
-                f"{ident}_guard",
-                f"rule '{fq}' guard",
-            )
-            if not g.is_simple:
-                raise FnYamlError(f"rule '{fq}': guard must be a single boolean expression")
-            # `if <guard>: build else: return` — not `if not <guard>: return`: a NULL
-            # guard (missing field) must omit the object, and in SQL `NOT NULL` is
-            # NULL, so the negated form would fall through and build it.
-            test = ast.If(test=g.value, body=build, orelse=[ast.Return(value=None)])
-            body = [*g.pre, test]
-        fn.body = body
-        ast.fix_missing_locations(fn)
-        self.functions.append(fn)
-        self.flow += self._stmts(f"out.{out_field} = {ident}(root)")
+        out_field = _output_field(rule.output, f"rule '{rule.id}'")
+        comp = self._composite(rule, rule.id, _Frame(), _pascal(out_field), rule.guard)
+        self.flow += self._stmts(f"out.{out_field} = {comp.ident}(root)")
 
-    def _loop(self, rule: LoopRule) -> None:
+    def _top_loop(self, rule: LoopRule) -> None:
         assert rule.id is not None
-        fq, ident = rule.id, ident_of(rule.id)
+        fq = rule.id
         where = f"rule '{fq}'"
-        src_expr = _source_expr(rule.source, where)
         out_field = _output_field(rule.output, where)
-        scope = AnchorScope(loop_label=rule.label, in_loop=True, lookups=self.lookups)
-        pre, fields = self._composite_fields(rule, fq, scope)
-        kw = self._kw
+        source = self._source_text(rule, self._scope(_Frame()), where)
+        frame = _Frame().child(rule.label, self._element_type(source, _Frame()))
+        comp = self._composite(rule, fq, frame, _pascal(out_field) + "Item", None)
+        uses_index = 0 in comp.needs
+        scope = self._scope(frame)
+        iterable, filter_text = self._iterable(rule, source, "src", scope, uses_index, where)
+        target = "index, src" if uses_index else "src"
+        args = "root, src" + (", index" if uses_index else "")
+        loop = self._stmts(
+            f"for {target} in {iterable}:\n    out.{out_field}.append({comp.ident}({args}))"
+        )[0]
+        assert isinstance(loop, ast.For)
+        if filter_text and not uses_index:
+            loop.body.insert(0, self._stmts(f"if not ({filter_text}):\n    continue")[0])
+        ast.fix_missing_locations(loop)
+        self.flow.append(loop)
 
-        uses_index = any(
-            isinstance(n, ast.Name) and n.id == "index"
-            for node in [*pre, *[k.value for k in kw]]
-            for n in ast.walk(node)
-        )
-        cls = self._make_class(_pascal(out_field) + "Item", fields)
-        root_t, src_t = self._param_types(src_expr)
-        params = f"root: {root_t}, src: {src_t}" + (", index: int" if uses_index else "")
-        fn = ast.parse(f"def {ident}({params}) -> {cls}:\n    pass").body[0]
-        assert isinstance(fn, ast.FunctionDef)
-        fn.body = [
-            *pre,
-            ast.Return(value=ast.Call(func=ast.Name(cls, ast.Load()), args=[], keywords=kw)),
-        ]
-        ast.fix_missing_locations(fn)
-        self.functions.append(fn)
+    def _source_text(self, rule: LoopRule, scope: AnchorScope, where: str) -> str:
+        path = re.sub(r"\[\*?\]$", "", rule.source.strip())
+        text = resolve_anchors(path, scope, f"{where} source").text
+        if not _ATTR_CHAIN.match(text):
+            raise FnYamlError(f"{where}: unsupported source path {rule.source!r}")
+        return text
 
-        iterable = src_expr
+    def _iterable(
+        self,
+        rule: LoopRule,
+        source: str,
+        item: str,
+        scope: AnchorScope,
+        uses_index: bool,
+        where: str,
+    ) -> tuple[str, str | None]:
+        """The `for` iterable text, and the filter (None when folded into it).
+        `scope` names the loop's own element/index as they appear where the
+        `for` is written."""
+        iterable = source
         if rule.sort_key:
-            m = re.match(rf"^@(?:{re.escape(rule.label or '')})?\.(\w+)$", rule.sort_key.strip())
+            label = re.escape(rule.label or "")
+            m = re.match(rf"^@(?:{label})?\.(\w+)$", rule.sort_key.strip())
             if not m:
                 raise FnYamlError(f"{where}: sort key must be a field of the item ('@.field')")
             rev = ", reverse=True" if rule.sort_reverse else ""
@@ -364,19 +366,156 @@ class _Builder:
             # come *before* enumerate(): in real Python a `continue` in the body would
             # leave gaps. The compiler lowers this form (per-branch counter when fused).
             if filter_text:
-                iterable = f"[src for src in {iterable} if {filter_text}]"
+                iterable = f"[{item} for {item} in {iterable} if {filter_text}]"
+                filter_text = None
             start = f", start={rule.index_start}" if rule.index_start else ""
             iterable = f"enumerate({iterable}{start})"
-        target = "index, src" if uses_index else "src"
-        call_args = "root, src" + (", index" if uses_index else "")
-        loop_src = f"for {target} in {iterable}:\n    out.{out_field}.append({ident}({call_args}))"
-        loop = self._stmts(loop_src)[0]
+        return iterable, filter_text
+
+    # -- composites (object / loop element) --------------------------------
+
+    def _composite(
+        self, node: ObjectRule | LoopRule, fq: str, frame: _Frame, cls_base: str, guard: str | None
+    ) -> _Composite:
+        """Emit the dataclass + function for one object/loop element, children
+        first. `frame` is the element's own frame (a loop's includes itself)."""
+        ident = ident_of(fq)
+        scope = self._scope(frame)
+        pre: list[ast.stmt] = []
+        kwargs: list[ast.keyword] = []
+        fields: list[tuple[str, str]] = []
+        seen: set[str] = set()
+
+        def add(name: str, annotation: str, value: ast.expr, where: str) -> None:
+            if name in seen:
+                raise FnYamlError(f"{where}: duplicate output field '{name}'")
+            seen.add(name)
+            kwargs.append(ast.keyword(arg=name, value=value))
+            fields.append((name, annotation))
+
+        for child in node.rules:
+            assert child.id is not None
+            cfq = f"{fq}.{child.id}"
+            where = f"rule '{cfq}'"
+            if isinstance(child, LookupRule):
+                continue
+            if isinstance(child, FieldRule):
+                block = self._field_block(child, cfq, scope)
+                if not block.is_simple:
+                    raise FnYamlError(
+                        f"{where}: inside a {node.kind} a field must be assignments followed by "
+                        "one value (no if/return/Null) — use if_else()/coalesce() instead"
+                    )
+                pre += block.pre
+                add(
+                    child.field,
+                    _annotation(child.type, not child.required, False),
+                    block.value,
+                    where,
+                )
+            elif isinstance(child, ObjectRule):
+                out_field = _output_field(child.output, where)
+                sub = self._composite(child, cfq, frame, _pascal(out_field), child.guard)
+                call = ast.Call(
+                    func=ast.Name(id=sub.ident, ctx=ast.Load()),
+                    args=self._call_args(frame, None, sub.needs),
+                    keywords=[],
+                )
+                add(out_field, sub.cls + (" | None" if child.guard else ""), call, where)
+            else:
+                out_field = _output_field(child.output, where)
+                stmts, list_var, sub = self._nested_loop(child, cfq, frame, where)
+                pre += stmts
+                add(out_field, f"list[{sub.cls}]", ast.Name(id=list_var, ctx=ast.Load()), where)
+
+        if not fields:
+            raise FnYamlError(f"rule '{fq}': a {node.kind} rule needs at least one member")
+
+        cls = self._make_class(cls_base, fields)
+        build: list[ast.stmt] = [
+            *pre,
+            ast.Return(value=ast.Call(func=ast.Name(cls, ast.Load()), args=[], keywords=kwargs)),
+        ]
+        body = build
+        if guard:
+            g = parse_block(
+                resolve_anchors(guard, scope, f"rule '{fq}' guard").text,
+                f"{ident}_guard",
+                f"rule '{fq}' guard",
+            )
+            if not g.is_simple:
+                raise FnYamlError(f"rule '{fq}': guard must be a single boolean expression")
+            # `if <guard>: build else: return` — not `if not <guard>: return`: a NULL
+            # guard (missing field) must omit the object, and in SQL `NOT NULL` is
+            # NULL, so the negated form would fall through and build it.
+            body = [*g.pre, ast.If(test=g.value, body=build, orelse=[ast.Return(value=None)])]
+
+        needs = _index_offsets(body)
+        fn = ast.parse(f"def {ident}({self._params(frame, needs)}) -> {cls}:\n    pass").body[0]
+        assert isinstance(fn, ast.FunctionDef)
+        fn.body = body
+        ast.fix_missing_locations(fn)
+        self.functions.append(fn)
+        return _Composite(ident, cls, needs)
+
+    def _call_args(
+        self, frame: _Frame, loop_vars: tuple[str, str] | None, child_needs: set[int]
+    ) -> list[ast.expr]:
+        """Arguments for calling a child composite from a function in `frame`.
+        `loop_vars` = (element, index) names of the child's own loop, when the
+        child is a loop element (its frame is one level deeper)."""
+        args = ["root", *frame.item_names()]
+        if loop_vars:
+            args.append(loop_vars[0])
+        for off in sorted(child_needs, reverse=True):
+            if loop_vars is None:
+                args.append(frame.index_name(off))
+            elif off == 0:
+                args.append(loop_vars[1])
+            else:
+                args.append(frame.index_name(off - 1))
+        return [ast.Name(id=a, ctx=ast.Load()) for a in args]
+
+    def _nested_loop(
+        self, rule: LoopRule, fq: str, frame: _Frame, where: str
+    ) -> tuple[list[ast.stmt], str, _Composite]:
+        """`<id>_list = []` + a `for` filling it, inside the parent's function."""
+        cid = ident_of(fq)
+        source = self._source_text(rule, self._scope(frame), where)
+        child_frame = frame.child(rule.label, self._element_type(source, frame))
+        out_field = _output_field(rule.output, where)
+        sub = self._composite(rule, fq, child_frame, _pascal(out_field) + "Item", None)
+
+        item, index = f"{cid}_src", f"{cid}_index"
+        uses_index = 0 in sub.needs
+        loop_scope = AnchorScope(
+            loops=(*frame.loop_refs(), LoopRef(rule.label, item, index)), lookups=self.lookups
+        )
+        iterable, filter_text = self._iterable(rule, source, item, loop_scope, uses_index, where)
+        list_var = f"{cid}_list"
+        call = ast.Call(
+            func=ast.Name(id=sub.ident, ctx=ast.Load()),
+            args=self._call_args(frame, (item, index), sub.needs),
+            keywords=[],
+        )
+        target = f"{index}, {item}" if uses_index else item
+        loop = self._stmts(f"for {target} in {iterable}:\n    {list_var}.append(None)")[0]
         assert isinstance(loop, ast.For)
+        loop.body = [
+            ast.Expr(
+                value=ast.Call(
+                    func=ast.Attribute(
+                        value=ast.Name(id=list_var, ctx=ast.Load()), attr="append", ctx=ast.Load()
+                    ),
+                    args=[call],
+                    keywords=[],
+                )
+            )
+        ]
         if filter_text and not uses_index:
-            guard = self._stmts(f"if not ({filter_text}):\n    continue")[0]
-            loop.body.insert(0, guard)
-        ast.fix_missing_locations(loop)
-        self.flow.append(loop)
+            loop.body.insert(0, self._stmts(f"if not ({filter_text}):\n    continue")[0])
+        stmts = [*self._stmts(f"{list_var} = []"), loop]
+        return stmts, list_var, sub
 
 
 def transpile_file_model(
@@ -402,8 +541,8 @@ def transpile_file_model(
             ),
         ]
     module = ast.Module(body=body, type_ignores=[])
-    module = _CollapseDoubleNot().visit(module)
     ast.fix_missing_locations(module)
+    module = _CollapseDoubleNot().visit(module)
     comment = (
         f"# Generated by `mapper transpile` from {source_name} — do not edit.\n"
         f"# compiler options: loop_fusion={'on' if options.loop_fusion else 'off'}\n\n"

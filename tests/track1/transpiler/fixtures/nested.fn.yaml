@@ -1,0 +1,81 @@
+name: "Nested output"
+id: nested
+rules:
+  - id: ord
+    kind: loop
+    label: order
+    source: "$.orders[*]"
+    output: "$.Orders[*]"
+    index_start: 1
+    rules:
+      - id: oid
+        kind: field
+        field: OrderId
+        type: str
+        transform: {expression: "@.id"}
+      - id: pos
+        kind: field
+        field: Position
+        type: int
+        transform: {expression: "@index"}
+      - id: tax
+        kind: object
+        output: "@.Tax"
+        guard: "@.taxRate != None"
+        rules:
+          - id: rate
+            kind: field
+            field: Rate
+            type: number
+            transform: {expression: "@.taxRate"}
+      - id: lin
+        kind: loop
+        label: line
+        source: "@.lines[*]"
+        output: "@.Lines[*]"
+        filter: "@.qty > 0"
+        sort: {key: "@.sku"}
+        index_start: 1
+        rules:
+          - id: sku
+            kind: field
+            field: Sku
+            type: str
+            transform: {expression: "@.sku"}
+          - id: lpos
+            kind: field
+            field: Pos
+            type: int
+            transform: {expression: "@index"}
+          - id: oid
+            kind: field
+            field: OrderId
+            type: str
+            transform: {expression: "@2.id"}
+          - id: opos
+            kind: field
+            field: OrderPos
+            type: int
+            transform: {expression: "@index.2"}
+          - id: tot
+            kind: field
+            field: Total
+            type: number
+            format: "0.00"
+            transform: {expression: "@.qty * @.price"}
+          - id: prt
+            kind: loop
+            label: part
+            source: "@.parts[*]"
+            output: "@.Parts[*]"
+            rules:
+              - id: nm
+                kind: field
+                field: Part
+                type: str
+                transform: {expression: "@.name"}
+              - id: psku
+                kind: field
+                field: LineSku
+                type: str
+                transform: {expression: "@2.sku"}

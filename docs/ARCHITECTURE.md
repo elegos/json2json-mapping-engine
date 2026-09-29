@@ -31,7 +31,7 @@ There is no DSL interpretation at runtime — the output is ordinary compiled co
 | `@dataclass` | output type definitions only; no methods inside |
 | `@decorator` | `@override`, `@parallel`, `@dataclass` |
 | `if` / `elif` / `else` | statement and expression form |
-| `for x in <expr>:` | iteration over JSON arrays |
+| `for x in <expr>:` | iteration over JSON arrays; in the mapping body, or inside a rule function to build a nested output array (§Nested output) |
 | `continue` | skip current iteration (→ `CONTINUE WHEN` in PL/SQL) |
 | `return` | bare `return` = omit field entirely (no emission) |
 | `return Null` | emit field explicitly as JSON null (`"field": null`) |
@@ -820,15 +820,50 @@ compiler enforces on hand-written code.
 
 ---
 
+#### Nested output
+
+Objects and loops nest to any depth. In the `.fn.yaml`, a `loop` or `object` rule may
+contain `field`, `object`, `loop` and `lookup` rules; a child's `output` is one field of
+its enclosing element (`@.Lines[*]`, `@.Discount`), a child loop's `source` is usually
+relative (`@.items[*]`, `@2.items[*]`), and `@2`, `@<label>`, `@index.2` reach outer loops.
+
+In the `.map.py` this is ordinary Python, written inside rule functions: composite
+values are `@dataclass` instances whose fields may be scalars, another dataclass, or
+`list[Dataclass]`; a nested array is a local list filled by a `for`:
+
+```python
+def order_rule(root: Any, src: Any) -> Order:
+    lines = []
+    for j, ln in enumerate([ln for ln in sorted(src.lines, key="sku") if ln.qty > 0], start=1):
+        lines.append(line_rule(root, src, ln, j))
+    return Order(OrderId=src.id, Tax=tax_rule(root, src), Lines=lines)
+```
+
+Inside a rule function the compiler accepts: `name = []`, `name.append(<value>)`, `name =
+rule_fn(...)`, a `for` with the same iterable forms as in the mapping body, and as a
+dataclass field value: an expression, a list local, a nested construction, or a call to
+another rule function (whose bare `return` leaves the key out). A `for` there needs no
+fusion, and a leading `if cond: continue` compiles to `IF cond THEN … END IF` (a NULL
+condition skips the element).
+
+Every function takes `root`, then the element of each enclosing loop outermost first
+ending with its own (`src2, src1, src`), then the positions it uses (`index2, index1,
+index`). A child is emitted before its parent (`def` order is call order).
+
+One consequence: the unit of failure is the top-level element. If anything inside an
+`Orders[]` element fails, that element is reported under the top-level rule and omitted;
+the compiler does not isolate nested members from each other.
+
+The Type Checker still validates only top-level reads/writes against the schemas; the
+shape of nested dataclasses is not compared with the output schema.
+
 #### Implementation status and deliberate deviations (M5)
 
-What the transpiler emits is bounded by what the compiler can express today. Not yet
-supported, each rejected with an error naming the rule: nested `loop`/`object` rules
-inside a `loop` or `object`; output paths deeper than one field of the output root
-(`$.Orders[*]` works, `$.Output.Orders[*]` does not); source paths relative to a loop
-(`@.items[*]`); `@2` / `@index.N`. Fields of a `loop`/`object` share one generated function, so they cannot use bare
-`return` / `return Null` (use `if_else` / `coalesce`) and an error is reported under the
-loop/object rule's id.
+Not supported, each rejected with an error naming the rule: output paths that are not a
+single field of the enclosing element (nest rules instead of `$.A.B[*]`); a `filter`
+that reads `@index`; a `sort` key other than one field of the item. Members of a
+loop/object cannot use bare `return` / `return Null` (use `if_else` / `coalesce`, or a
+nested `object` with a `guard`).
 
 **Filter + `@index`.** `@index` numbers the elements that *pass* the filter (after
 `sort`), as specified. In `.map.py` this is real-Python semantics, written explicitly:

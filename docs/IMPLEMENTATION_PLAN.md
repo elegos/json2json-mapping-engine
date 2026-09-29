@@ -263,10 +263,10 @@ package** (`[target.plsql] package`): entry points
 
 ---
 
-## 🚧 M5 — Functional layer transpiler (driven mode)
+## ✅ M5 — Functional layer transpiler (driven mode)
 
-The transpiler package (`transpiler/`) and driven-mode build are done for what the
-compiler can express; nested output structures need compiler work first.
+The transpiler package (`transpiler/`) and driven-mode build are done, including
+nested output (see "Nested output" below).
 
 - **Stage 1** `transpiler/model.py`: strict `.fn.yaml` loader (unknown keys, bad
   kinds/types, manual-without-override → error with the rule path). Auto/Manual
@@ -284,9 +284,9 @@ compiler can express; nested output structures need compiler work first.
 - **CLI**: `mapper transpile`; `mapper build/compile/check` work in `mode = "driven"`
   (`mappings/functional/*.fn.yaml`). Input schema, when present, types the generated
   parameters so the Type Checker still checks reads.
-- Supported: top-level scalar fields, top-level objects (+ `guard`), single-level loops
-  (`filter`, `sort`, `@index`, `index_start`), lookups, `format`/`format_mode`,
-  manual `code_override`. Limits and deviations: `ARCHITECTURE.md`, "Implementation
+- Supported: scalar fields, objects (+ `guard`), loops (`filter`, `sort`, `@index`,
+  `index_start`), all nested to any depth; lookups, `format`/`format_mode`, manual
+  `code_override`. Limits and deviations: `ARCHITECTURE.md`, "Implementation
   status and deliberate deviations (M5)".
 
 **Compiler changes this forced** (found by running the generated code on Oracle 23ai
@@ -305,9 +305,20 @@ via Track 2, not by unit tests):
   `i = __next_index__(start, k)` statement — one counter per fused branch — and codegen
   emits `v_cnt_k` (verified on Oracle, fused and unfused).
 
-**Not done**: nested loops/objects and deeper output paths (compiler); per-stage on-disk artifacts;
+**Nested output** (compiler + transpiler): the compiler now supports, inside rule
+functions, list locals, `for` loops (same iterable forms as the body), `name.append(...)`,
+locals bound from rule-function calls, and dataclass fields that are lists / nested
+dataclasses / rule-function calls (`omitted` -> key left out); `list[T]` annotations.
+The transpiler emits one function per element, children first, with parameters
+`root, src<n>..src1, src, index<n>..index1, index` (indexes only when read). Verified on
+Oracle 23ai with a three-level fixture (object with `guard` omitted, filtered + sorted +
+indexed inner loops, outer element/index read from the inner level).
+
+**Not done**: per-stage on-disk artifacts;
 `@parallel` from `.fn.yaml`; the desktop tool's use of `apply_decay` (M6);
-`allowed` warnings on Track 2 output.
+`allowed` warnings on Track 2 output; the Type Checker comparing nested dataclasses with
+the output schema (only top-level reads/writes are checked); error isolation between
+nested members (the top-level element is the unit of failure).
 
 ---
 

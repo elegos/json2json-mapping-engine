@@ -74,3 +74,12 @@ def test_dataclass_construction_and_array_append():
 def test_lines_array_matches_golden_sql():
     sql = compile_file(FIXTURES / "lines_array.map.py")
     assert sql == (GOLDEN / "lines_array.sql").read_text()
+
+
+def test_nested_output_matches_golden_sql():
+    sql = compile_file(FIXTURES / "nested_output.map.py")
+    assert sql == (GOLDEN / "nested_output.sql").read_text()
+    # list local, loop inside a rule function, nested rule calls with omitted flags
+    assert "JSON_ARRAY_T()" in sql
+    assert "fn_nested_output_line_rule(p_root, p_o, v_order_rule_l," in sql
+    assert "IF NOT v_order_rule__ro" in sql

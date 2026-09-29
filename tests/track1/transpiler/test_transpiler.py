@@ -4,7 +4,7 @@ import pytest
 
 from compiler.pipeline import compile_source
 from compiler.schema_generator import resolve_schema_types
-from transpiler.anchors import AnchorScope, resolve_anchors
+from transpiler.anchors import AnchorScope, LoopRef, resolve_anchors
 from transpiler.expr import parse_block
 from transpiler.ids import assign_ids, suggest_local_id, walk
 from transpiler.model import (
@@ -140,8 +140,23 @@ def test_duplicate_explicit_ids_are_an_error():
 # -- Stage 2: anchors ---------------------------------------------------------
 
 
+def _loops(*labels: str | None) -> AnchorScope:
+    """Scope for rules nested len(labels) deep, named as inside a generated function."""
+    n = len(labels)
+    refs = tuple(
+        LoopRef(
+            label,
+            "src" if n - 1 - i == 0 else f"src{n - 1 - i}",
+            "index" if n - 1 - i == 0 else f"index{n - 1 - i}",
+        )
+        for i, label in enumerate(labels)
+    )
+    return AnchorScope(loops=refs)
+
+
 def test_anchor_resolution_and_string_literals_are_untouched():
-    scope = AnchorScope(loop_label="order", in_loop=True, lookups={"cc": {"A": "EUR"}})
+    scope = _loops("order")
+    scope.lookups["cc"] = {"A": "EUR"}
     r = resolve_anchors(
         "@.a + @order.b + @1.c + $.d + @index + lookup(@.k, @cc) + 'x@y $z'", scope, "t"
     )
@@ -151,10 +166,17 @@ def test_anchor_resolution_and_string_literals_are_untouched():
     assert r.uses_index
 
 
-@pytest.mark.parametrize("expr", ["@2.a", "@index.2", "@nope.a"])
+def test_anchors_reach_outer_loops_by_position_and_label():
+    scope = _loops("order", "line")
+    r = resolve_anchors("@.p + @2.d + @order.d + @line.p + @index + @index.2", scope, "t")
+    assert r.text == "src.p + src1.d + src1.d + src.p + index + index1"
+    assert r.index_offsets == {0, 1}
+
+
+@pytest.mark.parametrize("expr", ["@3.a", "@index.3", "@nope.a", "@0.a"])
 def test_anchor_errors(expr: str):
     with pytest.raises(FnYamlError):
-        resolve_anchors(expr, AnchorScope(loop_label="l", in_loop=True), "t")
+        resolve_anchors(expr, _loops("l1", "l2"), "t")
 
 
 def test_at_outside_loop_is_an_error():
@@ -336,27 +358,227 @@ def test_input_schema_types_the_parameters():
     compile_source(text, "m", input_schema=schema)  # the type checker accepts the annotations
 
 
+# -- nested output --------------------------------------------------------------
+
+
+def inner_loop(rules: list[dict], **kw) -> dict:
+    return {
+        "id": "sub",
+        "kind": "loop",
+        "label": "ln",
+        "source": "@.lines[*]",
+        "output": "@.Rows[*]",
+        "rules": rules,
+        **kw,
+    }
+
+
+def obj(rules: list[dict], **kw) -> dict:
+    return {"id": "ob", "kind": "object", "output": "@.Tax", "rules": rules, **kw}
+
+
+def test_nested_loop_builds_a_list_in_the_parent_function():
+    text = tr([loop([field("i", "@.id", "Id"), inner_loop([field("l", "@.sku", "Sku")])])])
+    assert "def lp_sub(root: Any, src1: Any, src: Any) -> RowsItem:" in text
+    assert "def lp(root: Any, src: Any) -> LinesItem:" in text
+    assert "lp_sub_list = []" in text
+    assert "for lp_sub_src in src.lines:" in text
+    assert "lp_sub_list.append(lp_sub(root, src, lp_sub_src))" in text
+    assert "Rows=lp_sub_list" in text
+    # children before parents: the compiler needs callee-before-caller order
+    assert text.index("def lp_sub(") < text.index("def lp(")
+    compile_source(text, "m")
+
+
+def test_inner_fields_reach_the_outer_element_and_both_positions():
+    text = tr(
+        [
+            loop(
+                [
+                    inner_loop(
+                        [
+                            field("o", "@2.id", "OrderId"),
+                            field("p", "@index", "Pos", "int"),
+                            field("q", "@index.2", "OrderPos", "int"),
+                        ],
+                        sort={"key": "@.sku"},
+                    )
+                ],
+                index_start=1,
+            )
+        ]
+    )
+    assert (
+        "def lp_sub(root: Any, src1: Any, src: Any, index1: int, index: int) -> RowsItem:" in text
+    )
+    # the parent needs its own position only because a descendant reads it
+    assert "def lp(root: Any, src: Any, index: int) -> LinesItem:" in text
+    assert "for lp_sub_index, lp_sub_src in enumerate(sorted(src.lines, key='sku')):" in text
+    assert "lp_sub(root, src, lp_sub_src, index, lp_sub_index)" in text
+    assert "for index, src in enumerate(root.items, start=1):" in text
+    compile_source(text, "m")
+
+
+def test_nested_loop_filter_sees_the_child_element_and_the_outer_one():
+    text = tr(
+        [
+            loop(
+                [
+                    inner_loop(
+                        [field("l", "@.sku", "Sku")],
+                        filter="@.qty > @2.minQty",
+                    )
+                ]
+            )
+        ]
+    )
+    assert "if not lp_sub_src.qty > src.minQty:" in text
+    compile_source(text, "m")
+
+
+def test_nested_loop_with_filter_and_index_filters_before_enumerate():
+    text = tr(
+        [
+            loop(
+                [
+                    inner_loop(
+                        [field("p", "@index", "Pos", "int")], filter="@.qty > 0", index_start=1
+                    )
+                ]
+            )
+        ]
+    )
+    assert (
+        "for lp_sub_index, lp_sub_src in enumerate([lp_sub_src for lp_sub_src in src.lines "
+        "if lp_sub_src.qty > 0], start=1):"
+    ) in text
+    compile_source(text, "m")
+
+
+def test_object_inside_a_loop_is_a_call_and_may_be_omitted_by_its_guard():
+    text = tr(
+        [
+            loop(
+                [
+                    field("i", "@.id", "Id"),
+                    obj([field("r", "@.taxRate", "Rate", "number")], guard="@.taxRate != None"),
+                ]
+            )
+        ]
+    )
+    assert "def lp_ob(root: Any, src: Any) -> Tax:" in text
+    assert "Tax=lp_ob(root, src)" in text
+    assert "Tax: Tax | None" in text
+    compile_source(text, "m")
+
+
+def test_object_inside_object_and_deep_nesting():
+    text = tr(
+        [
+            {
+                "id": "o1",
+                "kind": "object",
+                "output": "$.Hdr",
+                "rules": [
+                    field("a", "$.a", "A"),
+                    {
+                        "id": "o2",
+                        "kind": "object",
+                        "output": "@.Inner",
+                        "rules": [field("b", "$.b", "B")],
+                    },
+                ],
+            }
+        ]
+    )
+    assert "def o1_o2(root: Any) -> Inner:" in text
+    assert "Inner=o1_o2(root)" in text
+    compile_source(text, "m")
+
+
+def test_three_level_nesting_compiles():
+    text = tr(
+        [
+            loop(
+                [
+                    inner_loop(
+                        [
+                            {
+                                "id": "leaf",
+                                "kind": "loop",
+                                "label": "lf",
+                                "source": "@.parts[*]",
+                                "output": "@.Parts[*]",
+                                "rules": [
+                                    field("x", "@.n", "N"),
+                                    field("y", "@3.id", "OrderId"),
+                                ],
+                            }
+                        ]
+                    )
+                ]
+            )
+        ]
+    )
+    assert "def lp_sub_leaf(root: Any, src2: Any, src1: Any, src: Any) -> PartsItem:" in text
+    assert "OrderId=src2.id" in text
+    compile_source(text, "m")
+
+
+def test_typed_nested_params_follow_the_input_schema():
+    schema = resolve_schema_types(
+        {
+            "title": "Ev",
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "lines": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {"sku": {"type": "string"}},
+                                },
+                            },
+                        },
+                    },
+                }
+            },
+        },
+        "Ev",
+    )
+    rules = [loop([field("i", "@.id", "Id"), inner_loop([field("l", "@.sku", "Sku")])])]
+    text = transpile_file_model(model(rules), input_schema=schema)
+    assert "def lp(root: Ev, src: Evitem) -> LinesItem:" in text or "src: Evitem" in text
+    assert "def lp_sub(root: Ev, src1: Evitem, src: Evitemline)" in text
+    compile_source(text, "m", input_schema=schema)
+
+
 # -- limits of what the compiler can express ---------------------------------
 
 
 @pytest.mark.parametrize(
     "rules, message",
     [
-        (
-            [loop([loop([field("a", "@.x")], id="in", label="in2", source="@.sub[*]")])],
-            "nested-output support",
-        ),
-        ([loop([field("a", "@.x")], source="@.sub[*]")], "nested loop"),
-        ([loop([field("a", "@.x")], output="$.A.B[*]")], "single field of the output root"),
-        ([loop([field("a", "@2.x")])], "only one loop level"),
+        ([loop([field("a", "@.x")], source="@.sub[*]")], "outside a loop"),
+        ([loop([field("a", "@.x")], output="$.A.B[*]")], "one field of the enclosing element"),
+        ([loop([field("a", "@2.x")])], "only 1 enclose"),
         ([field("a", "@index")], "outside a loop"),
         (
             [loop([field("a", "if @.x:\n    return 1\nelse:\n    return 2")])],
             "no if/return/Null",
         ),
-        ([loop([])], "at least one field"),
+        ([loop([])], "at least one member"),
         ([loop([field("a", "@.x")], sort={"key": "$.a + 1"})], "sort key"),
         ([loop([field("a", "@.x")], filter="@index > 1")], "filter cannot reference @index"),
+        (
+            [loop([field("a", "@.x"), field("b", "@.y", "F")])],
+            "duplicate output field",
+        ),
     ],
 )
 def test_unsupported_shapes_fail_with_a_clear_error(rules, message):
@@ -366,3 +588,9 @@ def test_unsupported_shapes_fail_with_a_clear_error(rules, message):
 
 def test_loop_rule_is_dataclass():
     assert isinstance(model([loop([field("a", "@.x")])]).rules[0], LoopRule)
+
+
+def test_nested_fixture_matches_golden_and_compiles():
+    text = transpile_file(FIXTURES / "nested.fn.yaml")
+    assert text == (FIXTURES / "nested.map.py.golden").read_text()
+    compile_source(text, "nested")

@@ -72,7 +72,7 @@ class _RenameLoopVar(ast.NodeTransformer):
         return node
 
 
-def _extract_filter(body: list[ast.stmt]) -> tuple[ast.expr | None, list[ast.stmt]]:
+def extract_continue_filter(body: list[ast.stmt]) -> tuple[ast.expr | None, list[ast.stmt]]:
     """If `body` starts with a bare `if <cond>: continue` (no `elif`/
     `else`), return `(<cond>, remaining body)`; otherwise `(None, body)`."""
     if (
@@ -86,7 +86,7 @@ def _extract_filter(body: list[ast.stmt]) -> tuple[ast.expr | None, list[ast.stm
     return None, body
 
 
-def _wrap_filter(filter_expr: ast.expr, body: list[ast.stmt]) -> list[ast.stmt]:
+def wrap_filter(filter_expr: ast.expr, body: list[ast.stmt]) -> list[ast.stmt]:
     # `continue when not X` -> `if X`: same truthiness (a NULL condition still skips),
     # without the `NOT (NOT ...)` the naive wrap would emit.
     if isinstance(filter_expr, ast.UnaryOp) and isinstance(filter_expr.op, ast.Not):
@@ -176,7 +176,7 @@ def _has_filtered_iter(stmt: ast.For) -> bool:
         return False
 
 
-def _lower_filtered_iter(stmt: ast.For, counter: itertools.count) -> ast.For:
+def lower_filtered_iter(stmt: ast.For, counter: itertools.count) -> ast.For:
     """`for [i,] x in [enumerate(][x for x in A if c][)]:` -> `for x in A:` whose
     body opens with `if not c: continue`, then (when indexed) the internal
     statement `i = __next_index__(start, k)`. `k` names a counter owned by this
@@ -213,8 +213,8 @@ def _lower_filtered_iter(stmt: ast.For, counter: itertools.count) -> ast.For:
         )
     # A body-level `if c2: continue` runs *after* the element was numbered (real
     # Python: `enumerate()` counted it), so it stays nested behind the marker.
-    body_filter, rest = _extract_filter(stmt.body)
-    body += _wrap_filter(body_filter, rest) if body_filter is not None else stmt.body
+    body_filter, rest = extract_continue_filter(stmt.body)
+    body += wrap_filter(body_filter, rest) if body_filter is not None else stmt.body
     guard = ast.If(test=ast.UnaryOp(op=ast.Not(), operand=cond), body=[ast.Continue()], orelse=[])
     lowered = ast.For(
         target=ast.Name(id=item_var, ctx=ast.Store()),
@@ -262,7 +262,7 @@ def _fuse(
             if not lower_filtered and _has_filtered_iter(stmt):
                 result.append(stmt)
                 continue
-            stmt = _lower_filtered_iter(stmt, counter)
+            stmt = lower_filtered_iter(stmt, counter)
             try:
                 item_var, index_var = parse_for_target(stmt.target)
             except LoopIterError as exc:
@@ -271,7 +271,7 @@ def _fuse(
             # loops differing only in start offset still iterate the exact
             # same underlying array in the exact same order.
             key = _iter_key(stmt.iter) if fusion_enabled else f"__unfused_{id(stmt)}"
-            filter_expr, body = _extract_filter(stmt.body)
+            filter_expr, body = extract_continue_filter(stmt.body)
             if key not in groups:
                 groups[key] = _Group(canonical=stmt, item_var=item_var, index_var=index_var)
                 groups[key].members.append((filter_expr, body))
@@ -302,7 +302,7 @@ def _fuse(
             _check_parallel_conflict(member_bodies, rule_defs, parallel_conflict)
         fused_body: list[ast.stmt] = []
         for filter_expr, body in group.members:
-            fused_body.extend(_wrap_filter(filter_expr, body) if filter_expr is not None else body)
+            fused_body.extend(wrap_filter(filter_expr, body) if filter_expr is not None else body)
         group.canonical.body = fused_body
 
     for stmt in result:

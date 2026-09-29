@@ -85,7 +85,9 @@ different top-level accumulator type. Every fixture so far has an
 object-shaped root output.)
 
 Scope of this milestone (documented, not silently assumed):
-- Single-level `for` loops are supported; nested loops are not yet.
+- `for` loops in the mapping body, and inside rule functions (nested output
+  arrays: a local list filled by a loop, dataclass fields that are lists,
+  nested dataclasses or calls to other rule functions).
 - Loop Fusion (merging multiple loops/field-functions over the same source
   array, the `@parallel` conflict check, the filter-to-per-branch-IF
   rewrite — docs/ARCHITECTURE.md's Loop Fusion Optimizer section) is not
@@ -104,12 +106,18 @@ from __future__ import annotations
 import ast
 import itertools
 import json
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 
 from compiler.annotations import AnnotationError, resolve_dsl_type
 from compiler.backends.base import CodeGenerator, FieldRule
 from compiler.function_linker import FunctionLinker
-from compiler.loop_fusion import NEXT_INDEX
+from compiler.loop_fusion import (
+    NEXT_INDEX,
+    extract_continue_filter,
+    lower_filtered_iter,
+    wrap_filter,
+)
 from compiler.loop_iter import LoopIterError, parse_for_iter, parse_for_target
 
 # PL/SQL requires a VARCHAR2 *variable* declaration to carry a size (unlike
@@ -121,6 +129,8 @@ _EXPECTED_TO_DECL_TYPE = {
     "BOOLEAN": "BOOLEAN",
     "DATE": "DATE",
     "TIMESTAMP": "TIMESTAMP",
+    "OBJECT": "JSON_OBJECT_T",
+    "ARRAY": "JSON_ARRAY_T",
 }
 
 # PL/SQL disallows size/scale constraints on a function's RETURN type or on
@@ -269,13 +279,18 @@ def _collect_dataclasses(tree: ast.Module) -> dict[str, _DataclassDef]:
 
 
 def _expected_kind(base_type: str) -> str:
-    """PL/SQL scalar-getter kind for a DSL base type name, or "OBJECT" for
-    anything else (a dataclass, or an unchecked schema-derived type)."""
+    """PL/SQL scalar-getter kind for a DSL base type name, "ARRAY" for
+    `list[T]`, or "OBJECT" for anything else (a dataclass, or an unchecked
+    schema-derived type)."""
+    if base_type.startswith("list["):
+        return "ARRAY"
     return _DSL_TO_EXPECTED.get(base_type, "OBJECT")
 
 
 def _plsql_unconstrained_type(base_type: str) -> str:
     """Unconstrained PL/SQL type for a RETURN clause or parameter."""
+    if base_type.startswith("list["):
+        return "JSON_ARRAY_T"
     return _DSL_TO_PLSQL_UNCONSTRAINED.get(base_type, "JSON_OBJECT_T")
 
 
@@ -399,11 +414,21 @@ class _FnCtx:
         self.local_prefix = local_prefix
         self.locals: dict[str, str] = {}
         self.declarations: list[str] = []
+        # locals bound from a rule-function call: name -> its `omitted` flag variable
+        self.omit_flags: dict[str, str] = {}
+        self.counter = itertools.count()  # temp names, loop-index counters
 
     def resolve_name(self, name: str) -> str | None:
         if name in self.params:
             return f"p_{name}"
         return None
+
+    def declare(self, decl: str) -> None:
+        if decl not in self.declarations:
+            self.declarations.append(decl)
+
+    def local_var(self, name: str) -> str:
+        return f"v_{self.local_prefix}_{name}"
 
 
 class _ExprTranslator:
@@ -413,11 +438,13 @@ class _ExprTranslator:
         rule_signatures: dict[str, _RuleSignature],
         dataclasses: dict[str, _DataclassDef],
         function_linker: FunctionLinker,
+        fn_name: Callable[[str], str] | None = None,
     ):
         self.ctx = ctx
         self.rule_signatures = rule_signatures
         self.dataclasses = dataclasses
         self.function_linker = function_linker
+        self.fn_name = fn_name
 
     def translate(self, node: ast.expr, expected: str | None) -> str:
         method = getattr(self, f"_t_{type(node).__name__}", None)
@@ -515,7 +542,9 @@ class _ExprTranslator:
                     return f"({self.translate(a, None)} {is_null})"
         operand_expected = "VARCHAR2"
         for side in (node.left, node.comparators[0]):
-            if (
+            if isinstance(side, ast.Constant) and isinstance(side.value, bool):
+                operand_expected = "BOOLEAN"
+            elif (
                 isinstance(side, ast.Constant)
                 and isinstance(side.value, (int, float))
                 and not isinstance(side.value, bool)
@@ -582,12 +611,24 @@ def _is_dataclass_construction(node: ast.expr, dataclasses: dict[str, _Dataclass
     )
 
 
-def _materialize_dataclass(call: ast.Call, translator: _ExprTranslator, tmp_var: str) -> list[str]:
+def _materialize_dataclass(
+    call: ast.Call,
+    translator: _ExprTranslator,
+    tmp_var: str,
+    ctx: _FnCtx | None = None,
+    loop_counter: itertools.count | None = None,
+) -> list[str]:
     """Build a dataclass value **in memory**, field by field, into
     `tmp_var` — no text round-trip through `JSON_OBJECT()`/CLOB/VARCHAR2 at
     all, so no 4000-byte ceiling and no PLS-00684 (native PL/SQL rejects
     `JSON_OBJECT(...) RETURNING CLOB` — SQL-context-only, verified against a
-    live Oracle 23ai instance). `JSON_OBJECT_T.put()` has no size limit."""
+    live Oracle 23ai instance). `JSON_OBJECT_T.put()` has no size limit.
+
+    Inside a rule function (`ctx` given) a field value may also be a list
+    local, a nested dataclass construction, a call to another rule function
+    (omitted -> the key is left out), or a local bound from such a call —
+    that is how nested output objects/arrays are composed. At flow level
+    (`ctx` is None) only plain expressions are accepted."""
     assert isinstance(call.func, ast.Name)
     name = call.func.id
     cls = translator.dataclasses[name]
@@ -602,9 +643,71 @@ def _materialize_dataclass(call: ast.Call, translator: _ExprTranslator, tmp_var:
         if field_def is None:
             raise CodeGenError(f"'{name}' has no field '{kw.arg}'")
         expected = _expected_kind(field_def.base_type)
-        value_expr = translator.translate(kw.value, expected)
-        lines.append(f"{tmp_var}.put({_quote(kw.arg)}, {value_expr});")
+        key = _quote(kw.arg)
+        if ctx is None or loop_counter is None:
+            value_expr = translator.translate(kw.value, expected)
+            lines.append(f"{tmp_var}.put({key}, {value_expr});")
+        else:
+            lines.extend(
+                _emit_value(
+                    kw.value,
+                    ctx,
+                    translator,
+                    loop_counter,
+                    lambda e, k=key: f"{tmp_var}.put({k}, {e});",
+                    expected,
+                )
+            )
     return lines
+
+
+def _emit_value(
+    value: ast.expr,
+    ctx: _FnCtx,
+    translator: _ExprTranslator,
+    loop_counter: itertools.count,
+    sink: Callable[[str], str],
+    expected: str | None,
+) -> list[str]:
+    """Emit the statements delivering `value` to `sink` (a `.put(...)` /
+    `.append(...)` template) inside a rule function."""
+    # a call to another rule function: value + omitted flag
+    if (
+        isinstance(value, ast.Call)
+        and isinstance(value.func, ast.Name)
+        and value.func.id in translator.rule_signatures
+    ):
+        if translator.fn_name is None:
+            raise CodeGenError("rule-function calls need a function-name resolver")
+        rule = value.func.id
+        sig = translator.rule_signatures[rule]
+        if len(value.args) != len(sig.param_names):
+            raise CodeGenError(
+                f"'{rule}' takes {len(sig.param_names)} argument(s), got {len(value.args)}"
+            )
+        n = next(ctx.counter)
+        res, om = f"v_{ctx.local_prefix}__rc{n}", f"v_{ctx.local_prefix}__ro{n}"
+        ctx.declare(f"{res} {_decl_type(sig.return_expected)};")
+        ctx.declare(f"{om} BOOLEAN;")
+        args = [translator.translate(a, sig.param_expected[i]) for i, a in enumerate(value.args)]
+        call = f"{translator.fn_name(rule)}(" + ", ".join([*args, om]) + ")"
+        return [f"{res} := {call};", f"IF NOT {om} THEN", f"    {sink(res)}", "END IF;"]
+    if _is_dataclass_construction(value, translator.dataclasses):
+        assert isinstance(value, ast.Call)
+        n = next(ctx.counter)
+        tmp = f"v_{ctx.local_prefix}__dc{n}"
+        ctx.declare(f"{tmp} JSON_OBJECT_T;")
+        return [
+            *_materialize_dataclass(value, translator, tmp, ctx, loop_counter),
+            sink(tmp),
+        ]
+    if isinstance(value, ast.Name) and value.id in ctx.locals:
+        var = ctx.local_var(value.id)
+        if value.id in ctx.omit_flags:
+            return [f"IF NOT {ctx.omit_flags[value.id]} THEN", f"    {sink(var)}", "END IF;"]
+        if ctx.locals[value.id] in ("ARRAY", "OBJECT"):
+            return [sink(var)]
+    return [sink(translator.translate(value, expected))]
 
 
 _AGGREGATE_FUNCS = {"max", "min", "sum", "avg"}
@@ -734,6 +837,22 @@ def _indent(lines: list[str], level: int = 1) -> list[str]:
     return [pad + ln for ln in lines]
 
 
+def _list_local_append(stmt: ast.stmt, ctx: _FnCtx) -> tuple[str, ast.expr] | None:
+    """`<list local>.append(<value>)` -> (local name, value)."""
+    if (
+        isinstance(stmt, ast.Expr)
+        and isinstance(stmt.value, ast.Call)
+        and isinstance(stmt.value.func, ast.Attribute)
+        and stmt.value.func.attr == "append"
+        and isinstance(stmt.value.func.value, ast.Name)
+        and ctx.locals.get(stmt.value.func.value.id) == "ARRAY"
+    ):
+        if len(stmt.value.args) != 1:
+            raise CodeGenError("`.append(...)` takes exactly one argument")
+        return stmt.value.func.value.id, stmt.value.args[0]
+    return None
+
+
 def _translate_fn_body(
     stmts: list[ast.stmt],
     ctx: _FnCtx,
@@ -743,18 +862,65 @@ def _translate_fn_body(
 ) -> list[str]:
     out: list[str] = []
     for stmt in stmts:
-        if isinstance(stmt, ast.Assign):
+        appended = _list_local_append(stmt, ctx)
+        if appended is not None:
+            name, value = appended
+            var = ctx.local_var(name)
+            out.extend(
+                _emit_value(
+                    value, ctx, translator, loop_counter, lambda e, v=var: f"{v}.append({e});", None
+                )
+            )
+        elif _is_next_index(stmt):
+            assert isinstance(stmt, ast.Assign) and isinstance(stmt.value, ast.Call)
+            name = _name_of(stmt.targets[0])
+            k = _const_int(stmt.value.args[1])
+            out.append(f"{ctx.local_var(name)} := {ctx.local_var(f'cnt{k}')};")
+            out.append(f"{ctx.local_var(f'cnt{k}')} := {ctx.local_var(f'cnt{k}')} + 1;")
+        elif isinstance(stmt, ast.Assign):
             target = stmt.targets[0]
             if not isinstance(target, ast.Name):
                 raise CodeGenError("unsupported local assignment target")
-            inferred = infer_type(stmt.value, ctx)
-            rhs = translator.translate(stmt.value, inferred)
-            mangled = f"v_{ctx.local_prefix}_{target.id}"
-            if target.id not in ctx.locals:
-                ctx.locals[target.id] = inferred
-                decl_type = _EXPECTED_TO_DECL_TYPE.get(inferred, inferred)
-                ctx.declarations.append(f"{mangled} {decl_type};")
-            out.append(f"{mangled} := {rhs};")
+            mangled = ctx.local_var(target.id)
+            value = stmt.value
+            if isinstance(value, ast.List) and not value.elts:
+                # a fresh list; (re)initialised where it is assigned, so a list
+                # built inside a loop body starts empty on every iteration
+                if target.id not in ctx.locals:
+                    ctx.locals[target.id] = "ARRAY"
+                    ctx.declare(f"{mangled} JSON_ARRAY_T;")
+                out.append(f"{mangled} := JSON_ARRAY_T();")
+            elif (
+                isinstance(value, ast.Call)
+                and isinstance(value.func, ast.Name)
+                and value.func.id in translator.rule_signatures
+            ):
+                if translator.fn_name is None:
+                    raise CodeGenError("rule-function calls need a function-name resolver")
+                sig = translator.rule_signatures[value.func.id]
+                if len(value.args) != len(sig.param_names):
+                    raise CodeGenError(
+                        f"'{value.func.id}' takes {len(sig.param_names)} argument(s), "
+                        f"got {len(value.args)}"
+                    )
+                om = f"{mangled}__o"
+                if target.id not in ctx.locals:
+                    ctx.locals[target.id] = sig.return_expected
+                    ctx.declare(f"{mangled} {_decl_type(sig.return_expected)};")
+                    ctx.declare(f"{om} BOOLEAN;")
+                ctx.omit_flags[target.id] = om
+                args = [
+                    translator.translate(a, sig.param_expected[i]) for i, a in enumerate(value.args)
+                ]
+                call = f"{translator.fn_name(value.func.id)}(" + ", ".join([*args, om]) + ")"
+                out.append(f"{mangled} := {call};")
+            else:
+                inferred = infer_type(value, ctx)
+                rhs = translator.translate(value, inferred)
+                if target.id not in ctx.locals:
+                    ctx.locals[target.id] = inferred
+                    ctx.declare(f"{mangled} {_decl_type(inferred)};")
+                out.append(f"{mangled} := {rhs};")
         elif isinstance(stmt, ast.Return):
             if stmt.value is None:
                 out.append("p_omitted := TRUE;")
@@ -767,7 +933,9 @@ def _translate_fn_body(
                 if tmp_var not in ctx.locals:
                     ctx.locals[tmp_var] = "OBJECT"
                     ctx.declarations.append(f"{tmp_var} JSON_OBJECT_T;")
-                out.extend(_materialize_dataclass(stmt.value, translator, tmp_var))
+                out.extend(
+                    _materialize_dataclass(stmt.value, translator, tmp_var, ctx, loop_counter)
+                )
                 out.append(f"RETURN {tmp_var};")
             elif _is_aggregate_call(stmt.value):
                 assert isinstance(stmt.value, ast.Call)
@@ -791,9 +959,75 @@ def _translate_fn_body(
                 out.append(f"RETURN {translator.translate(stmt.value, return_expected)};")
         elif isinstance(stmt, ast.If):
             out.extend(_translate_fn_if(stmt, ctx, return_expected, translator, loop_counter))
+        elif isinstance(stmt, ast.For):
+            out.extend(_translate_fn_for(stmt, ctx, return_expected, translator, loop_counter))
+        elif isinstance(stmt, ast.Continue):
+            out.append("CONTINUE;")
         else:
             raise CodeGenError(f"unsupported statement in field-rule body: {type(stmt).__name__}")
     return out
+
+
+def _translate_fn_for(
+    stmt: ast.For,
+    ctx: _FnCtx,
+    return_expected: str,
+    translator: _ExprTranslator,
+    loop_counter: itertools.count,
+) -> list[str]:
+    """A `for` inside a rule function: builds nested output arrays. Supports the
+    same iterable forms as a flow-level loop (`enumerate`, `sorted`, a
+    filtering comprehension). A leading `if not c: continue` (and the filter a
+    comprehension lowers to) becomes `IF c THEN <rest> END IF`, so a NULL
+    condition skips the element instead of falling through."""
+    try:
+        lowered = lower_filtered_iter(stmt, ctx.counter)
+        spec = parse_for_iter(lowered.iter)
+        item_var, index_var = parse_for_target(lowered.target)
+    except (LoopIterError, Exception) as exc:
+        if isinstance(exc, CodeGenError):
+            raise
+        raise CodeGenError(str(exc)) from exc
+
+    n = next(loop_counter)
+    arr, k = f"v_forarr_{n}", f"v_i_{n}"
+    ctx.declare(f"{arr} JSON_ARRAY_T;")
+    lines: list[str] = []
+    source = translator.translate(spec.array_expr, "ARRAY")
+    if spec.sort_key is not None:
+        lines.append(f"{arr} := TREAT({source}.clone AS JSON_ARRAY_T);")
+        lines.extend(_sort_lines(arr, spec.sort_key, spec.sort_reverse, n))
+    else:
+        lines.append(f"{arr} := {source};")
+
+    for name in (item_var, *([index_var] if index_var else [])):
+        if name not in ctx.locals:
+            ctx.locals[name] = "OBJECT" if name == item_var else "NUMBER"
+            ctx.declare(
+                f"{ctx.local_var(name)} {'JSON_OBJECT_T' if name == item_var else 'NUMBER'};"
+            )
+    for name, start, cid in _counted_indexes(lowered.body):
+        cnt = ctx.local_var(f"cnt{cid}")
+        ctx.declare(f"{cnt} NUMBER;")
+        if name not in ctx.locals:
+            ctx.locals[name] = "NUMBER"
+            ctx.declare(f"{ctx.local_var(name)} NUMBER;")
+        lines.append(f"{cnt} := {start};")
+
+    body = lowered.body
+    body_filter, rest = extract_continue_filter(body)
+    if body_filter is not None:
+        body = wrap_filter(body_filter, rest)
+
+    inner = [f"{ctx.local_var(item_var)} := TREAT({arr}.get({k}) AS JSON_OBJECT_T);"]
+    if index_var:
+        offset = spec.enumerate_start or 0
+        inner.append(f"{ctx.local_var(index_var)} := {k}" + (f" + {offset};" if offset else ";"))
+    inner.extend(_translate_fn_body(body, ctx, return_expected, translator, loop_counter))
+    lines.append(f"FOR {k} IN 0 .. {arr}.get_size - 1 LOOP")
+    lines.extend(_indent(inner))
+    lines.append("END LOOP;")
+    return lines
 
 
 def _translate_fn_if(
@@ -912,7 +1146,9 @@ class PlsqlCodeGenerator(CodeGenerator):
     ) -> PlsqlSubprogram:
         sig = rule_signatures[name]
         ctx = _FnCtx(params=sig.param_names, local_prefix=name)
-        translator = _ExprTranslator(ctx, rule_signatures, dataclasses, self.function_linker)
+        translator = _ExprTranslator(
+            ctx, rule_signatures, dataclasses, self.function_linker, self._fn_name
+        )
         body_lines = ["p_omitted := FALSE;"]
         body_lines.extend(
             _translate_fn_body(
@@ -947,7 +1183,9 @@ class PlsqlCodeGenerator(CodeGenerator):
         list_accumulators: dict[str, _ListAccumulator],
     ) -> list[str]:
         ctx = _FlowCtx(loop_vars)
-        translator = _ExprTranslator(ctx, rule_signatures, dataclasses, self.function_linker)
+        translator = _ExprTranslator(
+            ctx, rule_signatures, dataclasses, self.function_linker, self._fn_name
+        )
         lines: list[str] = []
 
         for stmt in stmts:
@@ -1150,7 +1388,7 @@ class PlsqlCodeGenerator(CodeGenerator):
             )
         outer_ctx = _FlowCtx(loop_vars)
         outer_translator = _ExprTranslator(
-            outer_ctx, rule_signatures, dataclasses, self.function_linker
+            outer_ctx, rule_signatures, dataclasses, self.function_linker, self._fn_name
         )
         source_expr = outer_translator.translate(iter_spec.array_expr, "ARRAY")
 
@@ -1209,38 +1447,7 @@ class PlsqlCodeGenerator(CodeGenerator):
         return lines
 
     def _emit_sort(self, arr_var: str, key: str, reverse: bool, idx: int) -> list[str]:
-        """Native in-place insertion sort by a named field, comparing via
-        `JSON_ELEMENT_T.compare_to()` (type-agnostic — works for both
-        numbers and strings, verified against a live Oracle 23ai instance —
-        no SQL-context ORDER BY, staying in native PL/SQL per the
-        CLOB-only-at-the-boundary principle)."""
-        j_var, k_var, tmp_var, tmp_key_var = (
-            f"v_sortj_{idx}",
-            f"v_sortk_{idx}",
-            f"v_sorttmp_{idx}",
-            f"v_sorttmpkey_{idx}",
-        )
-        op = "<" if reverse else ">"
-        key_q = _quote(key)
-        return [
-            "DECLARE",
-            f"    {j_var} PLS_INTEGER;",
-            f"    {tmp_var} JSON_ELEMENT_T;",
-            f"    {tmp_key_var} JSON_ELEMENT_T;",
-            "BEGIN",
-            f"    FOR {k_var} IN 1 .. {arr_var}.get_size - 1 LOOP",
-            f"        {tmp_var} := {arr_var}.get({k_var});",
-            f"        {tmp_key_var} := TREAT({tmp_var} AS JSON_OBJECT_T).get({key_q});",
-            f"        {j_var} := {k_var} - 1;",
-            f"        WHILE {j_var} >= 0 AND TREAT({arr_var}.get({j_var}) AS JSON_OBJECT_T)"
-            f".get({key_q}).compare_to({tmp_key_var}) {op} 0 LOOP",
-            f"            {arr_var}.put({j_var} + 1, {arr_var}.get({j_var}), TRUE);",
-            f"            {j_var} := {j_var} - 1;",
-            "        END LOOP;",
-            f"        {arr_var}.put({j_var} + 1, {tmp_var}, TRUE);",
-            "    END LOOP;",
-            "END;",
-        ]
+        return _sort_lines(arr_var, key, reverse, idx)
 
     @staticmethod
     def _is_out_append(call: ast.Call) -> bool:
@@ -1383,6 +1590,41 @@ class PlsqlCodeGenerator(CodeGenerator):
             PlsqlSubprogram(raising_name, f"{raising_sig};", raising_proc),
             PlsqlSubprogram(safe_name, f"{safe_sig};", safe_proc),
         ]
+
+
+def _sort_lines(arr_var: str, key: str, reverse: bool, idx: int) -> list[str]:
+    """Native in-place insertion sort by a named field, comparing via
+    `JSON_ELEMENT_T.compare_to()` (type-agnostic — works for both
+    numbers and strings, verified against a live Oracle 23ai instance —
+    no SQL-context ORDER BY, staying in native PL/SQL per the
+    CLOB-only-at-the-boundary principle)."""
+    j_var, k_var, tmp_var, tmp_key_var = (
+        f"v_sortj_{idx}",
+        f"v_sortk_{idx}",
+        f"v_sorttmp_{idx}",
+        f"v_sorttmpkey_{idx}",
+    )
+    op = "<" if reverse else ">"
+    key_q = _quote(key)
+    return [
+        "DECLARE",
+        f"    {j_var} PLS_INTEGER;",
+        f"    {tmp_var} JSON_ELEMENT_T;",
+        f"    {tmp_key_var} JSON_ELEMENT_T;",
+        "BEGIN",
+        f"    FOR {k_var} IN 1 .. {arr_var}.get_size - 1 LOOP",
+        f"        {tmp_var} := {arr_var}.get({k_var});",
+        f"        {tmp_key_var} := TREAT({tmp_var} AS JSON_OBJECT_T).get({key_q});",
+        f"        {j_var} := {k_var} - 1;",
+        f"        WHILE {j_var} >= 0 AND TREAT({arr_var}.get({j_var}) AS JSON_OBJECT_T)"
+        f".get({key_q}).compare_to({tmp_key_var}) {op} 0 LOOP",
+        f"            {arr_var}.put({j_var} + 1, {arr_var}.get({j_var}), TRUE);",
+        f"            {j_var} := {j_var} - 1;",
+        "        END LOOP;",
+        f"        {arr_var}.put({j_var} + 1, {tmp_var}, TRUE);",
+        "    END LOOP;",
+        "END;",
+    ]
 
 
 def _decl_type(expected_kind: str) -> str:
