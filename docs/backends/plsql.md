@@ -26,13 +26,34 @@ against a real Oracle only through the integration tests (golden cases); feature
 | `package` | yes | — | Name of the single generated package; the artifact is `build/compiled/<package lowercase>.sql` |
 | `error_code` | yes | — | Code passed to `RAISE_APPLICATION_ERROR` by the raising entry point |
 | `export_rule_functions` | no | `false` | `true` also lists every `fn_<mapping>_<rule>` in the package spec |
-| `schema` | yes | — | **Validated but not used yet** by the generator or the test harness |
-| `fn_package` | no | — | **Not used yet** |
-| `fn_prefix` / `fn_suffix` | no | `""` | **Not used yet** |
+| `schema` | yes | — | Owner: packages are created as `<schema>.<package>`. The integration harness creates the schema (no login) and reads compile errors from it |
+| `fn_package` | no | — | Second package holding the rule functions (see below) |
+| `fn_prefix` / `fn_suffix` | no | `""` | Decorate entry points and rule functions (see below) |
 
-`schema` stays required by decision, but nothing reads it yet. `fn_package`, `fn_prefix`
-and `fn_suffix` are optional and also unread: they are reserved names, wired up when a
-feature needs them. See [Known gaps](#known-gaps).
+### Names
+
+All names come from `naming.py`:
+
+| Object | Name |
+|---|---|
+| Entry points | `<fn_prefix>map_<id>[_safe\|_fn]<fn_suffix>` (the suffix always last) |
+| Rule functions | `<fn_prefix>fn_<id>_<rule><fn_suffix>` |
+| Packages | `[<schema>.]<package>` and, when set, `[<schema>.]<fn_package>` |
+
+`fn_prefix`, `fn_suffix`, `schema`, `package` and `fn_package` must be plain Oracle
+identifier parts (letters, digits, `_ $ #`; a prefix or name starts with a letter);
+anything else is a build error, as is `fn_package` equal to `package`.
+
+### `fn_package`
+
+Without it, rule functions live in the main package (private unless
+`export_rule_functions`). With it they move to that package, emitted **first** in
+the artifact; it always lists them in its spec (the main body calls them as
+`<fn_package>.fn_...`), so `export_rule_functions` has no effect. The main package
+holds only the entry points.
+
+The integration harness connects as `ADMIN`, creates `<schema>` if missing, deploys
+and calls `<schema>.<package>.<entry point>`. Not run against a real Oracle yet.
 
 ## The generated artifact
 
@@ -51,7 +72,7 @@ One file per project: `CREATE OR REPLACE PACKAGE <package>` (spec) and
 | `map_<id>(p_src IN CLOB, p_out OUT CLOB)` | procedure | always | always; raises if any rule failed |
 | `map_<id>_safe(p_src IN CLOB, p_out OUT CLOB, p_err OUT CLOB)` | procedure | always | always; never raises, returns errors in `p_err` |
 | `map_<id>_fn(p_src IN CLOB) RETURN CLOB PARALLEL_ENABLE` | function | always | only if a rule function declares `@parallel` |
-| `fn_<id>_<rule>(...)` | function | only with `export_rule_functions` | one per rule function |
+| `fn_<id>_<rule>(...)` | function | only with `export_rule_functions` (always, in `fn_package`, when set) | one per rule function |
 
 Rule functions come first in the body (PL/SQL needs a name declared before use), then
 the entry points.
@@ -147,7 +168,7 @@ PL/SQL, without a SQL `ORDER BY`.
 
 ## Known gaps
 
-- `schema` (required) and `fn_package`, `fn_prefix`, `fn_suffix` (optional) are accepted but not read by the generator.
+- Schema/package wiring (`schema`, `fn_package`) is covered by offline tests only; no run on a real Oracle.
 - No `maxLength`-driven sizing of `VARCHAR2` locals.
 - One package per project; a grouping key for several packages is a backlog item.
 - A mapping whose root output is an array is not supported (the output accumulator is

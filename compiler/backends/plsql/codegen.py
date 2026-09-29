@@ -88,13 +88,10 @@ Scope of this milestone (documented, not silently assumed):
 - `for` loops in the mapping body, and inside rule functions (nested output
   arrays: a local list filled by a loop, dataclass fields that are lists,
   nested dataclasses or calls to other rule functions).
-- Loop Fusion (merging multiple loops/field-functions over the same source
-  array, the `@parallel` conflict check, the filter-to-per-branch-IF
-  rewrite — docs/ARCHITECTURE.md's Loop Fusion Optimizer section) is not
-  wired into this backend yet — every `for` compiles to its own loop.
-- Package assembly (spec/body, multi-file, the `export_rule_functions`
-  toggle's actual effect) is a Build CLI concern (M3) — this module emits
-  standalone objects, already shaped for that later step.
+- Loop Fusion runs in the pipeline before this backend: the tree it receives is
+  already fused.
+- Package assembly (spec/body, `fn_package`, `schema`) lives in `package.py`; names in
+  `naming.py`.
 - String sizing from JSON Schema `maxLength` is not wired up yet — `str`
   fields/locals default to a generic `VARCHAR2(4000 CHAR)` declaration.
 - The RAISE_APPLICATION_ERROR payload is byte-budget-aware (§Runtime error
@@ -111,6 +108,7 @@ from dataclasses import asdict, dataclass
 
 from compiler.annotations import AnnotationError, resolve_dsl_type
 from compiler.backends.base import CodeGenError, CompiledUnit
+from compiler.backends.plsql.naming import PlsqlNaming
 from compiler.function_linker import FunctionLinker
 from compiler.loop_fusion import (
     NEXT_INDEX,
@@ -1065,14 +1063,22 @@ class _ListAccumulator:
 
 
 class PlsqlCodeGenerator:
-    def __init__(self, function_linker: FunctionLinker, error_code: int = -20000):
+    def __init__(
+        self,
+        function_linker: FunctionLinker,
+        error_code: int = -20000,
+        naming: PlsqlNaming | None = None,
+    ):
         self.function_linker = function_linker
         self.error_code = error_code
+        self.naming = naming or PlsqlNaming()
 
     # -- module compilation -----------------------------------------------
 
     def _fn_name(self, rule_id: str) -> str:
-        return _check_identifier(f"fn_{self._mapping_id}_{rule_id}")
+        """How a rule function is called (qualified when `fn_package` is set)."""
+        _check_identifier(self.naming.rule(self._mapping_id, rule_id))
+        return self.naming.rule_call(self._mapping_id, rule_id)
 
     def compile_module(self, tree: ast.Module, mapping_id: str, scope_resolution=None) -> PlsqlUnit:
         self._mapping_id = mapping_id
@@ -1133,8 +1139,8 @@ class PlsqlCodeGenerator:
         raising twin: a failing document fails the statement with the usual
         error payload (use `map_<id>_safe` from PL/SQL to collect errors).
         """
-        name = _check_identifier(f"map_{mapping_id}_fn")
-        raising = _check_identifier(f"map_{mapping_id}")
+        name = _check_identifier(self.naming.entry(mapping_id, "_fn"))
+        raising = _check_identifier(self.naming.entry(mapping_id))
         sig = f"FUNCTION {name} (p_src IN CLOB) RETURN CLOB PARALLEL_ENABLE"
         declared = ", ".join(f"{fn} (degree={d})" for fn, d in degrees.items())
         body = (
@@ -1176,7 +1182,7 @@ class PlsqlCodeGenerator:
         params.append("p_omitted OUT BOOLEAN")
         decls = "\n    ".join(ctx.declarations)
 
-        fn_name = self._fn_name(name)
+        fn_name = _check_identifier(self.naming.rule(self._mapping_id, name))
         signature = f"FUNCTION {fn_name}(" + ", ".join(params) + f") RETURN {sig.return_plsql_type}"
         header = f"{signature} IS\n"
         if decls:
@@ -1573,8 +1579,8 @@ class PlsqlCodeGenerator:
             "p_out := v_out_obj.TO_CLOB();",
         ]
 
-        raising_name = _check_identifier(f"map_{mapping_id}")
-        safe_name = _check_identifier(f"map_{mapping_id}_safe")
+        raising_name = _check_identifier(self.naming.entry(mapping_id))
+        safe_name = _check_identifier(self.naming.entry(mapping_id, "_safe"))
         raising_sig = f"PROCEDURE {raising_name} (\n    p_src IN  CLOB,\n    p_out OUT CLOB\n)"
         safe_sig = (
             f"PROCEDURE {safe_name} (\n"

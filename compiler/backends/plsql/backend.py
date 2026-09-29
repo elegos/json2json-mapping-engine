@@ -1,7 +1,8 @@
 """The PL/SQL backend (docs/ARCHITECTURE.md, §Target backends).
 
 Config (`[target.plsql]`): `schema`, `package`, `error_code` required;
-`fn_package`, `fn_prefix`, `fn_suffix`, `export_rule_functions` optional. All mappings of a project become
+`fn_package`, `fn_prefix`, `fn_suffix`, `export_rule_functions` optional; names
+are derived in `naming.py`. All mappings of a project become
 one package, written to `<package>.sql`.
 """
 
@@ -14,11 +15,11 @@ from typing import Any, ClassVar
 from compiler.backends.base import Backend, CodeGenError
 from compiler.backends.plsql.builtins import BUILTIN_FUNCTIONS
 from compiler.backends.plsql.codegen import PlsqlCodeGenerator, PlsqlUnit
+from compiler.backends.plsql.naming import DEFAULT_PACKAGE, PlsqlNaming
 from compiler.backends.plsql.package import assemble_package
 from compiler.function_linker import FunctionLinker
 from compiler.scope_resolver import ScopeResolution
 
-DEFAULT_PACKAGE = "MAPPING_RULES"
 DEFAULT_ERROR_CODE = -20000
 
 
@@ -37,12 +38,17 @@ class PlsqlBackend(Backend):
     def package(self) -> str:
         return self.config.get("package", DEFAULT_PACKAGE)
 
+    @property
+    def naming(self) -> PlsqlNaming:
+        return PlsqlNaming.from_config(self.config)
+
     def compile_module(
         self, tree: ast.Module, mapping_id: str, scope_resolution: ScopeResolution | None = None
     ) -> PlsqlUnit:
         generator = PlsqlCodeGenerator(
             function_linker=FunctionLinker(BUILTIN_FUNCTIONS),
             error_code=int(self.config.get("error_code", DEFAULT_ERROR_CODE)),
+            naming=self.naming,
         )
         return generator.compile_module(tree, mapping_id, scope_resolution)
 
@@ -53,7 +59,7 @@ class PlsqlBackend(Backend):
         if not all(isinstance(u, PlsqlUnit) for u in units):
             raise CodeGenError("the plsql backend can only assemble PlsqlUnit objects")
         return assemble_package(
-            units, self.package, bool(self.config.get("export_rule_functions", False))
+            units, self.naming, bool(self.config.get("export_rule_functions", False))
         )
 
     def artifact_path(self, compiled_dir: Path) -> Path:

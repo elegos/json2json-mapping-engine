@@ -37,6 +37,7 @@ from urllib.parse import urlparse
 from cli.allowed import check_allowed, collect_constraints, unsupported_keywords
 from cli.build import artifact_path, find_source, is_functional, mapping_id_of
 from cli.config import MapperConfig
+from compiler.backends.plsql.naming import PlsqlNaming
 from transpiler.model import load_functional_file
 
 GOLDEN_DIR = Path("tests/golden")
@@ -233,16 +234,35 @@ def _wait_ready(db: Database) -> None:
 # --------------------------------------------------------------------------
 
 
-def deploy(conn: Any, sql: str) -> None:
-    """Deploy every unit; raise with USER_ERRORS text if any fails to compile
-    (`CREATE OR REPLACE` with a compile error does not raise client-side)."""
+def deploy(conn: Any, sql: str, schema: str | None = None) -> None:
+    """Deploy every unit; raise with the error text if any fails to compile
+    (`CREATE OR REPLACE` with a compile error does not raise client-side).
+
+    With `schema` the packages are created as `<schema>.<package>`: the schema
+    is created first (no login, ephemeral database) unless it already exists,
+    and compile errors are read from that owner. Connecting as ADMIN, which
+    holds the `CREATE ANY PROCEDURE` this needs."""
     cur = conn.cursor()
+    owner = None
+    if schema:
+        owner = schema.upper()
+        cur.execute(
+            "BEGIN EXECUTE IMMEDIATE 'CREATE USER " + owner + " NO AUTHENTICATION'; "
+            "EXCEPTION WHEN OTHERS THEN IF SQLCODE != -1920 THEN RAISE; END IF; END;"
+        )
     for stmt in split_sql_script(sql):
         cur.execute(stmt)
-    cur.execute(
-        "SELECT name, line, position, text FROM user_errors "
-        "WHERE attribute = 'ERROR' ORDER BY name, sequence"
-    )
+    if owner:
+        cur.execute(
+            "SELECT name, line, position, text FROM all_errors "
+            "WHERE owner = :o AND attribute = 'ERROR' ORDER BY name, sequence",
+            o=owner,
+        )
+    else:
+        cur.execute(
+            "SELECT name, line, position, text FROM user_errors "
+            "WHERE attribute = 'ERROR' ORDER BY name, sequence"
+        )
     errs = cur.fetchall()
     if errs:
         detail = "\n".join(f"  {n} {ln}:{pos} {txt}" for n, ln, pos, txt in errs)
@@ -367,8 +387,8 @@ def run_track2(config: MapperConfig, mapping: str | None = None, log=print) -> l
     with ephemeral_oracle(runtime, config, log) as db:
         conn = oracledb.connect(user=db.user, password=db.password, dsn=db.dsn)
         try:
-            deploy(conn, package_sql.read_text())
-            pkg = config.target_config()["package"]
+            naming = PlsqlNaming.from_config(config.target_config())
+            deploy(conn, package_sql.read_text(), naming.schema)
             for c in cases:
                 src = find_source(c.mapping, config)
                 mapping_id = mapping_id_of(src) if src else c.mapping
@@ -380,9 +400,9 @@ def run_track2(config: MapperConfig, mapping: str | None = None, log=print) -> l
                 results.append(
                     run_case(
                         conn,
-                        f"{pkg}.map_{mapping_id}_safe",
+                        naming.call_path(mapping_id, "_safe"),
                         c,
-                        raising_proc=f"{pkg}.map_{mapping_id}",
+                        raising_proc=naming.call_path(mapping_id),
                         error_code=int(config.target_config()["error_code"]),
                         constraints=constraints,
                     )

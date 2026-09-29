@@ -705,6 +705,10 @@ rule's logic in isolation from the full mapping. This is a package-assembly-time
 decision (which names go in the spec), not a code-generation-time one: the rule
 functions themselves are generated identically either way.
 
+`fn_package` moves the rule functions into a second package, always exported (the main
+body calls them); `schema` qualifies the created packages, and `fn_prefix` / `fn_suffix`
+decorate entry points and rule functions. Details: [backends/plsql.md](backends/plsql.md).
+
 ---
 
 ## Runtime error semantics
@@ -842,7 +846,7 @@ parallel_conflict = "exception"   # exception (default) | max | min — see §@p
 schema     = "MAPPING_OWNER"   # Oracle schema that owns the generated packages
 package    = "MAPPING_RULES"   # name of the generated mapping-rules package
 fn_package = "MAPPING_FUNCTIONS"   # optional
-fn_prefix  = ""                # optional prefix for generated procedure/function names
+fn_prefix  = ""                # optional prefix for generated entry points and rule functions
 fn_suffix  = ""                # optional suffix
 error_code = -20000             # reserved RAISE_APPLICATION_ERROR code — see §Runtime error semantics
 export_rule_functions = false  # true = list every fn_<rule_id> in the package spec too — see §Generated artifact

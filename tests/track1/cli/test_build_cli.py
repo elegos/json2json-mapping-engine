@@ -77,8 +77,8 @@ def test_build_produces_one_package_for_every_mapping(project: Path):
     result = runner.invoke(app, ["build"])
     assert result.exit_code == 0, result.output
     sql = (project / PKG).read_text()
-    assert "CREATE OR REPLACE PACKAGE MAPPING_RULES AS" in sql
-    assert "CREATE OR REPLACE PACKAGE BODY MAPPING_RULES AS" in sql
+    assert "CREATE OR REPLACE PACKAGE MAPPING_OWNER.MAPPING_RULES AS" in sql
+    assert "CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.MAPPING_RULES AS" in sql
     assert "PROCEDURE map_ping (" in sql
     assert "PROCEDURE map_order_event_safe (" in sql
     assert not (project / "build/compiled/ping.sql").exists()
@@ -91,20 +91,33 @@ def test_same_rule_id_in_two_mappings_is_namespaced(project: Path):
         "    return root.other\n\n"
         "out.OrderId = order_id(root)\n"
     )
+    toml = project / "mapper.toml"
+    toml.write_text(toml.read_text().replace('fn_package = "MAPPING_FUNCTIONS"\n', ""))
     result = runner.invoke(app, ["build"])
     assert result.exit_code == 0, result.output
     sql = (project / PKG).read_text()
     assert "FUNCTION fn_order_event_order_id(" in sql
     assert "FUNCTION fn_other_order_id(" in sql
-    # private by default: absent from the spec
+    # without fn_package, private by default: absent from the spec
     spec = sql.split("PACKAGE BODY")[0]
     assert "fn_" not in spec
+
+
+def test_fn_package_takes_the_rule_functions_of_every_mapping(project: Path):
+    result = runner.invoke(app, ["build"])
+    assert result.exit_code == 0, result.output
+    fns, main = (project / PKG).read_text().split("PACKAGE MAPPING_OWNER.MAPPING_RULES AS")
+    assert "PACKAGE MAPPING_OWNER.MAPPING_FUNCTIONS AS" in fns
+    assert "FUNCTION fn_order_event_order_id(" in fns.split("PACKAGE BODY")[0]
+    assert "FUNCTION fn_" not in main
 
 
 def test_export_rule_functions_lists_them_in_the_spec(project: Path):
     toml = project / "mapper.toml"
     toml.write_text(
-        toml.read_text().replace("export_rule_functions = false", "export_rule_functions = true")
+        toml.read_text()
+        .replace("export_rule_functions = false", "export_rule_functions = true")
+        .replace('fn_package = "MAPPING_FUNCTIONS"\n', "")
     )
     runner.invoke(app, ["build"])
     spec = (project / PKG).read_text().split("PACKAGE BODY")[0]
