@@ -329,9 +329,9 @@ Independent of M6/M7; pick up in any order.
       (no `| None`) whose body has a bare `return` (omit) is not flagged; nullability is
       read from the annotation only.
 - [ ] **Track 2 in CI.** Job `track2` added on the `docker-dind` runner label
-      (`.forgejo/workflows/ci.yml`); not yet verified on a real run — the harness
-      connects to the published port on `127.0.0.1`, which may not reach the dind
-      daemon from inside the job container. Tick once green.
+      (`.forgejo/workflows/ci.yml`); not yet verified on a real run. With a remote
+      daemon (`DOCKER_HOST=tcp://…`) the harness publishes on all interfaces and
+      connects to that host; with a local/shared daemon it uses `127.0.0.1`. Tick once green.
 - [ ] **Track 2: exercise `map_<id>`** (raising variant); only the `_safe` twin runs.
 - [ ] **`allowed`-constraint warnings** on Track 2 output (data model exists since M5).
 - [ ] **Per-stage on-disk artifacts** of the transpiler.

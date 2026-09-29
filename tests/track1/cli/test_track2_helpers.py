@@ -82,3 +82,9 @@ def test_run_track2_without_cases_needs_no_runtime(tmp_path: Path, monkeypatch: 
         }
     )
     assert track2.run_track2(cfg) == []
+
+
+def test_remote_daemon_host():
+    assert track2.remote_daemon_host({"DOCKER_HOST": "tcp://docker:2375"}) == "docker"
+    assert track2.remote_daemon_host({"DOCKER_HOST": "unix:///var/run/docker.sock"}) is None
+    assert track2.remote_daemon_host({}) is None

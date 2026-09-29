@@ -18,15 +18,17 @@ from __future__ import annotations
 
 import difflib
 import json
+import os
 import secrets
 import shutil
 import subprocess
 import time
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from cli.build import find_source, mapping_id_of, package_name, package_path
 from cli.config import MapperConfig
@@ -137,14 +139,27 @@ class Database:
     password: str
 
 
+def remote_daemon_host(env: Mapping[str, str] | None = None) -> str | None:
+    """Host of a remote Docker daemon (`DOCKER_HOST=tcp://host:port`), else None.
+
+    With a remote daemon (e.g. a dind sidecar in CI) published ports live on
+    the daemon's host, not on this process's loopback."""
+    value = (os.environ if env is None else env).get("DOCKER_HOST", "")
+    if not value.startswith(("tcp://", "ssh://")):
+        return None
+    return urlparse(value).hostname
+
+
 @contextmanager
 def ephemeral_oracle(runtime: str, config: MapperConfig, log=print) -> Iterator[Database]:
     image = _image_ref(config)
     password = generate_password()
+    remote = remote_daemon_host()
+    bind = "0.0.0.0" if remote else "127.0.0.1"
     run = subprocess.run(
         [
             runtime, "run", "-d", "--rm",
-            "-p", f"127.0.0.1::{_ORACLE_PORT}",
+            "-p", f"{bind}::{_ORACLE_PORT}",
             "-e", f"ADMIN_PASSWORD={password}",
             "-e", f"WALLET_PASSWORD={password}",
             image,
@@ -159,7 +174,7 @@ def ephemeral_oracle(runtime: str, config: MapperConfig, log=print) -> Iterator[
         port = subprocess.run(
             [runtime, "port", cid, f"{_ORACLE_PORT}/tcp"], capture_output=True, text=True
         ).stdout.strip().splitlines()[0].rsplit(":", 1)[1]  # fmt: skip
-        db = Database(f"127.0.0.1:{port}/{_SERVICE}", "ADMIN", password)
+        db = Database(f"{remote or '127.0.0.1'}:{port}/{_SERVICE}", "ADMIN", password)
         log(f"container {cid[:12]} started from {image}; waiting for the database...")
         _wait_ready(db)
         yield db
