@@ -820,6 +820,36 @@ compiler enforces on hand-written code.
 
 ---
 
+#### Implementation status and deliberate deviations (M5)
+
+What the transpiler emits is bounded by what the compiler can express today. Not yet
+supported, each rejected with an error naming the rule: nested `loop`/`object` rules
+inside a `loop` or `object`; output paths deeper than one field of the output root
+(`$.Orders[*]` works, `$.Output.Orders[*]` does not); source paths relative to a loop
+(`@.items[*]`); `@2` / `@index.N`; a loop `filter` combined with `@index` (the spec
+numbers only the elements that pass the filter, but the compiler's `enumerate()` numbers
+every iterated element — silently emitting different numbers would be worse than an
+error). Fields of a `loop`/`object` share one generated function, so they cannot use bare
+`return` / `return Null` (use `if_else` / `coalesce`) and an error is reported under the
+loop/object rule's id.
+
+Other choices where the spec was silent or needed a decision:
+
+- `@index` start-offset is declared with a loop key `index_start: <int>` (default 0).
+- Generated identifiers use `_` where the fully-qualified id has `.`
+  (`ord.sub.nam` → `ord_sub_nam`), including in the runtime error payload's `rule` key.
+- `format` wraps the expression in `round(x, n)` / `trunc(x, n)` per `format_mode` /
+  `decimal_mode` (`trunc` is a new built-in). `"0"` follows the mode too, rather than
+  always truncating. The declared `NUMBER(38,n)` column scale is not emitted.
+- An `object`'s `guard` is emitted as `if <guard>: build else: return`, so a `NULL`
+  guard (e.g. a missing field) omits the object.
+- Inline `lookup` tables (`@label` or a dict) are constant dict literals, compiled to
+  `JSON_OBJECT_T('<json>')`. `x == None` / `x != None` compile to `IS [NOT] NULL`.
+- Stages run in memory; only the final `.map.py` is written (`build/transpiled/`),
+  not one artifact per stage.
+
+---
+
 ### Build folder and incremental compilation
 
 The build folder mirrors the two pipeline stages. Each source file produces one

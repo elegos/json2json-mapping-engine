@@ -263,20 +263,46 @@ package** (`[target.plsql] package`): entry points
 
 ---
 
-## ⬜ M5 — Functional layer transpiler (driven mode)
+## 🚧 M5 — Functional layer transpiler (driven mode)
 
-Not started. This is where several already-*documented* design decisions
-from M2b become load-bearing rather than aspirational:
-- `@index`/`@index.N` anchors and `sort:` on the Loop rule need real
-  anchor-resolution logic (Stage 2).
-- The rule-id abbreviation/collision-index algorithm (§Rule id generation)
-  is exercised here for the first time — bootstrap mode never needed it.
-- Stage 4 (Loop Fusion) should import `compiler/loop_fusion.py` directly,
-  per the M2b design — no reimplementation.
-- Stage 5's generated-`.map.py` parameter-naming convention (`root`/`src`/
-  `index`/`index1..N`) needs an actual emitter following it.
-- Auto/Manual mode and the validation decay rules are pure data-model work
-  independent of the above.
+The transpiler package (`transpiler/`) and driven-mode build are done for what the
+compiler can express; nested output structures need compiler work first.
+
+- **Stage 1** `transpiler/model.py`: strict `.fn.yaml` loader (unknown keys, bad
+  kinds/types, manual-without-override → error with the rule path). Auto/Manual
+  and validation data model, plus `apply_decay` (`validated`→false,
+  `needs_review`→true only when `source.path`/`transform.expression` changes).
+- **Rule ids** `transpiler/ids.py`: abbreviation (first 3 letters, `[]` stripped),
+  sibling-collision indexing (`sub`, `sub2`), fully-qualified ids, uniqueness checks.
+- **Stage 2** `anchors.py`: `$`, `@`, `@N`, `@label`, `@index`, lookup labels; skips
+  string literals.
+- **Stage 3** `expr.py`: expression blocks (locals mangled with the rule prefix,
+  trailing expression → `return`, `return Null` / bare `return` detected).
+- **Stage 4** reuses `compiler.loop_fusion.fuse_loops` — no reimplementation.
+- **Stage 5** `transpile.py`: `.map.py` via `ast.unparse`, header comment recording
+  options, parameter convention (`root`, `src`, `index` only if referenced).
+- **CLI**: `mapper transpile`; `mapper build/compile/check` work in `mode = "driven"`
+  (`mappings/functional/*.fn.yaml`). Input schema, when present, types the generated
+  parameters so the Type Checker still checks reads.
+- Supported: top-level scalar fields, top-level objects (+ `guard`), single-level loops
+  (`filter`, `sort`, `@index`, `index_start`), lookups, `format`/`format_mode`,
+  manual `code_override`. Limits and deviations: `ARCHITECTURE.md`, "Implementation
+  status and deliberate deviations (M5)".
+
+**Compiler changes this forced** (found by running the generated code on Oracle 23ai
+via Track 2, not by unit tests):
+- `src` resolved to the `enumerate()` index variable in a `for index, src in ...` loop.
+- `sorted()` sorted the *source* array in place, reordering it under later loops over
+  the same array; it now sorts a `.clone`.
+- `x != None` compiled to `x <> NULL` (never true); now `IS [NOT] NULL`.
+- New: constant dict literals (`JSON_OBJECT_T('...')`) and the `trunc` built-in.
+- The build cache key now includes the mapping's input/output schema files (a schema
+  edit used to leave stale output).
+
+**Not done**: nested loops/objects and deeper output paths (compiler); `filter` +
+`@index` numbering over survivors (compiler); per-stage on-disk artifacts;
+`@parallel` from `.fn.yaml`; the desktop tool's use of `apply_decay` (M6);
+`allowed` warnings on Track 2 output.
 
 ---
 

@@ -103,6 +103,7 @@ from __future__ import annotations
 
 import ast
 import itertools
+import json
 from dataclasses import asdict, dataclass
 
 from compiler.annotations import AnnotationError, resolve_dsl_type
@@ -166,6 +167,7 @@ _BINOPS = {ast.Add: "+", ast.Sub: "-", ast.Mult: "*"}
 _BUILTIN_ARG_EXPECTED: dict[str, list[str | None]] = {
     "coalesce": [None, None],
     "round": ["NUMBER", "NUMBER"],
+    "trunc": ["NUMBER", "NUMBER"],
     "if_else": ["BOOLEAN", None, None],
     "split_first": ["VARCHAR2", "VARCHAR2"],
     "split_nth": ["VARCHAR2", "VARCHAR2", "NUMBER"],
@@ -320,6 +322,11 @@ def _resolve_signature(fn_def: ast.FunctionDef) -> _RuleSignature:
     )
 
 
+class _IndexVar(str):
+    """A loop's `enumerate()` index variable, kept in the same list as item
+    variables (both resolve as `v_<name>`) but never what `src` means."""
+
+
 class _FlowCtx:
     """Name resolution for the *flowing* module/loop scope: `root`, `src`,
     and loop variables are magic here. No local variables (the Validator
@@ -333,9 +340,10 @@ class _FlowCtx:
         if name == "root":
             return "v_srcroot"
         if name == "src":
-            if not self.loop_vars:
+            items = [v for v in self.loop_vars if not isinstance(v, _IndexVar)]
+            if not items:
                 raise CodeGenError("`src` used outside a loop")
-            return f"v_{self.loop_vars[-1]}"
+            return f"v_{items[-1]}"
         if name in self.loop_vars:
             return f"v_{name}"
         return None
@@ -386,6 +394,22 @@ class _ExprTranslator:
         if isinstance(v, str):
             return _quote(v)
         return str(v)
+
+    def _t_Dict(self, node: ast.Dict, expected: str | None) -> str:
+        """A constant dict literal (e.g. an inlined `lookup` table) as a
+        `JSON_OBJECT_T` built from its JSON text. Constants only: str keys,
+        JSON-scalar values."""
+        table: dict[str, object] = {}
+        for k, v in zip(node.keys, node.values, strict=True):
+            if not (
+                isinstance(k, ast.Constant)
+                and isinstance(k.value, str)
+                and isinstance(v, ast.Constant)
+                and isinstance(v.value, (str, int, float, bool, type(None)))
+            ):
+                raise CodeGenError("dict literals must map string constants to scalar constants")
+            table[k.value] = v.value
+        return f"JSON_OBJECT_T({_quote(json.dumps(table, ensure_ascii=False))})"
 
     def _t_Name(self, node: ast.Name, expected: str | None) -> str:
         name = node.id
@@ -441,6 +465,14 @@ class _ExprTranslator:
         op = node.ops[0]
         if type(op) not in _COMPARE_OPS:
             raise CodeGenError(f"unsupported comparison operator: {type(op).__name__}")
+        # `x == None` / `x != None` must be IS [NOT] NULL: in SQL `x = NULL` is
+        # never true, so a literal translation would make the test always NULL.
+        if isinstance(op, (ast.Eq, ast.NotEq)):
+            left_node, right_node = node.left, node.comparators[0]
+            for a, b in ((left_node, right_node), (right_node, left_node)):
+                if isinstance(b, ast.Constant) and b.value is None:
+                    is_null = "IS NULL" if isinstance(op, ast.Eq) else "IS NOT NULL"
+                    return f"({self.translate(a, None)} {is_null})"
         operand_expected = "VARCHAR2"
         for side in (node.left, node.comparators[0]):
             if (
@@ -629,6 +661,8 @@ def infer_type(node: ast.expr, ctx: _FnCtx) -> str:
         return "VARCHAR2"
     if isinstance(node, ast.BinOp):
         return "NUMBER"
+    if isinstance(node, ast.Dict):
+        return "OBJECT"
     if isinstance(node, (ast.Compare, ast.BoolOp, ast.UnaryOp)):
         return "BOOLEAN"
     if isinstance(node, ast.IfExp):
@@ -639,7 +673,7 @@ def infer_type(node: ast.expr, ctx: _FnCtx) -> str:
             return infer_type(node.args[0], ctx)
         if fname == "if_else":
             return infer_type(node.args[1], ctx)
-        if fname == "round":
+        if fname in ("round", "trunc"):
             return "NUMBER"
         if fname == "parse_date":
             return "DATE"
@@ -1073,7 +1107,13 @@ class PlsqlCodeGenerator(CodeGenerator):
         arr_var = f"v_forarr_{idx}"
         idx_var = f"v_i_{idx}"
 
-        setup_lines = [f"{arr_var} JSON_ARRAY_T := {source_expr};"]
+        # The in-place sort must work on a copy: `get_Array` hands back a
+        # reference into the source document, so sorting it directly would
+        # reorder the input under every other loop reading the same array.
+        if iter_spec.sort_key is not None:
+            setup_lines = [f"{arr_var} JSON_ARRAY_T := TREAT({source_expr}.clone AS JSON_ARRAY_T);"]
+        else:
+            setup_lines = [f"{arr_var} JSON_ARRAY_T := {source_expr};"]
         sort_lines: list[str] = []
         if iter_spec.sort_key is not None:
             sort_lines = self._emit_sort(arr_var, iter_spec.sort_key, iter_spec.sort_reverse, idx)
@@ -1081,7 +1121,7 @@ class PlsqlCodeGenerator(CodeGenerator):
         inner_loop_vars = [*loop_vars, item_var]
         index_decl = ""
         if index_var is not None:
-            inner_loop_vars.append(index_var)
+            inner_loop_vars.append(_IndexVar(index_var))
             offset = iter_spec.enumerate_start or 0
             offset_expr = f"{idx_var}" if offset == 0 else f"{idx_var} + {offset}"
             index_decl = f"\n            v_{index_var} NUMBER := {offset_expr};"

@@ -153,7 +153,7 @@ class _ExprTypeChecker:
                 return _t, False  # coalesce's whole point is resolving away nullability
             if fname == "if_else":
                 return self.infer_produced_type(node.args[1], scope)
-            if fname == "round":
+            if fname in ("round", "trunc"):
                 return "number", False
             if fname == "parse_date":
                 return "date", False

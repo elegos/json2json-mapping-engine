@@ -37,3 +37,40 @@ def test_max_uses_compare_to_and_sum_uses_running_number_accumulator():
 def test_count_is_a_trivial_get_size_expression():
     sql = compile_file(FIXTURES / "aggregates.map.py")
     assert "v_srcroot.get_Array('items').get_size" in sql
+
+
+def test_src_means_the_item_not_the_index_in_an_enumerate_loop():
+    from compiler.pipeline import compile_source
+
+    sql = compile_source(
+        "from __mapping__ import *\n\n"
+        "def rule(root: Any, src: Any, index: int) -> Line:\n"
+        "    return Line(Pos=index, Id=src.id)\n\n"
+        "for index, src in enumerate(root.items):\n"
+        "    out.Lines.append(rule(root, src, index))\n".replace(
+            "def rule", "@dataclass\nclass Line:\n    Pos: int\n    Id: str\n\n\ndef rule"
+        ),
+        "m",
+    )
+    assert "fn_m_rule(v_srcroot, v_src, v_index," in sql
+
+
+def test_sorted_sorts_a_clone_not_the_source_array():
+    from compiler.pipeline import compile_file
+
+    sql = compile_file(FIXTURES / "enumerate_sorted.map.py")
+    assert ".clone AS JSON_ARRAY_T)" in sql
+
+
+def test_comparison_with_none_is_is_null():
+    from compiler.pipeline import compile_source
+
+    sql = compile_source(
+        "from __mapping__ import *\n\n"
+        "def a(root: Any) -> bool:\n    return root.x == None\n\n"
+        "def b(root: Any) -> bool:\n    return root.x != None\n\n"
+        "out.A = a(root)\nout.B = b(root)\n",
+        "m",
+    )
+    assert "p_root.get_String('x') IS NULL" in sql or "IS NULL)" in sql
+    assert "IS NOT NULL)" in sql

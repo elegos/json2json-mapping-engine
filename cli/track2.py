@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from cli.build import MAPPINGS_DIR, mapping_id_of, package_name, package_path
+from cli.build import find_source, mapping_id_of, package_name, package_path
 from cli.config import MapperConfig
 
 GOLDEN_DIR = Path("tests/golden")
@@ -259,8 +259,8 @@ def run_track2(config: MapperConfig, mapping: str | None = None, log=print) -> l
             deploy(conn, package_sql.read_text())
             pkg = package_name(config)
             for c in cases:
-                src = MAPPINGS_DIR / f"{c.mapping}.map.py"
-                mapping_id = mapping_id_of(src) if src.is_file() else c.mapping
+                src = find_source(c.mapping, config)
+                mapping_id = mapping_id_of(src) if src else c.mapping
                 results.append(run_case(conn, f"{pkg}.map_{mapping_id}_safe", c))
         finally:
             conn.close()

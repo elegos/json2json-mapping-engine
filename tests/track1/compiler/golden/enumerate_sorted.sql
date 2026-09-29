@@ -35,7 +35,7 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_RULES AS
         v_arr_Lines JSON_ARRAY_T := JSON_ARRAY_T();
     BEGIN
         DECLARE
-            v_forarr_0 JSON_ARRAY_T := v_srcroot.get_Array('items');
+            v_forarr_0 JSON_ARRAY_T := TREAT(v_srcroot.get_Array('items').clone AS JSON_ARRAY_T);
         BEGIN
             DECLARE
                 v_sortj_0 PLS_INTEGER;
@@ -127,7 +127,7 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_RULES AS
         v_arr_Lines JSON_ARRAY_T := JSON_ARRAY_T();
     BEGIN
         DECLARE
-            v_forarr_0 JSON_ARRAY_T := v_srcroot.get_Array('items');
+            v_forarr_0 JSON_ARRAY_T := TREAT(v_srcroot.get_Array('items').clone AS JSON_ARRAY_T);
         BEGIN
             DECLARE
                 v_sortj_0 PLS_INTEGER;

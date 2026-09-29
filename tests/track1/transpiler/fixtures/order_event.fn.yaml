@@ -1,0 +1,75 @@
+name: "Order Event"
+id: order_event
+rules:
+  - id: hdr
+    kind: field
+    field: OrderId
+    type: str
+    transform:
+      expression: "$.id"
+  - id: tot
+    kind: field
+    field: Total
+    type: number
+    format: "0.00"
+    transform:
+      expression: |
+        base = $.price * $.qty
+        base * 1.22
+  - id: dsc
+    kind: object
+    output: "$.Discount"
+    guard: "$.discountRate != None"
+    rules:
+      - id: rate
+        kind: field
+        field: Rate
+        type: number
+        transform:
+          expression: "$.discountRate"
+  - id: cur
+    kind: lookup
+    label: countryCurrency
+    entries:
+      IT: EUR
+      US: USD
+  - id: lin
+    kind: loop
+    label: item
+    source: "$.items[*]"
+    output: "$.Lines[*]"
+    sort: {key: "@.price", reverse: true}
+    index_start: 1
+    rules:
+      - id: pos
+        kind: field
+        field: Position
+        type: int
+        transform:
+          expression: "@index"
+      - id: lid
+        kind: field
+        field: LineId
+        type: str
+        transform:
+          expression: "@item.id"
+      - id: ccy
+        kind: field
+        field: Currency
+        type: str
+        required: false
+        transform:
+          expression: "lookup($.country, @countryCurrency)"
+  - id: act
+    kind: loop
+    label: item
+    source: "$.items[*]"
+    output: "$.Active[*]"
+    filter: "@.status != 'CANCELLED'"
+    rules:
+      - id: aid
+        kind: field
+        field: ActiveId
+        type: str
+        transform:
+          expression: "@.id"

@@ -1,7 +1,4 @@
-"""`mapper` — build CLI entry point (see docs/ARCHITECTURE.md, §Build CLI).
-
-Fleshed out incrementally: `transpile` lands in M5.
-"""
+"""`mapper` — build CLI entry point (see docs/ARCHITECTURE.md, §Build CLI)."""
 
 from __future__ import annotations
 
@@ -17,6 +14,7 @@ from cli.build import (
     compile_mapping,
     discover_mappings,
     package_path,
+    transpile_functional,
     write_package,
 )
 from cli.config import MapperConfigError, load_config
@@ -62,16 +60,21 @@ def _load_config_or_exit():
         raise typer.Exit(code=1) from exc
 
 
-def _target_mappings(file: str | None) -> list[Path]:
+def _target_mappings(file: str | None, config) -> list[Path]:
     if file is not None:
         path = Path(file)
         if not path.is_file():
             typer.echo(f"error: no such file: {file}", err=True)
             raise typer.Exit(code=1)
         return [path]
-    mappings = discover_mappings()
+    mappings = discover_mappings(config)
     if not mappings:
-        typer.echo("no mapping files found under mappings/*.map.py")
+        where = (
+            "mappings/functional/*.fn.yaml"
+            if config.project.mode == "driven"
+            else "mappings/*.map.py"
+        )
+        typer.echo(f"no mapping files found under {where}")
     return mappings
 
 
@@ -79,7 +82,7 @@ def _compile_all(config, targets: list[Path], force: bool = False):
     """Compile every mapping (package assembly needs all of them); report
     status for `targets` only. Returns all units."""
     units = []
-    for path in discover_mappings():
+    for path in discover_mappings(config):
         try:
             result = compile_mapping(path, config, force=force)
         except BuildError as exc:
@@ -95,7 +98,7 @@ def _compile_all(config, targets: list[Path], force: bool = False):
 
 
 def _compile_and_package(config, file: str | None, force: bool = False) -> None:
-    targets = _target_mappings(file)
+    targets = _target_mappings(file, config)
     if not targets:
         return
     units = _compile_all(config, targets, force)
@@ -105,6 +108,30 @@ def _compile_and_package(config, file: str | None, force: bool = False) -> None:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
     typer.echo(f"package: {out} ({len(units)} mapping(s))")
+
+
+@app.command()
+def transpile(
+    file: str | None = typer.Argument(None, help="Single .fn.yaml file to transpile"),
+) -> None:
+    """Transpile .fn.yaml -> build/transpiled/*.map.py (driven mode only)."""
+    config = _load_config_or_exit()
+    if config.project.mode != "driven":
+        typer.echo(
+            "error: `mapper transpile` is for mode = 'driven'; in bootstrap mode the "
+            ".map.py files are hand-written",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    for path in _target_mappings(file, config):
+        try:
+            transpile_functional(path, config)
+        except BuildError as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+        typer.echo(
+            f"transpiled: {path} -> build/transpiled/{path.name.removesuffix('.fn.yaml')}.map.py"
+        )
 
 
 @app.command(name="compile")
@@ -120,7 +147,7 @@ def compile_cmd(
 def build(
     file: str | None = typer.Argument(None, help="Report only this mapping (all are packaged)"),
 ) -> None:
-    """Full build: (transpile if driven, not yet implemented +) compile -> build/."""
+    """Full build: (transpile if driven +) compile -> build/."""
     config = _load_config_or_exit()
     generate_stubs()
     _compile_and_package(config, file)
@@ -186,7 +213,7 @@ def check() -> None:
     trust the build cache, which only tracks source hashes — not whether
     committed output still matches what current sources produce)."""
     config = _load_config_or_exit()
-    mappings = discover_mappings()
+    mappings = discover_mappings(config)
     committed = package_path(config)
     try:
         fresh = assemble([compile_fresh(p, config) for p in mappings], config)

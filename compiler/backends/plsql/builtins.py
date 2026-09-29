@@ -20,7 +20,7 @@ consumes this is a Build CLI concern, M3, not built here).
 from __future__ import annotations
 
 from datetime import date, datetime
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal
 
 from compiler.function_linker import FunctionImpl
 
@@ -47,6 +47,12 @@ def _round_py(value: float, digits: int) -> float:
     deliberately not Python's banker's-rounding `round()`."""
     quantum = Decimal(1).scaleb(-digits)
     return float(Decimal(str(value)).quantize(quantum, rounding=ROUND_HALF_UP))
+
+
+def _trunc_py(value: float, digits: int) -> float:
+    """Truncate toward zero to `digits` decimals (`format_mode: truncate`)."""
+    quantum = Decimal(1).scaleb(-digits)
+    return float(Decimal(str(value)).quantize(quantum, rounding=ROUND_DOWN))
 
 
 # -- concat (variadic) -----------------------------------------------------------
@@ -144,6 +150,10 @@ BUILTIN_FUNCTIONS: dict[str, FunctionImpl] = {
         name="round",
         target_templates={"plsql": "ROUND({0}, {1})"},
     ),
+    "trunc": FunctionImpl(
+        name="trunc",
+        target_templates={"plsql": "TRUNC({0}, {1})"},
+    ),
     "concat": FunctionImpl(
         name="concat",
         target_templates={"plsql": _concat_plsql},
@@ -185,6 +195,7 @@ BUILTIN_FUNCTIONS: dict[str, FunctionImpl] = {
 BUILTIN_PYTHON_REFERENCE = {
     "coalesce": _coalesce_py,
     "round": _round_py,
+    "trunc": _trunc_py,
     "concat": _concat_py,
     "if_else": _if_else_py,
     "split_first": _split_first_py,

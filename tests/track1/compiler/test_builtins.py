@@ -88,3 +88,10 @@ def test_split_nth_plsql_rendering_shape():
     rendered = BUILTIN_FUNCTIONS["split_nth"].render("plsql", ["S", "SEP", "2"])
     assert rendered.startswith("(CASE WHEN")
     assert "INSTR" in rendered and "SUBSTR" in rendered
+
+
+def test_trunc_reference_truncates_toward_zero():
+    ref = BUILTIN_PYTHON_REFERENCE["trunc"]
+    assert ref(2.678, 2) == 2.67
+    assert ref(-2.678, 2) == -2.67
+    assert ref(9.99, 0) == 9.0
