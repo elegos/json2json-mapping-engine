@@ -111,13 +111,20 @@ def generate_password() -> str:
 # --------------------------------------------------------------------------
 
 
+def _info_cmd(name: str) -> list[str]:
+    # A bare `docker info` can exit 1 ("errors pretty printing info", e.g. a
+    # broken CLI plugin) while the daemon is perfectly reachable; asking for
+    # one server field only tests the connection.
+    return [name, "info", "--format", "{{.ServerVersion}}"] if name == "docker" else [name, "info"]
+
+
 def detect_runtime() -> str | None:
     """`podman` or `docker`, whichever is installed and answers `info`."""
     for name in ("podman", "docker"):
         if shutil.which(name) is None:
             continue
         try:
-            done = subprocess.run([name, "info"], capture_output=True, timeout=30)
+            done = subprocess.run(_info_cmd(name), capture_output=True, timeout=30)
         except (OSError, subprocess.TimeoutExpired):
             continue
         if done.returncode == 0:
@@ -134,7 +141,7 @@ def runtime_diagnostic() -> str:
             lines.append(f"{name}: not in PATH")
             continue
         try:
-            done = subprocess.run([name, "info"], capture_output=True, text=True, timeout=30)
+            done = subprocess.run(_info_cmd(name), capture_output=True, text=True, timeout=30)
             err = (done.stderr or done.stdout).strip().splitlines()
             lines.append(f"{name}: `info` exit {done.returncode}: {err[-1] if err else ''}")
         except (OSError, subprocess.TimeoutExpired) as exc:
