@@ -89,3 +89,9 @@ def test_engine_checkout_does_not_load_its_own_backends_twice(fresh_registry):
     assert (
         registry._project_dir() is None
     )  # cwd is the repo: its compiler/backends is the built-in one
+
+
+def test_plsql_requires_only_schema_package_error_code():
+    from compiler.backends.plsql.backend import PlsqlBackend
+
+    assert PlsqlBackend.required_keys == ("schema", "package", "error_code")

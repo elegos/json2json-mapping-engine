@@ -27,12 +27,12 @@ against a real Oracle only through the integration tests (golden cases); feature
 | `error_code` | yes | — | Code passed to `RAISE_APPLICATION_ERROR` by the raising entry point |
 | `export_rule_functions` | no | `false` | `true` also lists every `fn_<mapping>_<rule>` in the package spec |
 | `schema` | yes | — | **Validated but not used yet** by the generator or the test harness |
-| `fn_package` | yes | — | **Validated but not used yet** |
-| `fn_prefix` / `fn_suffix` | no | `""` | **Validated but not used yet** |
+| `fn_package` | no | — | **Not used yet** |
+| `fn_prefix` / `fn_suffix` | no | `""` | **Not used yet** |
 
-The four unused keys are part of the configuration contract from the design; nothing in
-the code reads them. Either wire them up or drop them from the required set: this is an
-open point, see [Known gaps](#known-gaps).
+`schema` stays required by decision, but nothing reads it yet. `fn_package`, `fn_prefix`
+and `fn_suffix` are optional and also unread: they are reserved names, wired up when a
+feature needs them. See [Known gaps](#known-gaps).
 
 ## The generated artifact
 
@@ -147,7 +147,7 @@ PL/SQL, without a SQL `ORDER BY`.
 
 ## Known gaps
 
-- `schema`, `fn_package`, `fn_prefix`, `fn_suffix` are required or accepted but unused.
+- `schema` (required) and `fn_package`, `fn_prefix`, `fn_suffix` (optional) are accepted but not read by the generator.
 - No `maxLength`-driven sizing of `VARCHAR2` locals.
 - One package per project; a grouping key for several packages is a backlog item.
 - A mapping whose root output is an array is not supported (the output accumulator is

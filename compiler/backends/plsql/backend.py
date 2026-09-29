@@ -1,7 +1,7 @@
 """The PL/SQL backend (docs/ARCHITECTURE.md, §Target backends).
 
-Config (`[target.plsql]`): `schema`, `package`, `fn_package`, `error_code`
-required; `export_rule_functions` optional. All mappings of a project become
+Config (`[target.plsql]`): `schema`, `package`, `error_code` required;
+`fn_package`, `fn_prefix`, `fn_suffix`, `export_rule_functions` optional. All mappings of a project become
 one package, written to `<package>.sql`.
 """
 
@@ -24,7 +24,7 @@ DEFAULT_ERROR_CODE = -20000
 
 class PlsqlBackend(Backend):
     target: ClassVar[str] = "plsql"
-    required_keys: ClassVar[tuple[str, ...]] = ("schema", "package", "fn_package", "error_code")
+    required_keys: ClassVar[tuple[str, ...]] = ("schema", "package", "error_code")
     defaults: ClassVar[dict[str, Any]] = {
         "fn_prefix": "",
         "fn_suffix": "",

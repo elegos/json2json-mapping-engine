@@ -841,7 +841,7 @@ parallel_conflict = "exception"   # exception (default) | max | min — see §@p
 [target.plsql]
 schema     = "MAPPING_OWNER"   # Oracle schema that owns the generated packages
 package    = "MAPPING_RULES"   # name of the generated mapping-rules package
-fn_package = "MAPPING_FUNCTIONS"
+fn_package = "MAPPING_FUNCTIONS"   # optional
 fn_prefix  = ""                # optional prefix for generated procedure/function names
 fn_suffix  = ""                # optional suffix
 error_code = -20000             # reserved RAISE_APPLICATION_ERROR code — see §Runtime error semantics
