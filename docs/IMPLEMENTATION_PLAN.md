@@ -468,13 +468,22 @@ build in:
 - [ ] A conformance run in CI: the same cases on both backends, comparing outputs.
 - [ ] Error isolation and `required` semantics (§Runtime error semantics) implemented
       identically.
+- [ ] **Target interpreter.** The Python that *runs the generated module* is the host
+      project's, not the engine's own (which the tool pins to 3.12 to compile). So the target
+      declares it in `[target.python]` (a version, and whether it is free-threaded, e.g.
+      `python = "3.14t"`), and the backend emits code for that interpreter: syntax and library
+      features it has, and `@parallel` handled accordingly. The generated module must not import the
+      engine.
 - [ ] `@parallel(degree=N)` for real, unlike PL/SQL (where it only yields a SQL-callable
       wrapper): the elements of the loop are mapped by up to N workers. Strategy is a
       `[target.python]` choice: `process` (`ProcessPoolExecutor`; elements and results
       are plain JSON, so pickling is cheap, but start-up and transfer only pay off for
       heavy per-element work), `thread` (`ThreadPoolExecutor`; a real speed-up only on a
       free-threaded CPython — 3.13t, supported from 3.14 — while the project pins
-      `>=3.12,<3.13`), `none` (sequential, the default until measured). Whatever the
+      `>=3.12,<3.13`), `none` (sequential, the default until measured). Which strategies are
+      allowed, and what `@parallel` means, follows from the target interpreter above (a
+      free-threaded target may use `thread`; an older one may only offer `process` or
+      `none`; asking for an unavailable strategy is a build error, not a silent fallback). Whatever the
       strategy, the result must equal the sequential one: results collected in element order
       (`map`, not completion order) and rule errors merged in element order, so "first
       failure of a rule wins" stays deterministic. The `orders` golden cases (degree 2)
