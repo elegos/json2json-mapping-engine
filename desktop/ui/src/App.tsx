@@ -3,6 +3,7 @@ import { AgGridReact } from "ag-grid-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   chooseProject,
+  initialProject,
   listFnFiles,
   type CommandReport,
   type PythonStatus,
@@ -25,6 +26,10 @@ import {
   setSource,
   sourceOf,
 } from "./model";
+
+// Boolean columns only make sense on field rules; elsewhere the cell stays empty.
+const fieldOnly = (p: { data?: Row }) =>
+  p.data?.rule.kind === "field" ? undefined : { component: () => null };
 
 const COMMANDS = ["transpile", "build", "check"] as const;
 
@@ -62,9 +67,7 @@ export function App() {
     [project],
   );
 
-  const openProject = useCallback(async () => {
-    const dir = await chooseProject();
-    if (!dir) return;
+  const openDir = useCallback(async (dir: string) => {
     try {
       const found = await listFnFiles(dir);
       setProject(dir);
@@ -73,10 +76,30 @@ export function App() {
       setTree(null);
       setReport(null);
       setStatus(found.length ? "" : "no mappings/functional/*.fn.yaml in this project");
+      if (found.length) {
+        const first = await readFn(dir, found[0]);
+        setCurrent(found[0]);
+        setTree(first);
+        setSaved(JSON.stringify(first));
+      }
     } catch (e) {
       setStatus(String(e));
     }
   }, []);
+
+  const openProject = useCallback(async () => {
+    const dir = await chooseProject();
+    if (dir) await openDir(dir);
+  }, [openDir]);
+
+  useEffect(() => {
+    initialProject().then(
+      (dir) => {
+        if (dir) void openDir(dir);
+      },
+      () => {},
+    );
+  }, [openDir]);
 
   const save = useCallback(async () => {
     if (!project || !current || !tree) return;
@@ -176,6 +199,7 @@ export function App() {
         width: 70,
         editable: editableFor(["field"]),
         cellDataType: "boolean",
+        cellRendererSelector: fieldOnly,
         valueGetter: (p) => (p.data?.rule.kind === "field" ? p.data.rule.required : null),
         valueSetter: (p: ValueSetterParams<Row>) => {
           edit(p.data.path, (r) => {
@@ -227,6 +251,7 @@ export function App() {
         width: 100,
         editable: editableFor(["field"]),
         cellDataType: "boolean",
+        cellRendererSelector: fieldOnly,
         valueGetter: (p) => (isField(p.data) && p.data?.rule.kind === "field" ? p.data.rule.validation.validated : null),
         valueSetter: (p: ValueSetterParams<Row>) => {
           edit(p.data.path, (r) => {
@@ -242,6 +267,7 @@ export function App() {
         width: 90,
         editable: editableFor(["field"]),
         cellDataType: "boolean",
+        cellRendererSelector: fieldOnly,
         valueGetter: (p) => (p.data?.rule.kind === "field" ? p.data.rule.validation.needs_review : null),
         valueSetter: (p: ValueSetterParams<Row>) => {
           edit(p.data.path, (r) => {

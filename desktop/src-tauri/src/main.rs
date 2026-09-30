@@ -32,6 +32,16 @@ fn python_status() -> Value {
     }
 }
 
+/// Project directory given on the command line (`j2jme-desktop <dir>`) or in
+/// `J2JME_PROJECT`; the UI opens it at start.
+#[tauri::command]
+fn initial_project() -> Option<String> {
+    std::env::args()
+        .nth(1)
+        .filter(|a| !a.starts_with('-'))
+        .or_else(|| std::env::var("J2JME_PROJECT").ok())
+}
+
 /// The `.fn.yaml` files of a project, as paths relative to the project root.
 #[tauri::command]
 fn list_fn_files(project: String) -> Result<Vec<String>, String> {
@@ -76,6 +86,7 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             python_status,
+            initial_project,
             list_fn_files,
             mapper_command,
             read_fn,

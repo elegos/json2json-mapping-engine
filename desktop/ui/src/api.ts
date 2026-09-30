@@ -25,6 +25,8 @@ export interface CommandReport {
 
 export const pythonStatus = () => invoke<PythonStatus>("python_status");
 
+export const initialProject = () => invoke<string | null>("initial_project");
+
 export async function chooseProject(): Promise<string | null> {
   const dir = await open({ directory: true, title: "Open a mapper project" });
   return typeof dir === "string" ? dir : null;
