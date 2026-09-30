@@ -159,7 +159,14 @@ export interface Diagnostic {
   severity: "error" | "warning";
   file: string | null;
   rule: string | null;
+  /** Grid column id, when the checker knows it (else guessed from the message). */
+  column?: string | null;
   message: string;
+}
+
+/** The column a diagnostic is about. */
+export function columnOf(d: Diagnostic): string | null {
+  return d.column ?? columnOfMessage(d.message);
 }
 
 /** Diagnostics for one file, keyed by rule path (the file-level ones under ""). */
@@ -215,7 +222,7 @@ const COLUMN_LABELS: Record<string, string> = {
 export function rowIssues(rule: Rule, diagnostics: Diagnostic[]): string[] {
   const issues: string[] = [];
   for (const d of diagnostics) {
-    const column = columnOfMessage(d.message);
+    const column = columnOf(d);
     const what = column ? `Invalid ${COLUMN_LABELS[column] ?? column}` : "Invalid rule";
     issues.push(`${d.severity === "error" ? what : "Warning"}: ${d.message}`);
   }

@@ -3,6 +3,7 @@ import { AgGridReact } from "ag-grid-react";
 import { ProjectButton } from "./ProjectButton";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  checkTree,
   chooseProject,
   editTree,
   initialProject,
@@ -15,10 +16,11 @@ import {
   writeFn,
 } from "./api";
 import {
-  columnOfMessage,
+  columnOf,
   diagnosticsByRule,
   expressionOf,
   flatten,
+  type Diagnostic,
   type FunctionalFile,
   nameOf,
   pushRecent,
@@ -77,8 +79,9 @@ export function App() {
   const [report, setReport] = useState<CommandReport | null>(null);
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
-  const [reportId, setReportId] = useState(0);
+  const [live, setLive] = useState<Diagnostic[]>([]);
   const [recent, setRecent] = useState<string[]>(loadRecent);
+  const grid = useRef<AgGridReact<Row>>(null);
   const folding = useRef(false);
   const treeRef = useRef<FunctionalFile | null>(null);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
@@ -177,7 +180,6 @@ export function App() {
       setBusy(true);
       try {
         setReport(await runMapper(project, command));
-        setReportId((n) => n + 1);
       } catch (e) {
         setStatus(String(e));
       } finally {
@@ -234,9 +236,35 @@ export function App() {
       return next;
     });
   }, []);
+  // check the rules as they are edited (debounced), against the project's schemas
+  useEffect(() => {
+    if (!tree || !project || !current || python?.available !== true) {
+      setLive([]);
+      return;
+    }
+    const stem = current.replace(/^.*\//, "").replace(/\.fn\.yaml$/, "");
+    let stale = false;
+    const timer = setTimeout(() => {
+      checkTree(tree, project, stem).then(
+        (found) => {
+          if (!stale) setLive(found);
+        },
+        () => {},
+      );
+    }, 150);
+    return () => {
+      stale = true;
+      clearTimeout(timer);
+    };
+  }, [tree, project, current, python]);
+
   const diagnostics = useMemo(
-    () => (current && report ? diagnosticsByRule(report.diagnostics, current) : new Map()),
-    [current, report],
+    () =>
+      diagnosticsByRule(
+        [...live, ...(current && report ? report.diagnostics : [])],
+        current ?? "",
+      ),
+    [current, report, live],
   );
 
   /** Columns (by colId) with an error on this row; "*" = the whole row. */
@@ -244,12 +272,17 @@ export function App() {
     (path: string): Set<string> => {
       const found = new Set<string>();
       for (const d of diagnostics.get(path) ?? []) {
-        if (d.severity === "error") found.add(columnOfMessage(d.message) ?? "*");
+        if (d.severity === "error") found.add(columnOf(d) ?? "*");
       }
       return found;
     },
     [diagnostics],
   );
+
+  // row / cell classes are computed from the diagnostics: redraw when they change
+  useEffect(() => {
+    grid.current?.api?.redrawRows();
+  }, [diagnostics]);
 
   const columns = useMemo<ColDef<Row>[]>(() => {
     const isField = (r?: Row) => r?.rule.kind === "field";
@@ -474,7 +507,7 @@ export function App() {
               rowData={rows}
               columnDefs={columns}
               getRowId={(p) => p.data.path}
-              key={reportId}
+              ref={grid}
               tooltipShowDelay={200}
               defaultColDef={{
                 cellClassRules: {
@@ -516,6 +549,11 @@ export function App() {
       </div>
       <footer>
         <div className="status">{status}</div>
+        {(diagnostics.get("") ?? []).map((d, i) => (
+          <div key={`f${i}`} className={d.severity}>
+            {d.severity}: {d.message}
+          </div>
+        ))}
         {report && (
           <div className={report.ok ? "report ok" : "report failed"}>
             {report.messages.map((m, i) => (

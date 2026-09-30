@@ -410,9 +410,13 @@ Sliced; each slice is usable on its own:
       containers get `$.` (top level) or `@.` (nested); an emptied container is flagged
       "Empty container". Open: `Source` of a *nested* field is kept as typed (its
       `@item.…` / `$.items[*].…` convention is not settled).
-- [ ] **M6.1b — check on edit.** Every rule, when modified, is checked for form (the loader
-      and the expression parser) and for validity against the input / output JSON Schema
-      when present; findings flag the row. Needs a per-rule check entry in the CLI.
+- [x] **M6.1b — check on edit** (`transpiler/check.py`; `mapper fn check FILE`; `check` op of
+      `mapper serve`, run by the grid 150 ms after each edit). Per rule, so one bad rule
+      hides no other: the loader's checks, expression syntax and anchors, duplicate
+      names; and, when a schema exists, Target / Type / Req. against the output schema,
+      container kind and required fields, Source and every `$.` / `@.` reference of an
+      expression against the input schema. Schema constructs it cannot follow count as
+      unknown. Not yet: type of an expression's result, `format` / `enum` / ranges.
 - [ ] **Project properties** (GUI for `mapper.toml`): the button exists in the sidebar, the
       form does not.
 - [ ] **M6.2 — validation UX.** validated / needs_review states, manual-override split

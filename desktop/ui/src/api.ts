@@ -89,3 +89,17 @@ export async function editTree(
   if (!parsed.ok || !parsed.tree) throw new Error(parsed.error ?? "edit failed");
   return parsed.tree;
 }
+
+/** Checks every rule of the tree (form, and validity against the project's schemas). */
+export async function checkTree(
+  tree: FunctionalFile,
+  project: string,
+  stem: string,
+): Promise<Diagnostic[]> {
+  const answer = await invoke<string>("edit_request", {
+    request: JSON.stringify({ id: 1, op: "check", tree, project, stem }),
+  });
+  const parsed = JSON.parse(answer) as { ok: boolean; diagnostics?: Diagnostic[]; error?: string };
+  if (!parsed.ok) throw new Error(parsed.error ?? "check failed");
+  return parsed.diagnostics ?? [];
+}
