@@ -327,7 +327,8 @@ def check_raising(
         if code != abs(error_code) and code != error_code:
             return f"{proc} raised ORA{code}, expected {error_code}: {exc}"
         try:
-            payload = json.loads(str(err.message).split(": ", 1)[-1])
+            # the message is "ORA-20000: <json>" followed by ORA-06512 stack lines
+            payload = json.loads(str(err.message).splitlines()[0].split(": ", 1)[-1])
         except ValueError:
             return f"{proc} error payload is not JSON: {exc}"
         if payload.get("total_errors") != len(rule_errors):

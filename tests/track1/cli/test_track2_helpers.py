@@ -170,6 +170,10 @@ def test_check_raising_validates_error_payload(tmp_path: Path):
     assert ok == ""
     bad = track2.check_raising(_FakeConn(exc), "P.map_m", case, {}, [{}, {}], -20000)
     assert "total_errors=1" in bad
+    stacked = type("E", (), {"code": 20000, "message": _Err.message + "\nORA-06512: at line 1"})
+    with_stack = oracledb.DatabaseError(stacked())
+    ok_stack = track2.check_raising(_FakeConn(with_stack), "P.map_m", case, {}, [{}], -20000)
+    assert ok_stack == ""
     unexpected = track2.check_raising(_FakeConn(exc), "P.map_m", case, {}, [], -20000)
     assert "raised but _safe reported no rule errors" in unexpected
 
