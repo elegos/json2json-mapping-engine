@@ -467,5 +467,16 @@ build in:
       settled once, written down, and both backends follow it.
 - [ ] A conformance run in CI: the same cases on both backends, comparing outputs.
 - [ ] Error isolation and `required` semantics (§Runtime error semantics) implemented
-      identically; `@parallel` is accepted and ignored (no SQL-callable wrapper).
+      identically.
+- [ ] `@parallel(degree=N)` for real, unlike PL/SQL (where it only yields a SQL-callable
+      wrapper): the elements of the loop are mapped by up to N workers. Strategy is a
+      `[target.python]` choice: `process` (`ProcessPoolExecutor`; elements and results
+      are plain JSON, so pickling is cheap, but start-up and transfer only pay off for
+      heavy per-element work), `thread` (`ThreadPoolExecutor`; a real speed-up only on a
+      free-threaded CPython — 3.13t, supported from 3.14 — while the project pins
+      `>=3.12,<3.13`), `none` (sequential, the default until measured). Whatever the
+      strategy, the result must equal the sequential one: results collected in element order
+      (`map`, not completion order) and rule errors merged in element order, so "first
+      failure of a rule wins" stays deterministic. The `orders` golden cases (degree 2)
+      run under every strategy.
 - [ ] Then the desktop preview (Extra mile in M6).
