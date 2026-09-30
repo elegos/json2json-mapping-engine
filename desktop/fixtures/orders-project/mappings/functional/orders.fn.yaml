@@ -19,7 +19,7 @@ rules:
     source:
       path: $.country
     transform:
-      expression: lookup($.country, $.currencies, "N/A")
+      expression: lookup($.country, @countryCurrency, "N/A")
   - id: wh
     kind: field
     field: Warehouse
