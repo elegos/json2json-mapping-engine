@@ -1,13 +1,20 @@
-CREATE OR REPLACE PACKAGE MAPPING_OWNER.MAPPING_FUNCTIONS AS
-    FUNCTION fn_orders_unit_price(p_src IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN NUMBER;
+CREATE OR REPLACE PACKAGE MAPPING_OWNER.J2JME_MAP_ORDERS AS
+    PROCEDURE map_orders (
+        p_src IN  CLOB,
+        p_out OUT CLOB
+    );
 
-    FUNCTION fn_orders_order_id(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2;
+    PROCEDURE map_orders_safe (
+        p_src IN  CLOB,
+        p_out OUT CLOB,
+        p_err OUT CLOB
+    );
 
-    FUNCTION fn_orders_line(p_root IN JSON_OBJECT_T, p_src IN JSON_OBJECT_T, p__errors IN OUT NOCOPY JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN JSON_OBJECT_T;
-END MAPPING_FUNCTIONS;
+    FUNCTION map_orders_fn (p_src IN CLOB) RETURN CLOB PARALLEL_ENABLE;
+END J2JME_MAP_ORDERS;
 /
 
-CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.MAPPING_FUNCTIONS AS
+CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAP_ORDERS AS
     FUNCTION fn_orders_unit_price(p_src IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN NUMBER IS
     BEGIN
         p_omitted := FALSE;
@@ -30,7 +37,7 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.MAPPING_FUNCTIONS AS
         v_line__dc.put('Sku', p_src.get_String('sku'));
         v_line__dc.put('Qty', p_src.get_Number('qty'));
         BEGIN
-            v_line__rc0 := MAPPING_FUNCTIONS.fn_orders_unit_price(p_src, v_line__ro0);
+            v_line__rc0 := fn_orders_unit_price(p_src, v_line__ro0);
         EXCEPTION
             WHEN OTHERS THEN
                 IF NOT p__errors.has('unit_price') THEN
@@ -43,26 +50,7 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.MAPPING_FUNCTIONS AS
         END IF;
         RETURN v_line__dc;
     END fn_orders_line;
-END MAPPING_FUNCTIONS;
-/
 
-CREATE OR REPLACE PACKAGE MAPPING_OWNER.MAPPING_RULES AS
-    PROCEDURE map_orders (
-        p_src IN  CLOB,
-        p_out OUT CLOB
-    );
-
-    PROCEDURE map_orders_safe (
-        p_src IN  CLOB,
-        p_out OUT CLOB,
-        p_err OUT CLOB
-    );
-
-    FUNCTION map_orders_fn (p_src IN CLOB) RETURN CLOB PARALLEL_ENABLE;
-END MAPPING_RULES;
-/
-
-CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.MAPPING_RULES AS
     PROCEDURE map_orders (
         p_src IN  CLOB,
         p_out OUT CLOB
@@ -78,7 +66,7 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.MAPPING_RULES AS
             v_result_order_id VARCHAR2(4000 CHAR);
             v_omitted_order_id BOOLEAN;
         BEGIN
-            v_result_order_id := MAPPING_FUNCTIONS.fn_orders_order_id(v_srcroot, v_omitted_order_id);
+            v_result_order_id := fn_orders_order_id(v_srcroot, v_omitted_order_id);
             IF NOT v_omitted_order_id THEN
                 v_out_obj.put('OrderId', v_result_order_id);
             END IF;
@@ -99,7 +87,7 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.MAPPING_RULES AS
                         v_result_line JSON_OBJECT_T;
                         v_omitted_line BOOLEAN;
                     BEGIN
-                        v_result_line := MAPPING_FUNCTIONS.fn_orders_line(v_srcroot, v_src, v_rule_errors, v_omitted_line);
+                        v_result_line := fn_orders_line(v_srcroot, v_src, v_rule_errors, v_omitted_line);
                         IF NOT v_omitted_line THEN
                             v_arr_Lines.append(v_result_line);
                         END IF;
@@ -177,7 +165,7 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.MAPPING_RULES AS
             v_result_order_id VARCHAR2(4000 CHAR);
             v_omitted_order_id BOOLEAN;
         BEGIN
-            v_result_order_id := MAPPING_FUNCTIONS.fn_orders_order_id(v_srcroot, v_omitted_order_id);
+            v_result_order_id := fn_orders_order_id(v_srcroot, v_omitted_order_id);
             IF NOT v_omitted_order_id THEN
                 v_out_obj.put('OrderId', v_result_order_id);
             END IF;
@@ -198,7 +186,7 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.MAPPING_RULES AS
                         v_result_line JSON_OBJECT_T;
                         v_omitted_line BOOLEAN;
                     BEGIN
-                        v_result_line := MAPPING_FUNCTIONS.fn_orders_line(v_srcroot, v_src, v_rule_errors, v_omitted_line);
+                        v_result_line := fn_orders_line(v_srcroot, v_src, v_rule_errors, v_omitted_line);
                         IF NOT v_omitted_line THEN
                             v_arr_Lines.append(v_result_line);
                         END IF;
@@ -249,5 +237,5 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.MAPPING_RULES AS
         map_orders(p_src, v_out);
         RETURN v_out;
     END map_orders_fn;
-END MAPPING_RULES;
+END J2JME_MAP_ORDERS;
 /

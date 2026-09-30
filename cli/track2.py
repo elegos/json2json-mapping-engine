@@ -1,7 +1,7 @@
 """Integration tests (track 2) — target-environment tests (see docs/ARCHITECTURE.md, §Testing).
 
 Detects Podman/Docker, starts an ephemeral Oracle container, deploys the
-compiled `build/compiled/<mapping>.sql`, runs `map_<id>_safe` for every test
+compiled `build/compiled/*.sql`, runs `map_<id>_safe` for every test
 case and diffs the actual output against an optional expected file. The raising
 twin `map_<id>` is then run on the same input and must agree with `_safe`:
 it succeeds with the same output when `_safe` reported no rule errors, and
@@ -16,9 +16,9 @@ Case layout (per mapping, by basename of `mappings/<name>.map.py`):
                                                optional — the rule ids `_safe` must report
                                                (a JSON list); without it any rule error fails
 
-The project's single generated package (`build/compiled/<package>.sql`) is
-deployed once; each case calls `<package>.map_<id>_safe`. Rule functions are
-namespaced `fn_<mapping_id>_<rule_id>`, so mappings never collide.
+The generated packages (`build/compiled/*.sql`) are deployed once, in the backend's
+deploy order; each case calls `map_<id>_safe` through the package a caller uses (the
+index package when there is one, else the mapping's own).
 """
 
 from __future__ import annotations
@@ -38,7 +38,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from cli.allowed import check_allowed, collect_constraints, unsupported_keywords
-from cli.build import artifact_path, find_source, is_functional, mapping_id_of
+from cli.build import BuildError, compiled_sql, find_source, is_functional, mapping_id_of
 from cli.config import MapperConfig
 from compiler.backends.plsql.naming import PlsqlNaming
 from transpiler.model import load_functional_file
@@ -421,9 +421,10 @@ def run_track2(config: MapperConfig, mapping: str | None = None, log=print) -> l
     runtime = detect_runtime()
     if runtime is None:
         raise Track2Error("neither podman nor docker is available")
-    package_sql = artifact_path(config)
-    if not package_sql.is_file():
-        raise Track2Error(f"{package_sql} not found (run `mapper build` first)")
+    try:
+        package_text = compiled_sql(config)
+    except BuildError as exc:
+        raise Track2Error(str(exc)) from exc
 
     import oracledb
 
@@ -432,7 +433,6 @@ def run_track2(config: MapperConfig, mapping: str | None = None, log=print) -> l
         conn = oracledb.connect(user=db.user, password=db.password, dsn=db.dsn)
         try:
             naming = PlsqlNaming.from_config(config.target_config())
-            package_text = package_sql.read_text()
             deploy(conn, package_text, naming.schema)
             for c in cases:
                 src = find_source(c.mapping, config)

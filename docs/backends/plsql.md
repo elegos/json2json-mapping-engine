@@ -16,19 +16,27 @@ against a real Oracle only through the integration tests (golden cases); feature
 |---|---|
 | `backend.py` | `PlsqlBackend`: configuration, `compile_module`, cache (de)serialization, assembly, artifact path |
 | `codegen.py` | Annotated AST → PL/SQL for one mapping (`PlsqlUnit`) |
-| `package.py` | The units of a project → one package spec + body |
+| `naming.py` | Every generated name, derived from the config |
+| `package.py` | The units of a project → one package (spec + body) per mapping, plus the optional index package |
 | `builtins.py` | PL/SQL templates (and Python reference implementations) of the built-in functions |
 
 ## Configuration (`[target.plsql]` in `mapper.toml`)
 
-| Key | Required | Default | Effect today |
+| Key | Required | Default | Effect |
 |---|---|---|---|
-| `package` | yes | — | Name of the single generated package; the artifact is `build/compiled/<package lowercase>.sql` |
-| `error_code` | yes | — | Code passed to `RAISE_APPLICATION_ERROR` by the raising entry point |
-| `export_rule_functions` | no | `false` | `true` also lists every `fn_<mapping>_<rule>` in the package spec |
 | `schema` | yes | — | Owner: packages are created as `<schema>.<package>`. The integration harness creates the schema (no login) and reads compile errors from it |
-| `fn_package` | no | — | Second package holding the rule functions (see below) |
+| `error_code` | yes | — | Code passed to `RAISE_APPLICATION_ERROR` by the raising entry point |
+| `[target.plsql.mapping_packages]` | one of the two | — | Explicit table: `<mapping id> = "PACKAGE"` |
+| `mapping_package_prefix` / `mapping_package_suffix` | one of the two | — | Generated: `<prefix><MAPPING ID><suffix>`, upper-cased; at least one non-empty |
+| `mapping_index_package` | no | — | Extra package forwarding every entry point to the mapping's package |
+| `export_rule_functions` | no | `false` | `true` also lists every `fn_<mapping>_<rule>` in its package spec |
 | `fn_prefix` / `fn_suffix` | no | `""` | Decorate entry points and rule functions (see below) |
+
+How mappings map to packages must be stated: with neither the table nor a prefix/suffix
+the config is rejected, and so it is with both. With the table, every mapping needs an entry
+and every entry must name an existing mapping; two mappings cannot share a package. In the
+table form, TOML requires the `[target.plsql.mapping_packages]` header after the other
+`[target.plsql]` keys.
 
 ### Names
 
@@ -38,33 +46,36 @@ All names come from `naming.py`:
 |---|---|
 | Entry points | `<fn_prefix>map_<id>[_safe\|_fn]<fn_suffix>` (the suffix always last) |
 | Rule functions | `<fn_prefix>fn_<id>_<rule><fn_suffix>` |
-| Packages | `[<schema>.]<package>` and, when set, `[<schema>.]<fn_package>` |
+| Mapping package | from the table, or `<mapping_package_prefix><ID><mapping_package_suffix>` |
+| Index package | `mapping_index_package` |
+| Qualified | `[<schema>.]<package>` |
 
-`fn_prefix`, `fn_suffix`, `schema`, `package` and `fn_package` must be plain Oracle
-identifier parts (letters, digits, `_ $ #`; a prefix or name starts with a letter);
-anything else is a build error, as is `fn_package` equal to `package`.
+All configured parts must be plain Oracle identifier parts (letters, digits, `_ $ #`; a
+prefix or name starts with a letter); anything else is a build error, as is a generated
+name over 128 bytes, or the index package equal to a mapping's package.
 
-### `fn_package`
+### The index package
 
-Without it, rule functions live in the main package (private unless
-`export_rule_functions`). With it they move to that package, emitted **first** in
-the artifact; it always lists them in its spec (the main body calls them as
-`<fn_package>.fn_...`), so `export_rule_functions` has no effect. The main package
-holds only the entry points.
-
-The integration harness connects as `ADMIN`, creates `<schema>` if missing, deploys
-and calls `<schema>.<package>.<entry point>`. Verified on Oracle by the `orders` golden
-cases (CI, Forgejo).
+Callers that want a single, stable name set `mapping_index_package`. It declares each
+entry point with exactly the signature of the mapping's package and only calls it
+(`RETURN` for the `_fn` wrapper, which keeps `PARALLEL_ENABLE`). It is deployed after the
+mapping packages. It depends on their specs, not their bodies, so redeploying one mapping
+does not invalidate it. The integration harness calls through it when it exists, else
+through the mapping's own package.
 
 ## The generated artifact
 
-One file per project: `CREATE OR REPLACE PACKAGE <package>` (spec) and
-`PACKAGE BODY <package>`, each terminated with `/`.
+One file per package in `build/compiled/`, named `<package lowercase>.sql`: `CREATE OR
+REPLACE PACKAGE <package>` (spec) and `PACKAGE BODY <package>`, each terminated with `/`.
+`mapper build` removes `.sql` files that are no longer produced; `mapper check` also
+reports missing and stale files.
 
+- A mapping's package holds its entry points and its rule functions; nothing is shared
+  between mappings.
 - Mappings are sorted by id, so the output does not depend on file order.
 - Duplicate mapping ids are a build error (the id is the namespace).
 - Every generated identifier must fit Oracle's 128 bytes; checked at compile time.
-- Trade-off: any mapping change recompiles the whole package body on deploy.
+- Changing one mapping changes and recompiles only its own package.
 
 ### Subprograms per mapping
 
@@ -73,7 +84,7 @@ One file per project: `CREATE OR REPLACE PACKAGE <package>` (spec) and
 | `map_<id>(p_src IN CLOB, p_out OUT CLOB)` | procedure | always | always; raises if any rule failed |
 | `map_<id>_safe(p_src IN CLOB, p_out OUT CLOB, p_err OUT CLOB)` | procedure | always | always; never raises, returns errors in `p_err` |
 | `map_<id>_fn(p_src IN CLOB) RETURN CLOB PARALLEL_ENABLE` | function | always | only if a rule function declares `@parallel` |
-| `fn_<id>_<rule>(...)` | function | only with `export_rule_functions` (always, in `fn_package`, when set) | one per rule function |
+| `fn_<id>_<rule>(...)` | function | only with `export_rule_functions` | one per rule function |
 
 Rule functions come first in the body (PL/SQL needs a name declared before use), then
 the entry points.
@@ -179,7 +190,7 @@ PL/SQL, without a SQL `ORDER BY`.
 
 - Only one mapping (`orders`) has golden cases (incl. `failed_member`, the isolated nested member); prefix/suffix are covered by offline tests only.
 - No `maxLength`-driven sizing of `VARCHAR2` locals.
-- One package per project; a grouping key for several packages is a backlog item.
+- The built-ins that are not 1:1 with a PL/SQL function are still inline; a shared functions package is a backlog item.
 - A mapping whose root output is an array is not supported (the output accumulator is
   always a `JSON_OBJECT_T`).
 - `@parallel` scaffolding is document-level only.

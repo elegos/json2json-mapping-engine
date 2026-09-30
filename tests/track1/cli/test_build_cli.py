@@ -19,8 +19,7 @@ parallel_conflict = "exception"
 
 [target.plsql]
 schema     = "MAPPING_OWNER"
-package    = "MAPPING_RULES"
-fn_package = "MAPPING_FUNCTIONS"
+mapping_package_prefix = "MAP_"
 fn_prefix  = ""
 fn_suffix  = ""
 error_code = -20000
@@ -70,58 +69,112 @@ def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return tmp_path
 
 
-PKG = "build/compiled/mapping_rules.sql"
+COMPILED = "build/compiled"
 
 
-def test_build_produces_one_package_for_every_mapping(project: Path):
+def _sql(project: Path, name: str) -> str:
+    return (project / COMPILED / f"{name}.sql").read_text()
+
+
+def test_build_produces_one_package_per_mapping(project: Path):
     result = runner.invoke(app, ["build"])
     assert result.exit_code == 0, result.output
-    sql = (project / PKG).read_text()
-    assert "CREATE OR REPLACE PACKAGE MAPPING_OWNER.MAPPING_RULES AS" in sql
-    assert "CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.MAPPING_RULES AS" in sql
-    assert "PROCEDURE map_ping (" in sql
-    assert "PROCEDURE map_order_event_safe (" in sql
-    assert not (project / "build/compiled/ping.sql").exists()
+    assert sorted(p.name for p in (project / COMPILED).iterdir()) == [
+        "map_order_event.sql",
+        "map_ping.sql",
+    ]
+    ping = _sql(project, "map_ping")
+    assert "CREATE OR REPLACE PACKAGE MAPPING_OWNER.MAP_PING AS" in ping
+    assert "CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.MAP_PING AS" in ping
+    assert "PROCEDURE map_ping (" in ping
+    assert "map_order_event" not in ping
+    assert "PROCEDURE map_order_event_safe (" in _sql(project, "map_order_event")
 
 
-def test_same_rule_id_in_two_mappings_is_namespaced(project: Path):
+def _replace_in_toml(project: Path, old: str, new: str) -> None:
+    toml = project / "mapper.toml"
+    toml.write_text(toml.read_text().replace(old, new))
+
+
+def _explicit_packages(project: Path, entries: str) -> None:
+    """Swap the prefix for an explicit table (a table header ends the section's keys,
+    so it goes last)."""
+    toml = project / "mapper.toml"
+    text = toml.read_text().replace('mapping_package_prefix = "MAP_"\n', "")
+    toml.write_text(text + f"\n[target.plsql.mapping_packages]\n{entries}\n")
+
+
+def test_rule_functions_live_in_their_own_mappings_package(project: Path):
     (project / "mappings" / "other.map.py").write_text(
         "from __mapping__ import *\n\n"
         "def order_id(root: Any) -> str:\n"
         "    return root.other\n\n"
         "out.OrderId = order_id(root)\n"
     )
-    toml = project / "mapper.toml"
-    toml.write_text(toml.read_text().replace('fn_package = "MAPPING_FUNCTIONS"\n', ""))
     result = runner.invoke(app, ["build"])
     assert result.exit_code == 0, result.output
-    sql = (project / PKG).read_text()
-    assert "FUNCTION fn_order_event_order_id(" in sql
-    assert "FUNCTION fn_other_order_id(" in sql
-    # without fn_package, private by default: absent from the spec
-    spec = sql.split("PACKAGE BODY")[0]
-    assert "fn_" not in spec
-
-
-def test_fn_package_takes_the_rule_functions_of_every_mapping(project: Path):
-    result = runner.invoke(app, ["build"])
-    assert result.exit_code == 0, result.output
-    fns, main = (project / PKG).read_text().split("PACKAGE MAPPING_OWNER.MAPPING_RULES AS")
-    assert "PACKAGE MAPPING_OWNER.MAPPING_FUNCTIONS AS" in fns
-    assert "FUNCTION fn_order_event_order_id(" in fns.split("PACKAGE BODY")[0]
-    assert "FUNCTION fn_" not in main
+    other = _sql(project, "map_other")
+    assert "FUNCTION fn_other_order_id(" in other
+    assert "fn_order_event_" not in other
+    # private by default: absent from the spec
+    assert "fn_" not in other.split("PACKAGE BODY")[0]
 
 
 def test_export_rule_functions_lists_them_in_the_spec(project: Path):
-    toml = project / "mapper.toml"
-    toml.write_text(
-        toml.read_text()
-        .replace("export_rule_functions = false", "export_rule_functions = true")
-        .replace('fn_package = "MAPPING_FUNCTIONS"\n', "")
-    )
+    _replace_in_toml(project, "export_rule_functions = false", "export_rule_functions = true")
     runner.invoke(app, ["build"])
-    spec = (project / PKG).read_text().split("PACKAGE BODY")[0]
+    spec = _sql(project, "map_order_event").split("PACKAGE BODY")[0]
     assert "FUNCTION fn_order_event_order_id(" in spec
+
+
+def test_index_package_forwards_to_every_mapping_and_is_deployed_last(project: Path):
+    _replace_in_toml(
+        project,
+        'mapping_package_prefix = "MAP_"',
+        'mapping_package_prefix = "MAP_"\nmapping_index_package = "MAPPINGS"',
+    )
+    result = runner.invoke(app, ["build"])
+    assert result.exit_code == 0, result.output
+    index = _sql(project, "mappings")
+    assert "CREATE OR REPLACE PACKAGE MAPPING_OWNER.MAPPINGS AS" in index
+    assert "MAPPING_OWNER.MAP_PING.map_ping(p_src, p_out);" in index
+    assert "MAPPING_OWNER.MAP_ORDER_EVENT.map_order_event_safe(p_src, p_out, p_err);" in index
+    from cli.build import compiled_sql
+    from cli.config import load_config
+
+    text = compiled_sql(load_config())
+    assert text.rindex("PACKAGE MAPPING_OWNER.MAPPINGS AS") > text.rindex(
+        "PACKAGE MAPPING_OWNER.MAP_PING AS"
+    )
+
+
+def test_explicit_package_table(project: Path):
+    _explicit_packages(project, 'ping = "PING_PKG"\norder_event = "ORDERS_PKG"')
+    result = runner.invoke(app, ["build"])
+    assert result.exit_code == 0, result.output
+    assert "PACKAGE MAPPING_OWNER.PING_PKG AS" in _sql(project, "ping_pkg")
+    assert "PACKAGE MAPPING_OWNER.ORDERS_PKG AS" in _sql(project, "orders_pkg")
+
+
+def test_a_mapping_missing_from_the_explicit_table_is_a_build_error(project: Path):
+    _explicit_packages(project, 'ping = "PING_PKG"')
+    result = runner.invoke(app, ["build"])
+    assert result.exit_code == 1
+    assert "mapping 'order_event' has no package" in result.output
+
+
+def test_unspecified_package_naming_is_a_config_error(project: Path):
+    _replace_in_toml(project, 'mapping_package_prefix = "MAP_"\n', "")
+    result = runner.invoke(app, ["build"])
+    assert result.exit_code != 0
+    assert "say how mappings map to packages" in result.output
+
+
+def test_a_removed_mapping_removes_its_package_file(project: Path):
+    runner.invoke(app, ["build"])
+    (project / "mappings" / "ping.map.py").unlink()
+    runner.invoke(app, ["build"])
+    assert not (project / COMPILED / "map_ping.sql").exists()
 
 
 def test_duplicate_mapping_id_is_a_build_error(project: Path):
@@ -152,7 +205,7 @@ def test_rebuild_with_no_changes_is_a_cache_hit(project: Path):
     assert "up-to-date: mappings/ping.map.py" in result.output
     assert "up-to-date: mappings/order_event.map.py" in result.output
     assert "compiled:" not in result.output
-    assert "package: " in result.output
+    assert "packages: " in result.output
 
 
 def test_touching_mapper_toml_forces_full_rebuild(project: Path):
@@ -174,7 +227,7 @@ def test_check_passes_after_a_clean_build(project: Path):
 
 def test_check_fails_when_compiled_output_is_tampered(project: Path):
     runner.invoke(app, ["build"])
-    sql_path = project / PKG
+    sql_path = project / COMPILED / "map_ping.sql"
     sql_path.write_text(sql_path.read_text() + "\n-- tampered\n")
     result = runner.invoke(app, ["check"])
     assert result.exit_code == 1
@@ -192,5 +245,5 @@ def test_build_single_file_still_packages_every_mapping(project: Path):
     assert result.exit_code == 0, result.output
     assert "ping.map.py" in result.output
     assert "order_event.map.py" not in result.output
-    sql = (project / PKG).read_text()
-    assert "map_ping" in sql and "map_order_event" in sql
+    assert (project / COMPILED / "map_ping.sql").is_file()
+    assert (project / COMPILED / "map_order_event.sql").is_file()

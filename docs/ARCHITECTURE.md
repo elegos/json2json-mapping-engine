@@ -544,7 +544,7 @@ Phase 2 — Mapping rules
   Input:  .map files + generated stubs + generated dataclasses + symbol table
   Steps:  parse Python AST → validate subset → scope resolution →
           type-check (reads vs. stubs, writes vs. dataclasses) →
-          emit MAPPING_RULES package
+          emit one package per mapping
   Output: one procedure per mapping function
           signature: map_<id>(p_src IN CLOB, p_out OUT CLOB)
 ```
@@ -629,7 +629,7 @@ A backend contributes:
 | Code generation | Annotated AST → target source for one mapping: type and string-size mapping, per-rule call site with error accumulation, loops, the twin entry points |
 | Built-ins | Native implementation of each built-in function (§Built-in functions); the backend hands them to the target-agnostic Function Linker |
 | `@override` / `@parallel` | Resolution of `@override(target=...)` and the parallelism mechanism (§Decorators) |
-| Assembly and namespacing | How the units of a project become the deployable artifact (PL/SQL: one package, `<package>.sql`; others may use a module or namespace per mapping) |
+| Assembly and namespacing | How the units of a project become the deployable artifact (PL/SQL: one package per mapping, `<package>.sql` each; others may use a module or namespace per mapping) |
 | Error reporting | The failure mechanism behind the raising entry point (§Runtime error semantics, *Other targets*) |
 | Configuration | Required keys and defaults of its `[target.<name>]` section |
 | Integration tests | Its own golden-case tests and test environment (image or runner), §Testing |
@@ -653,7 +653,7 @@ PL/SQL included — rather than being PL/SQL-only.
 
 ## Generated artifact (PL/SQL)
 
-Each mapping compiles to a stored procedure in the `MAPPING_RULES` package, named after
+Each mapping compiles to a stored procedure in its own package, named after
 the mapping's id (§Rule id generation):
 
 ```plsql
@@ -670,21 +670,33 @@ BEGIN
 END;
 ```
 
-The mapping engine calls `MAPPING_RULES.map_<id>(p_src, p_out)` — no DSL
+The mapping engine calls `<package>.map_<id>(p_src, p_out)` — no DSL
 interpretation, no JSON rule parsing at runtime. Every mapping additionally compiles a
 twin procedure, `map_<id>_safe`, with different failure behaviour — see §Runtime error
 semantics.
 
 **Namespacing.** Rule ids are unique only *within* a mapping, so two mappings may
-both define a rule called `order_id`. The mapping id is the namespace, and how it is
-applied is backend-specific. For PL/SQL, all mappings of a project are compiled into
-**one** package (`[target.plsql] package`), entered as
-`MAPPING_RULES.map_<mapping_id>(p_src, p_out)` /
-`MAPPING_RULES.map_<mapping_id>_safe(...)`, with rule functions prefixed by mapping id
-(`fn_<mapping_id>_<rule_id>`). The output is a single file,
-`build/compiled/<package>.sql` (lowercase package name). Consequences: mapping ids must
-be unique project-wide (a duplicate is a build error); any mapping change recompiles the
-whole package body on deploy; generated identifiers must fit Oracle's 128-byte limit
+both define a rule called `order_id`. For PL/SQL each mapping is its own package: it holds
+`map_<id>`, `map_<id>_safe` (and `map_<id>_fn` for `@parallel`) and the mapping's rule
+functions, still named `fn_<mapping_id>_<rule_id>`. The package name is chosen in
+`mapper.toml`, in exactly one of two ways (neither, or both, is an error):
+
+```toml
+[target.plsql.mapping_packages]      # explicit
+orders = "ORDERS_PKG"
+
+# or generated: <prefix><MAPPING ID><suffix>, upper-cased
+mapping_package_prefix = "J2JME_MAP_"
+mapping_package_suffix = "_PKG"      # either or both
+```
+
+An optional `mapping_index_package = "J2JME_MAPPINGS"` adds one more package that only
+forwards every entry point (same signatures) to the mapping's package, so callers always use
+one name. The output is one file per package in `build/compiled/` (lowercase package name);
+deploy order is the mapping packages, then the index. Consequences: mapping ids must be
+unique project-wide (a duplicate is a build error); two mappings cannot share a package;
+changing a mapping recompiles only its own package (the index depends on specs, which a
+body change does not touch); generated identifiers must fit Oracle's 128-byte limit
 (checked at compile time). Other backends may choose differently (e.g. a module or
 namespace per mapping).
 
@@ -705,9 +717,8 @@ rule's logic in isolation from the full mapping. This is a package-assembly-time
 decision (which names go in the spec), not a code-generation-time one: the rule
 functions themselves are generated identically either way.
 
-`fn_package` moves the rule functions into a second package, always exported (the main
-body calls them); `schema` qualifies the created packages, and `fn_prefix` / `fn_suffix`
-decorate entry points and rule functions. Details: [backends/plsql.md](backends/plsql.md).
+`schema` qualifies the created packages, and `fn_prefix` / `fn_suffix` decorate entry
+points and rule functions. Details: [backends/plsql.md](backends/plsql.md).
 
 ---
 
@@ -844,8 +855,8 @@ parallel_conflict = "exception"   # exception (default) | max | min — see §@p
 
 [target.plsql]
 schema     = "MAPPING_OWNER"   # Oracle schema that owns the generated packages
-package    = "MAPPING_RULES"   # name of the generated mapping-rules package
-fn_package = "MAPPING_FUNCTIONS"   # optional
+mapping_package_prefix = "J2JME_MAP_"   # one package per mapping (or a [target.plsql.mapping_packages] table)
+mapping_index_package  = "J2JME_MAPPINGS"   # optional: a package forwarding to all of them
 fn_prefix  = ""                # optional prefix for generated entry points and rule functions
 fn_suffix  = ""                # optional suffix
 error_code = -20000             # reserved RAISE_APPLICATION_ERROR code — see §Runtime error semantics

@@ -210,11 +210,8 @@ def backend_for(config: MapperConfig) -> Backend:
         raise BuildError(str(exc)) from exc
 
 
-def artifact_path(config: MapperConfig) -> Path:
-    return backend_for(config).artifact_path(BUILD_COMPILED_DIR)
-
-
-def assemble(units: list[CompiledUnit], config: MapperConfig) -> str:
+def assemble(units: list[CompiledUnit], config: MapperConfig) -> dict[str, str]:
+    """The artifact files of the project: file name -> text, in deploy order."""
     try:
         return backend_for(config).assemble(units)
     except CodeGenError as exc:
@@ -259,8 +256,24 @@ def compile_mapping(path: Path, config: MapperConfig, force: bool = False) -> Co
     return CompileResult(path, False, unit, warnings)
 
 
-def write_package(units: list[CompiledUnit], config: MapperConfig) -> Path:
-    out = artifact_path(config)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(assemble(units, config))
-    return out
+def write_package(units: list[CompiledUnit], config: MapperConfig) -> list[Path]:
+    """Write the artifact files under `build/compiled/`, removing `.sql` files that
+    are no longer produced (a renamed or deleted mapping)."""
+    files = assemble(units, config)
+    BUILD_COMPILED_DIR.mkdir(parents=True, exist_ok=True)
+    for stale in BUILD_COMPILED_DIR.glob("*.sql"):
+        if stale.name not in files:
+            stale.unlink()
+    for name, text in files.items():
+        (BUILD_COMPILED_DIR / name).write_text(text)
+    return [BUILD_COMPILED_DIR / name for name in files]
+
+
+def compiled_sql(config: MapperConfig) -> str:
+    """The artifact files on disk, concatenated in deploy order (what the
+    integration tests deploy). Raises `BuildError` when there are none."""
+    on_disk = {p.name: p for p in BUILD_COMPILED_DIR.glob("*.sql")}
+    if not on_disk:
+        raise BuildError(f"no .sql files in {BUILD_COMPILED_DIR} (run `mapper build`)")
+    order = backend_for(config).deploy_order(list(on_disk))
+    return "\n".join(on_disk[name].read_text() for name in order)

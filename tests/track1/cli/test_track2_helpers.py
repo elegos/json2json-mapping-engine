@@ -86,7 +86,7 @@ def test_test_command_without_cases(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     monkeypatch.chdir(tmp_path)
     (tmp_path / "mapper.toml").write_text(
         '[project]\nmode = "bootstrap"\ntarget = "plsql"\n'
-        '[target.plsql]\nschema = "S"\npackage = "P"\nerror_code = -20000\n'
+        '[target.plsql]\nschema = "S"\nmapping_package_prefix = "P_"\nerror_code = -20000\n'
     )
     runner = CliRunner()
     monkeypatch.setattr("cli.main.detect_runtime", lambda: "docker")
@@ -107,7 +107,7 @@ def test_run_track2_without_cases_needs_no_runtime(tmp_path: Path, monkeypatch: 
         {
             "project": {"mode": "bootstrap"},
             "target": {
-                "plsql": {"schema": "S", "package": "P", "fn_package": "F", "error_code": -20000}
+                "plsql": {"schema": "S", "mapping_package_prefix": "P_", "error_code": -20000}
             },
         }
     )

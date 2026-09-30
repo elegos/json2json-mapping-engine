@@ -125,6 +125,10 @@ def _validate_target_section(target: str, section: dict[str, Any]) -> dict[str, 
         raise MapperConfigError(
             f"[target.{target}] is missing required key(s): {', '.join(missing)}"
         )
+    try:
+        cls.validate_config(section)
+    except CodeGenError as exc:
+        raise MapperConfigError(str(exc)) from exc
     return {**cls.defaults, **section}
 
 

@@ -41,7 +41,7 @@ def test_transpile_writes_map_py(project: Path):
 def test_build_compiles_functional_files_into_the_package(project: Path):
     result = runner.invoke(app, ["build"])
     assert result.exit_code == 0, result.output
-    sql = (project / "build/compiled/mapping_rules.sql").read_text()
+    sql = (project / "build/compiled/map_order_summary.sql").read_text()
     assert "PROCEDURE map_order_summary (" in sql
     assert "fn_order_summary_oid" in sql
     assert runner.invoke(app, ["check"]).exit_code == 0

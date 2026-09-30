@@ -1,4 +1,4 @@
-CREATE OR REPLACE PACKAGE MAPPING_RULES AS
+CREATE OR REPLACE PACKAGE LINES_ARRAY AS
     PROCEDURE map_lines_array (
         p_src IN  CLOB,
         p_out OUT CLOB
@@ -9,10 +9,10 @@ CREATE OR REPLACE PACKAGE MAPPING_RULES AS
         p_out OUT CLOB,
         p_err OUT CLOB
     );
-END MAPPING_RULES;
+END LINES_ARRAY;
 /
 
-CREATE OR REPLACE PACKAGE BODY MAPPING_RULES AS
+CREATE OR REPLACE PACKAGE BODY LINES_ARRAY AS
     FUNCTION fn_lines_array_line_rule(p_itm IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN JSON_OBJECT_T IS
         v_line_rule__dc JSON_OBJECT_T;
     BEGIN
@@ -151,5 +151,5 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_RULES AS
         v_out_obj.put('Lines', v_arr_Lines);
         p_out := v_out_obj.TO_CLOB();
     END map_lines_array_safe;
-END MAPPING_RULES;
+END LINES_ARRAY;
 /

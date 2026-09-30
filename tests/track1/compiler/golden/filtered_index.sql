@@ -1,4 +1,4 @@
-CREATE OR REPLACE PACKAGE MAPPING_RULES AS
+CREATE OR REPLACE PACKAGE FILTERED_INDEX AS
     PROCEDURE map_filtered_index (
         p_src IN  CLOB,
         p_out OUT CLOB
@@ -9,10 +9,10 @@ CREATE OR REPLACE PACKAGE MAPPING_RULES AS
         p_out OUT CLOB,
         p_err OUT CLOB
     );
-END MAPPING_RULES;
+END FILTERED_INDEX;
 /
 
-CREATE OR REPLACE PACKAGE BODY MAPPING_RULES AS
+CREATE OR REPLACE PACKAGE BODY FILTERED_INDEX AS
     FUNCTION fn_filtered_index_active_rule(p_i IN NUMBER, p_itm IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN JSON_OBJECT_T IS
         v_active_rule__dc JSON_OBJECT_T;
     BEGIN
@@ -249,5 +249,5 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_RULES AS
         v_out_obj.put('Bigs', v_arr_Bigs);
         p_out := v_out_obj.TO_CLOB();
     END map_filtered_index_safe;
-END MAPPING_RULES;
+END FILTERED_INDEX;
 /

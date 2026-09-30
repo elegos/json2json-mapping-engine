@@ -90,7 +90,7 @@ Scope of this milestone (documented, not silently assumed):
   nested dataclasses or calls to other rule functions).
 - Loop Fusion runs in the pipeline before this backend: the tree it receives is
   already fused.
-- Package assembly (spec/body, `fn_package`, `schema`) lives in `package.py`; names in
+- Package assembly (spec/body, `schema`, the index package) lives in `package.py`; names in
   `naming.py`.
 - String sizing from JSON Schema `maxLength` is not wired up yet — `str`
   fields/locals default to a generic `VARCHAR2(4000 CHAR)` declaration.
@@ -1125,9 +1125,8 @@ class PlsqlCodeGenerator:
     # -- module compilation -----------------------------------------------
 
     def _fn_name(self, rule_id: str) -> str:
-        """How a rule function is called (qualified when `fn_package` is set)."""
-        _check_identifier(self.naming.rule(self._mapping_id, rule_id))
-        return self.naming.rule_call(self._mapping_id, rule_id)
+        """How a rule function is called: by name, it lives in the same package."""
+        return _check_identifier(self.naming.rule(self._mapping_id, rule_id))
 
     def compile_module(self, tree: ast.Module, mapping_id: str, scope_resolution=None) -> PlsqlUnit:
         self._mapping_id = mapping_id

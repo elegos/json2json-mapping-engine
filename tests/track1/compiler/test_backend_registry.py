@@ -25,10 +25,7 @@ class FakeBackend(Backend):
         raise NotImplementedError
 
     def assemble(self, units):
-        return ""
-
-    def artifact_path(self, compiled_dir: Path) -> Path:
-        return compiled_dir / "out.txt"
+        return {"out.txt": ""}
 """
 
 
@@ -48,11 +45,12 @@ def test_unknown_target_is_an_error_listing_the_available_ones(fresh_registry):
 
 
 def test_create_backend_merges_defaults_under_the_given_config(fresh_registry):
-    backend = registry.create_backend("plsql", {"package": "PKG", "export_rule_functions": True})
-    assert backend.config["package"] == "PKG"
+    backend = registry.create_backend(
+        "plsql", {"mapping_package_prefix": "M_", "export_rule_functions": True}
+    )
+    assert backend.config["mapping_package_prefix"] == "M_"
     assert backend.config["export_rule_functions"] is True
     assert backend.config["fn_prefix"] == ""
-    assert backend.artifact_path(Path("build/compiled")) == Path("build/compiled/pkg.sql")
 
 
 def test_a_new_backend_module_is_picked_up_without_registration(
@@ -91,7 +89,7 @@ def test_engine_checkout_does_not_load_its_own_backends_twice(fresh_registry):
     )  # cwd is the repo: its compiler/backends is the built-in one
 
 
-def test_plsql_requires_only_schema_package_error_code():
+def test_plsql_requires_schema_and_error_code():
     from compiler.backends.plsql.backend import PlsqlBackend
 
-    assert PlsqlBackend.required_keys == ("schema", "package", "error_code")
+    assert PlsqlBackend.required_keys == ("schema", "error_code")

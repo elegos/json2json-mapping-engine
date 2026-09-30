@@ -242,6 +242,9 @@ to pull the Oracle image); exercising `map_<id>` (raising variant) — only the
 
 ## ✅ Package namespacing (follow-up to M3/M4)
 
+> Superseded: the single package (and `fn_package`) became one package per mapping, see the
+> backlog entry below and `docs/backends/plsql.md`.
+
 Rule ids are unique per mapping only, so standalone top-level `fn_<rule_id>`
 collided across mappings. Now all mappings compile into **one PL/SQL
 package** (`[target.plsql] package`): entry points
@@ -357,7 +360,14 @@ Independent of M6/M7; pick up in any order.
       functions take `p__errors IN OUT NOCOPY JSON_OBJECT_T`, the entry points fold it
       into their error map. Integration case: `orders/failed_member`
       (`<case>.expected_errors.json` declares the rule ids a case must report).
-- [ ] **Multi-package grouping key** for PL/SQL (optional, like `export_rule_functions`).
+- [x] **One package per mapping** for PL/SQL, replacing the single package and `fn_package`:
+      `[target.plsql.mapping_packages]` table or `mapping_package_prefix`/`_suffix` (one of
+      the two is required), optional `mapping_index_package` forwarding to all; one
+      `build/compiled/<package>.sql` per package (`Backend.assemble` returns file name -> text).
+- [ ] **`J2JME_FUNCTIONS` package** for the built-ins that are not 1:1 with a PL/SQL function
+      (`split_first`, `split_nth`, `lookup`) and, once the `fn/` loader exists, the project
+      functions. `if_else` stays inline (lazy branches). Overridable name; generated only
+      when used.
 - [x] **Backend dispatch on `[project] target`.** Coarse `Backend` ABC
       (`compiler/backends/base.py`), self-discovering registry, `PlsqlBackend`; pipeline,
       Function Linker (built-ins now come from the backend) and `cli/build.py` only use the

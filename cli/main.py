@@ -8,8 +8,8 @@ from pathlib import Path
 import typer
 
 from cli.build import (
+    BUILD_COMPILED_DIR,
     BuildError,
-    artifact_path,
     assemble,
     compile_fresh,
     compile_mapping,
@@ -108,11 +108,11 @@ def _compile_and_package(config, file: str | None, force: bool = False) -> None:
         return
     units = _compile_all(config, targets, force)
     try:
-        out = write_package(units, config)
+        written = write_package(units, config)
     except BuildError as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
-    typer.echo(f"package: {out} ({len(units)} mapping(s))")
+    typer.echo(f"packages: {', '.join(str(p) for p in written)} ({len(units)} mapping(s))")
 
 
 @app.command()
@@ -283,19 +283,23 @@ def check() -> None:
     committed output still matches what current sources produce)."""
     config = _load_config_or_exit()
     mappings = discover_mappings(config)
-    committed = artifact_path(config)
     try:
         fresh = assemble([compile_fresh(p, config) for p in mappings], config)
     except Exception as exc:
         typer.echo(f"error compiling: {exc}", err=True)
         raise typer.Exit(code=1) from exc
-    if not committed.is_file():
-        typer.echo(f"missing: {committed} (run `mapper build`)")
+    on_disk = {p.name: p for p in BUILD_COMPILED_DIR.glob("*.sql")}
+    problems = [f"missing: {BUILD_COMPILED_DIR / n}" for n in fresh if n not in on_disk]
+    problems += [f"stale: {p} (no longer produced)" for n, p in on_disk.items() if n not in fresh]
+    problems += [
+        f"out of sync: {p}" for n, p in on_disk.items() if n in fresh and p.read_text() != fresh[n]
+    ]
+    if problems:
+        for line in problems:
+            typer.echo(line)
+        typer.echo("run `mapper build`")
         raise typer.Exit(code=1)
-    if committed.read_text() != fresh:
-        typer.echo(f"out of sync: {committed} (run `mapper build`)")
-        raise typer.Exit(code=1)
-    typer.echo(f"OK — {committed} is in sync ({len(mappings)} mapping(s))")
+    typer.echo(f"OK — {BUILD_COMPILED_DIR} is in sync ({len(mappings)} mapping(s))")
 
 
 if __name__ == "__main__":

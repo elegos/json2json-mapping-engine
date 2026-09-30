@@ -80,7 +80,7 @@ def compile_source(
     artifact text. Without `backend`, the default target with its defaults."""
     backend = backend or create_backend(DEFAULT_TARGET)
     unit = compile_unit(source, default_mapping_id, backend, **kwargs)
-    return backend.assemble([unit])
+    return "\n".join(backend.assemble([unit]).values())
 
 
 def compile_file(path: Path, backend: Backend | None = None, **kwargs) -> str:

@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import ast
 from abc import ABC, abstractmethod
-from pathlib import Path
 from typing import Any, ClassVar
 
 from compiler.scope_resolver import ScopeResolution
@@ -59,11 +58,18 @@ class Backend(ABC):
     def unit_from_json(self, data: dict[str, Any]) -> CompiledUnit:
         """Inverse of `CompiledUnit.to_json` (build-cache entries)."""
 
-    @abstractmethod
-    def assemble(self, units: list[CompiledUnit]) -> str:
-        """All units of the project -> the text of the deployable artifact.
-        Raises `CodeGenError` (e.g. duplicate mapping ids)."""
+    @classmethod
+    def validate_config(cls, section: dict[str, Any]) -> None:
+        """Checks beyond `required_keys` on the `[target.<name>]` section; raises
+        `CodeGenError`. Called when `mapper.toml` is loaded."""
+        return None
 
     @abstractmethod
-    def artifact_path(self, compiled_dir: Path) -> Path:
-        """Where `assemble`'s output is written, under `compiled_dir`."""
+    def assemble(self, units: list[CompiledUnit]) -> dict[str, str]:
+        """All units of the project -> the deployable artifact files, as
+        file name -> text (written under `build/compiled/`). Raises
+        `CodeGenError` (e.g. duplicate mapping ids)."""
+
+    def deploy_order(self, file_names: list[str]) -> list[str]:
+        """The artifact files in the order the target environment needs them."""
+        return sorted(file_names)

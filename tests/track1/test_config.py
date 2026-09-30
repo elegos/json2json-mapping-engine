@@ -16,8 +16,8 @@ parallel_conflict = "exception"
 
 [target.plsql]
 schema     = "MAPPING_OWNER"
-package    = "MAPPING_RULES"
-fn_package = "MAPPING_FUNCTIONS"
+mapping_package_prefix = "MAP_"
+mapping_index_package  = "MAPPINGS"
 fn_prefix  = ""
 fn_suffix  = ""
 error_code = -20000
@@ -45,8 +45,8 @@ def test_round_trips_architecture_example():
 
     plsql = config.target_config("plsql")
     assert plsql["schema"] == "MAPPING_OWNER"
-    assert plsql["package"] == "MAPPING_RULES"
-    assert plsql["fn_package"] == "MAPPING_FUNCTIONS"
+    assert plsql["mapping_package_prefix"] == "MAP_"
+    assert plsql["mapping_index_package"] == "MAPPINGS"
     assert plsql["error_code"] == -20000
 
 
@@ -77,8 +77,7 @@ def test_defaults_when_sections_absent():
             "target": {
                 "plsql": {
                     "schema": "S",
-                    "package": "P",
-                    "fn_package": "FP",
+                    "mapping_package_prefix": "P_",
                     "error_code": -20000,
                 }
             }
@@ -104,9 +103,7 @@ def test_load_config_missing_file(tmp_path: Path):
 
 
 def test_default_choices_validated():
-    base = {
-        "target": {"plsql": {"schema": "S", "package": "P", "fn_package": "F", "error_code": -1}}
-    }
+    base = {"target": {"plsql": {"schema": "S", "mapping_package_prefix": "P_", "error_code": -1}}}
     cfg = parse_config({**base, "compiler": {"default_choices": {"multipleOf": "truncate"}}})
     assert cfg.compiler.default_choices.multiple_of == "truncate"
     assert cfg.compiler.default_choices.format == "round"

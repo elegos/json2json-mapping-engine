@@ -5,11 +5,17 @@ package assembly and the integration harness cannot disagree:
 
     entry points   <fn_prefix>map_<id>[_safe|_fn]<fn_suffix>
     rule functions <fn_prefix>fn_<id>_<rule><fn_suffix>
-    packages       [<schema>.]<package>, and [<schema>.]<fn_package> when set
+    packages       one per mapping, [<schema>.]<package of the mapping>
+                   and, when set, the index package [<schema>.]<mapping_index_package>
 
-With `fn_package` the rule functions live in that package (always in its spec,
-because the main package body calls them); without it they stay in the main
-package, package-private unless `export_rule_functions` is set.
+A mapping's package holds its entry points and its rule functions. How a mapping id
+becomes a package name is chosen in exactly one of two ways:
+
+    [target.plsql.mapping_packages]      explicit:  orders = "ORDERS_PKG"
+    mapping_package_prefix / _suffix     generated: <prefix><ID><suffix>, upper-cased
+
+A project (`strict`) must choose; a bare `PlsqlNaming()` (tests, single-mapping
+compiles) falls back to the generated form with an empty prefix and suffix.
 """
 
 from __future__ import annotations
@@ -20,11 +26,11 @@ from typing import Any
 
 from compiler.backends.base import CodeGenError
 
-DEFAULT_PACKAGE = "MAPPING_RULES"
-
 _PREFIX = re.compile(r"([A-Za-z][A-Za-z0-9_$#]*)?")
 _SUFFIX = re.compile(r"[A-Za-z0-9_$#]*")
 _NAME = re.compile(r"[A-Za-z][A-Za-z0-9_$#]*")
+
+_MAX_IDENTIFIER_BYTES = 128
 
 
 def _checked(key: str, value: object, pattern: re.Pattern[str]) -> str:
@@ -36,43 +42,109 @@ def _checked(key: str, value: object, pattern: re.Pattern[str]) -> str:
     return value
 
 
+def _package_name(what: str, value: str) -> str:
+    _checked(what, value, _NAME)
+    if len(value.encode()) > _MAX_IDENTIFIER_BYTES:
+        raise CodeGenError(f"{what} = {value!r} exceeds Oracle's {_MAX_IDENTIFIER_BYTES} bytes")
+    return value
+
+
 @dataclass(frozen=True)
 class PlsqlNaming:
-    package: str = DEFAULT_PACKAGE
     schema: str | None = None
-    fn_package: str | None = None
     prefix: str = ""
     suffix: str = ""
+    # explicit mode: mapping id -> package (None = generated mode)
+    mapping_packages: dict[str, str] | None = None
+    package_prefix: str = ""
+    package_suffix: str = ""
+    index_package: str | None = None
 
     @staticmethod
-    def from_config(config: dict[str, Any]) -> PlsqlNaming:
+    def from_config(config: dict[str, Any], strict: bool = False) -> PlsqlNaming:
         schema = config.get("schema")
-        fn_package = config.get("fn_package")
+        index = config.get("mapping_index_package")
+        explicit = config.get("mapping_packages")
+        generated = "mapping_package_prefix" in config or "mapping_package_suffix" in config
+        if explicit is not None and generated:
+            raise CodeGenError(
+                "[target.plsql]: choose either [target.plsql.mapping_packages] or "
+                "mapping_package_prefix / mapping_package_suffix, not both"
+            )
+        if strict and explicit is None and not generated:
+            raise CodeGenError(
+                "[target.plsql]: say how mappings map to packages: a "
+                '[target.plsql.mapping_packages] table (<mapping id> = "PACKAGE") or '
+                "mapping_package_prefix / mapping_package_suffix"
+            )
+        packages: dict[str, str] | None = None
+        if explicit is not None:
+            if not isinstance(explicit, dict):
+                raise CodeGenError("[target.plsql] mapping_packages must be a table")
+            packages = {
+                str(k): _package_name(f"mapping_packages.{k}", v) for k, v in explicit.items()
+            }
+            names = [v.upper() for v in packages.values()]
+            if len(set(names)) != len(names):
+                raise CodeGenError("[target.plsql] mapping_packages: two mappings share a package")
+        pkg_prefix = _checked(
+            "mapping_package_prefix", config.get("mapping_package_prefix", ""), _PREFIX
+        )
+        pkg_suffix = _checked(
+            "mapping_package_suffix", config.get("mapping_package_suffix", ""), _SUFFIX
+        )
+        if strict and generated and not (pkg_prefix or pkg_suffix):
+            raise CodeGenError(
+                "[target.plsql]: mapping_package_prefix and mapping_package_suffix are both empty"
+            )
         return PlsqlNaming(
-            package=_checked("package", config.get("package", DEFAULT_PACKAGE), _NAME),
             schema=None if schema is None else _checked("schema", schema, _NAME),
-            fn_package=None if fn_package is None else _checked("fn_package", fn_package, _NAME),
             prefix=_checked("fn_prefix", config.get("fn_prefix", ""), _PREFIX),
             suffix=_checked("fn_suffix", config.get("fn_suffix", ""), _SUFFIX),
+            mapping_packages=packages,
+            package_prefix=pkg_prefix,
+            package_suffix=pkg_suffix,
+            index_package=(
+                None if index is None else _package_name("mapping_index_package", index)
+            ),
         )
 
     def qualified(self, package: str) -> str:
         """`SCHEMA.package`, or just `package` without a schema."""
         return f"{self.schema}.{package}" if self.schema else package
 
+    def package_for(self, mapping_id: str) -> str:
+        """The package that holds this mapping."""
+        if self.mapping_packages is not None:
+            try:
+                return self.mapping_packages[mapping_id]
+            except KeyError:
+                raise CodeGenError(
+                    f"mapping '{mapping_id}' has no package in [target.plsql.mapping_packages]"
+                ) from None
+        return _package_name(
+            f"package of mapping '{mapping_id}'",
+            f"{self.package_prefix}{mapping_id}{self.package_suffix}".upper(),
+        )
+
     def entry(self, mapping_id: str, kind: str = "") -> str:
         """`kind` is "", "_safe" or "_fn"; the suffix always comes last."""
         return f"{self.prefix}map_{mapping_id}{kind}{self.suffix}"
 
     def rule(self, mapping_id: str, rule_id: str) -> str:
-        """Declaration name of a rule function."""
+        """Name of a rule function (it lives in its mapping's package)."""
         return f"{self.prefix}fn_{mapping_id}_{rule_id}{self.suffix}"
 
-    def rule_call(self, mapping_id: str, rule_id: str) -> str:
-        """How the main package calls a rule function."""
-        name = self.rule(mapping_id, rule_id)
-        return f"{self.fn_package}.{name}" if self.fn_package else name
+    def caller_package(self, mapping_id: str) -> str:
+        """The package a caller invokes: the index package when there is one."""
+        return self.index_package or self.package_for(mapping_id)
 
     def call_path(self, mapping_id: str, kind: str = "") -> str:
-        """Fully qualified entry point, as a caller outside the package writes it."""
-        return f"{self.qualified(self.package)}.{self.entry(mapping_id, kind)}"
+        """Fully qualified entry point, as a caller outside the packages writes it."""
+        return f"{self.qualified(self.caller_package(mapping_id))}.{self.entry(mapping_id, kind)}"
+
+    def deploy_order(self, file_names: list[str]) -> list[str]:
+        """Artifact file names in the order they must be deployed: the mapping
+        packages, then the index package (it calls them)."""
+        index = f"{self.index_package.lower()}.sql" if self.index_package else None
+        return sorted(file_names, key=lambda n: (n == index, n))
