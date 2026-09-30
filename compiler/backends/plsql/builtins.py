@@ -19,6 +19,8 @@ consumes this is a Build CLI concern, M3, not built here).
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal
 
@@ -184,6 +186,51 @@ BUILTIN_FUNCTIONS: dict[str, FunctionImpl] = {
         # (`_materialize_aggregate`), not routed through here.
         name="count",
         target_templates={"plsql": "{0}.get_size"},
+    ),
+}
+
+
+@dataclass(frozen=True)
+class LibraryFunction:
+    """A built-in that has no 1:1 PL/SQL counterpart. Mappings call it in the functions
+    package (`[target.plsql] functions_package`); its body is the same expression the
+    inline template renders, with the parameters as arguments."""
+
+    params: str  # PL/SQL parameter list
+    returns: str
+    arg_names: list[str]
+    render: Callable[[list[str]], str]
+
+    @property
+    def spec(self) -> str:
+        return f"{self.params}) RETURN {self.returns}"
+
+    def body_expression(self) -> str:
+        return self.render(self.arg_names)
+
+
+# Not here: `if_else` (as a function both branches would be evaluated, the inline `CASE`
+# is lazy), `concat` (variadic), `count` and the 1:1 ones (`coalesce`, `round`, `trunc`,
+# `parse_date`), which stay inline.
+LIBRARY_FUNCTIONS: dict[str, LibraryFunction] = {
+    "split_first": LibraryFunction(
+        "p_s IN VARCHAR2, p_sep IN VARCHAR2",
+        "VARCHAR2",
+        ["p_s", "p_sep"],
+        _split_first_plsql,
+    ),
+    "split_nth": LibraryFunction(
+        "p_s IN VARCHAR2, p_sep IN VARCHAR2, p_n IN NUMBER",
+        "VARCHAR2",
+        ["p_s", "p_sep", "p_n"],
+        _split_nth_plsql,
+    ),
+    # 2 or 3 arguments: the default is the third, NULL when absent
+    "lookup": LibraryFunction(
+        "p_key IN VARCHAR2, p_table IN JSON_OBJECT_T, p_default IN VARCHAR2 DEFAULT NULL",
+        "VARCHAR2",
+        ["p_key", "p_table", "p_default"],
+        _lookup_plsql,
     ),
 }
 

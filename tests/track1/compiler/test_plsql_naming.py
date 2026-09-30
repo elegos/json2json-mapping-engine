@@ -89,7 +89,7 @@ def test_choosing_both_ways_or_neither_is_an_error():
 def test_packages_must_be_distinct():
     with pytest.raises(CodeGenError, match="share a package"):
         PlsqlNaming.from_config({"mapping_packages": {"a": "P", "b": "p"}})
-    with pytest.raises(CodeGenError, match="mapping_index_package"):
+    with pytest.raises(CodeGenError, match="functions_package or mapping_index_package"):
         _files(
             mapping_package_prefix=None, mapping_packages={"m": "IDX"}, mapping_index_package="idx"
         )
@@ -116,3 +116,50 @@ def test_call_path_for_the_harness():
         {"mapping_package_prefix": "PKG_", "schema": "OWNER", "mapping_index_package": "IDX"}
     )
     assert indexed.call_path("m") == "OWNER.IDX.map_m"
+
+
+_USES_LIBRARY = (
+    "from __mapping__ import *\n\n"
+    "def first(root: Any) -> str:\n"
+    "    return split_first(root.ref, '|')\n\n"
+    "out.First = first(root)\n"
+)
+
+
+def _library_files(**config) -> dict[str, str]:
+    merged = {"mapping_package_prefix": "PKG_", "error_code": -20000, **config}
+    backend = PlsqlBackend({k: v for k, v in merged.items() if v is not None})
+    return backend.assemble([compile_unit(_USES_LIBRARY, "m", backend)])
+
+
+def test_functions_package_exists_only_when_a_mapping_uses_it():
+    assert list(_files()) == ["pkg_m.sql"]
+    files = _library_files(schema="OWNER")
+    assert list(files) == ["j2jme_functions.sql", "pkg_m.sql"]  # functions first
+    assert "CREATE OR REPLACE PACKAGE OWNER.J2JME_FUNCTIONS AS" in files["j2jme_functions.sql"]
+    assert "OWNER.J2JME_FUNCTIONS.split_first(" in files["pkg_m.sql"]
+    assert "INSTR" not in files["pkg_m.sql"]  # no longer inline
+
+
+def test_functions_package_name_is_configurable():
+    files = _library_files(functions_package="MY_FNS")
+    assert list(files) == ["my_fns.sql", "pkg_m.sql"]
+    assert "MY_FNS.split_first(" in files["pkg_m.sql"]
+
+
+def test_functions_package_only_holds_what_is_used():
+    body = _library_files()["j2jme_functions.sql"]
+    assert "split_first" in body and "split_nth" not in body and "lookup" not in body
+
+
+def test_functions_package_cannot_be_a_mapping_or_index_package():
+    with pytest.raises(CodeGenError, match="are the same"):
+        PlsqlNaming.from_config({"mapping_index_package": "X", "functions_package": "x"})
+    with pytest.raises(CodeGenError, match="functions_package or mapping_index_package"):
+        _library_files(mapping_package_prefix=None, mapping_packages={"m": "J2JME_FUNCTIONS"})
+
+
+def test_deploy_order_puts_functions_first_and_index_last():
+    naming = PlsqlNaming.from_config({"mapping_index_package": "IDX"})
+    names = ["idx.sql", "b.sql", "j2jme_functions.sql", "a.sql"]
+    assert naming.deploy_order(names) == ["j2jme_functions.sql", "a.sql", "b.sql", "idx.sql"]

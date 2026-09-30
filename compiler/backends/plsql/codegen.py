@@ -104,10 +104,11 @@ import ast
 import itertools
 import json
 from collections.abc import Callable
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 
 from compiler.annotations import AnnotationError, resolve_dsl_type
 from compiler.backends.base import CodeGenError, CompiledUnit
+from compiler.backends.plsql.builtins import BUILTIN_FUNCTIONS, LIBRARY_FUNCTIONS
 from compiler.backends.plsql.naming import PlsqlNaming
 from compiler.function_linker import FunctionLinker
 from compiler.loop_fusion import (
@@ -210,6 +211,8 @@ class PlsqlUnit(CompiledUnit):
     rule_functions: list[PlsqlSubprogram]
     # map_<id>, map_<id>_safe, and map_<id>_fn when a rule declares `@parallel`
     entry_points: list[PlsqlSubprogram]
+    # built-ins called in the shared functions package (names, sorted)
+    library_functions: list[str] = field(default_factory=list)
 
     def to_json(self) -> dict:
         return asdict(self)
@@ -220,6 +223,7 @@ class PlsqlUnit(CompiledUnit):
             mapping_id=data["mapping_id"],
             rule_functions=[PlsqlSubprogram(**d) for d in data["rule_functions"]],
             entry_points=[PlsqlSubprogram(**d) for d in data["entry_points"]],
+            library_functions=list(data.get("library_functions", [])),
         )
 
 
@@ -479,12 +483,15 @@ class _ExprTranslator:
         dataclasses: dict[str, _DataclassDef],
         function_linker: FunctionLinker,
         fn_name: Callable[[str], str] | None = None,
+        library_name: Callable[[str], str | None] | None = None,
     ):
         self.ctx = ctx
         self.rule_signatures = rule_signatures
         self.dataclasses = dataclasses
         self.function_linker = function_linker
         self.fn_name = fn_name
+        # a built-in living in the functions package -> its call name (None = inline)
+        self.library_name = library_name
 
     def translate(self, node: ast.expr, expected: str | None) -> str:
         method = getattr(self, f"_t_{type(node).__name__}", None)
@@ -640,6 +647,9 @@ class _ExprTranslator:
                 )
                 for i, a in enumerate(node.args)
             ]
+        library = self.library_name(name) if self.library_name else None
+        if library is not None and impl is BUILTIN_FUNCTIONS.get(name):
+            return f"{library}({', '.join(arg_exprs)})"
         return impl.render("plsql", arg_exprs)
 
 
@@ -1124,12 +1134,20 @@ class PlsqlCodeGenerator:
 
     # -- module compilation -----------------------------------------------
 
+    def _library_name(self, name: str) -> str | None:
+        """Call name of a built-in kept in the functions package (recording the use)."""
+        if name not in LIBRARY_FUNCTIONS:
+            return None
+        self._library_used.add(name)
+        return self.naming.library_call(name)
+
     def _fn_name(self, rule_id: str) -> str:
         """How a rule function is called: by name, it lives in the same package."""
         return _check_identifier(self.naming.rule(self._mapping_id, rule_id))
 
     def compile_module(self, tree: ast.Module, mapping_id: str, scope_resolution=None) -> PlsqlUnit:
         self._mapping_id = mapping_id
+        self._library_used: set[str] = set()
         self._loop_counter = itertools.count()
         dataclasses = _collect_dataclasses(tree)
         rule_defs: dict[str, ast.FunctionDef] = {}
@@ -1180,7 +1198,10 @@ class PlsqlCodeGenerator:
             entry_points.append(self._parallel_wrapper(mapping_id, parallel))
 
         return PlsqlUnit(
-            mapping_id=mapping_id, rule_functions=function_texts, entry_points=entry_points
+            mapping_id=mapping_id,
+            rule_functions=function_texts,
+            entry_points=entry_points,
+            library_functions=sorted(self._library_used),
         )
 
     def _parallel_wrapper(self, mapping_id: str, degrees: dict[str, int]) -> PlsqlSubprogram:
@@ -1221,7 +1242,12 @@ class PlsqlCodeGenerator:
         sig = rule_signatures[name]
         ctx = _FnCtx(params=sig.param_names, local_prefix=name)
         translator = _ExprTranslator(
-            ctx, rule_signatures, dataclasses, self.function_linker, self._fn_name
+            ctx,
+            rule_signatures,
+            dataclasses,
+            self.function_linker,
+            self._fn_name,
+            self._library_name,
         )
         body_lines = ["p_omitted := FALSE;"]
         body_lines.extend(
@@ -1260,7 +1286,12 @@ class PlsqlCodeGenerator:
     ) -> list[str]:
         ctx = _FlowCtx(loop_vars)
         translator = _ExprTranslator(
-            ctx, rule_signatures, dataclasses, self.function_linker, self._fn_name
+            ctx,
+            rule_signatures,
+            dataclasses,
+            self.function_linker,
+            self._fn_name,
+            self._library_name,
         )
         lines: list[str] = []
 
@@ -1467,7 +1498,12 @@ class PlsqlCodeGenerator:
             )
         outer_ctx = _FlowCtx(loop_vars)
         outer_translator = _ExprTranslator(
-            outer_ctx, rule_signatures, dataclasses, self.function_linker, self._fn_name
+            outer_ctx,
+            rule_signatures,
+            dataclasses,
+            self.function_linker,
+            self._fn_name,
+            self._library_name,
         )
         source_expr = outer_translator.translate(iter_spec.array_expr, "ARRAY")
 

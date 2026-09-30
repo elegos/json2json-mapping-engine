@@ -364,10 +364,10 @@ Independent of M6/M7; pick up in any order.
       `[target.plsql.mapping_packages]` table or `mapping_package_prefix`/`_suffix` (one of
       the two is required), optional `mapping_index_package` forwarding to all; one
       `build/compiled/<package>.sql` per package (`Backend.assemble` returns file name -> text).
-- [ ] **`J2JME_FUNCTIONS` package** for the built-ins that are not 1:1 with a PL/SQL function
-      (`split_first`, `split_nth`, `lookup`) and, once the `fn/` loader exists, the project
-      functions. `if_else` stays inline (lazy branches). Overridable name; generated only
-      when used.
+- [x] **`J2JME_FUNCTIONS` package** (`functions_package`, overridable) for the built-ins that
+      are not 1:1 with a PL/SQL function (`split_first`, `split_nth`, `lookup`); generated
+      only when used, deployed first. `if_else` stays inline (lazy branches). Checked on Oracle
+      by `orders` (`split_first`). Project functions join it when the `fn/` loader exists.
 - [x] **Backend dispatch on `[project] target`.** Coarse `Backend` ABC
       (`compiler/backends/base.py`), self-discovering registry, `PlsqlBackend`; pipeline,
       Function Linker (built-ins now come from the backend) and `cli/build.py` only use the

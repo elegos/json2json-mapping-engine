@@ -5,7 +5,9 @@ package assembly and the integration harness cannot disagree:
 
     entry points   <fn_prefix>map_<id>[_safe|_fn]<fn_suffix>
     rule functions <fn_prefix>fn_<id>_<rule><fn_suffix>
-    packages       one per mapping, [<schema>.]<package of the mapping>
+    packages       one per mapping, [<schema>.]<package of the mapping>,
+                   the functions package [<schema>.]<functions_package> (built-ins that are
+                   not 1:1 with PL/SQL; only when a mapping uses one),
                    and, when set, the index package [<schema>.]<mapping_index_package>
 
 A mapping's package holds its entry points and its rule functions. How a mapping id
@@ -31,6 +33,8 @@ _SUFFIX = re.compile(r"[A-Za-z0-9_$#]*")
 _NAME = re.compile(r"[A-Za-z][A-Za-z0-9_$#]*")
 
 _MAX_IDENTIFIER_BYTES = 128
+
+DEFAULT_FUNCTIONS_PACKAGE = "J2JME_FUNCTIONS"
 
 
 def _checked(key: str, value: object, pattern: re.Pattern[str]) -> str:
@@ -59,6 +63,7 @@ class PlsqlNaming:
     package_prefix: str = ""
     package_suffix: str = ""
     index_package: str | None = None
+    functions_package: str = DEFAULT_FUNCTIONS_PACKAGE
 
     @staticmethod
     def from_config(config: dict[str, Any], strict: bool = False) -> PlsqlNaming:
@@ -97,6 +102,13 @@ class PlsqlNaming:
             raise CodeGenError(
                 "[target.plsql]: mapping_package_prefix and mapping_package_suffix are both empty"
             )
+        functions = _package_name(
+            "functions_package", config.get("functions_package", DEFAULT_FUNCTIONS_PACKAGE)
+        )
+        if index is not None and index.upper() == functions.upper():
+            raise CodeGenError(
+                "[target.plsql] mapping_index_package and functions_package are the same"
+            )
         return PlsqlNaming(
             schema=None if schema is None else _checked("schema", schema, _NAME),
             prefix=_checked("fn_prefix", config.get("fn_prefix", ""), _PREFIX),
@@ -107,6 +119,7 @@ class PlsqlNaming:
             index_package=(
                 None if index is None else _package_name("mapping_index_package", index)
             ),
+            functions_package=functions,
         )
 
     def qualified(self, package: str) -> str:
@@ -135,6 +148,10 @@ class PlsqlNaming:
         """Name of a rule function (it lives in its mapping's package)."""
         return f"{self.prefix}fn_{mapping_id}_{rule_id}{self.suffix}"
 
+    def library_call(self, function: str) -> str:
+        """How a mapping calls a function of the shared functions package."""
+        return f"{self.qualified(self.functions_package)}.{function}"
+
     def caller_package(self, mapping_id: str) -> str:
         """The package a caller invokes: the index package when there is one."""
         return self.index_package or self.package_for(mapping_id)
@@ -144,7 +161,9 @@ class PlsqlNaming:
         return f"{self.qualified(self.caller_package(mapping_id))}.{self.entry(mapping_id, kind)}"
 
     def deploy_order(self, file_names: list[str]) -> list[str]:
-        """Artifact file names in the order they must be deployed: the mapping
-        packages, then the index package (it calls them)."""
+        """Artifact file names in the order they must be deployed: the functions
+        package (the mappings call it), the mapping packages, then the index package
+        (it calls them)."""
+        functions = f"{self.functions_package.lower()}.sql"
         index = f"{self.index_package.lower()}.sql" if self.index_package else None
-        return sorted(file_names, key=lambda n: (n == index, n))
+        return sorted(file_names, key=lambda n: (n != functions, n == index, n))

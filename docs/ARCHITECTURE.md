@@ -693,12 +693,17 @@ mapping_package_suffix = "_PKG"      # either or both
 An optional `mapping_index_package = "J2JME_MAPPINGS"` adds one more package that only
 forwards every entry point (same signatures) to the mapping's package, so callers always use
 one name. The output is one file per package in `build/compiled/` (lowercase package name);
-deploy order is the mapping packages, then the index. Consequences: mapping ids must be
+deploy order is the functions package (below), the mapping packages, then the index. Consequences: mapping ids must be
 unique project-wide (a duplicate is a build error); two mappings cannot share a package;
 changing a mapping recompiles only its own package (the index depends on specs, which a
 body change does not touch); generated identifiers must fit Oracle's 128-byte limit
 (checked at compile time). Other backends may choose differently (e.g. a module or
 namespace per mapping).
+
+**Functions package.** Built-ins with no 1:1 PL/SQL equivalent (`split_first`, `split_nth`,
+`lookup`) are functions of a shared package, `functions_package` (default `J2JME_FUNCTIONS`),
+called by every mapping instead of being inlined. It is generated only when a mapping uses
+one of them and deployed first. Details: [backends/plsql.md](backends/plsql.md).
 
 **Rule-function visibility.** Every `.map` rule function (one per field/array-element
 rule, §Compiler pipeline) is compiled into the package body alongside `map_<id>` /

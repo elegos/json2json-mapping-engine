@@ -1,3 +1,30 @@
+CREATE OR REPLACE PACKAGE J2JME_FUNCTIONS AS
+    FUNCTION lookup(p_key IN VARCHAR2, p_table IN JSON_OBJECT_T, p_default IN VARCHAR2 DEFAULT NULL) RETURN VARCHAR2;
+
+    FUNCTION split_first(p_s IN VARCHAR2, p_sep IN VARCHAR2) RETURN VARCHAR2;
+
+    FUNCTION split_nth(p_s IN VARCHAR2, p_sep IN VARCHAR2, p_n IN NUMBER) RETURN VARCHAR2;
+END J2JME_FUNCTIONS;
+/
+
+CREATE OR REPLACE PACKAGE BODY J2JME_FUNCTIONS AS
+    FUNCTION lookup(p_key IN VARCHAR2, p_table IN JSON_OBJECT_T, p_default IN VARCHAR2 DEFAULT NULL) RETURN VARCHAR2 IS
+    BEGIN
+        RETURN (CASE WHEN p_table.has(p_key) THEN p_table.get_String(p_key) ELSE p_default END);
+    END lookup;
+
+    FUNCTION split_first(p_s IN VARCHAR2, p_sep IN VARCHAR2) RETURN VARCHAR2 IS
+    BEGIN
+        RETURN SUBSTR(p_s, 1, INSTR(p_s || p_sep, p_sep) - 1);
+    END split_first;
+
+    FUNCTION split_nth(p_s IN VARCHAR2, p_sep IN VARCHAR2, p_n IN NUMBER) RETURN VARCHAR2 IS
+    BEGIN
+        RETURN (CASE WHEN INSTR((p_s || p_sep), p_sep, 1, p_n) = 0 THEN NULL ELSE SUBSTR((p_s || p_sep), INSTR((p_s || p_sep), p_sep, 1, p_n - 1) + LENGTH(p_sep), INSTR((p_s || p_sep), p_sep, 1, p_n) - INSTR((p_s || p_sep), p_sep, 1, p_n - 1) - LENGTH(p_sep)) END);
+    END split_nth;
+END J2JME_FUNCTIONS;
+/
+
 CREATE OR REPLACE PACKAGE BUILTINS_SHOWCASE AS
     PROCEDURE map_builtins_showcase (
         p_src IN  CLOB,
@@ -34,19 +61,19 @@ CREATE OR REPLACE PACKAGE BODY BUILTINS_SHOWCASE AS
     FUNCTION fn_builtins_showcase_ref_first(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
     BEGIN
         p_omitted := FALSE;
-        RETURN SUBSTR(p_root.get_String('ref'), 1, INSTR(p_root.get_String('ref') || '|', '|') - 1);
+        RETURN J2JME_FUNCTIONS.split_first(p_root.get_String('ref'), '|');
     END fn_builtins_showcase_ref_first;
 
     FUNCTION fn_builtins_showcase_ref_second(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
     BEGIN
         p_omitted := FALSE;
-        RETURN (CASE WHEN INSTR((p_root.get_String('ref') || '|'), '|', 1, 2) = 0 THEN NULL ELSE SUBSTR((p_root.get_String('ref') || '|'), INSTR((p_root.get_String('ref') || '|'), '|', 1, 2 - 1) + LENGTH('|'), INSTR((p_root.get_String('ref') || '|'), '|', 1, 2) - INSTR((p_root.get_String('ref') || '|'), '|', 1, 2 - 1) - LENGTH('|')) END);
+        RETURN J2JME_FUNCTIONS.split_nth(p_root.get_String('ref'), '|', 2);
     END fn_builtins_showcase_ref_second;
 
     FUNCTION fn_builtins_showcase_currency(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
     BEGIN
         p_omitted := FALSE;
-        RETURN (CASE WHEN p_root.get_Object('currencyTable').has(p_root.get_String('countryCode')) THEN p_root.get_Object('currencyTable').get_String(p_root.get_String('countryCode')) ELSE 'EUR' END);
+        RETURN J2JME_FUNCTIONS.lookup(p_root.get_String('countryCode'), p_root.get_Object('currencyTable'), 'EUR');
     END fn_builtins_showcase_currency;
 
     FUNCTION fn_builtins_showcase_shipped_on(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN DATE IS

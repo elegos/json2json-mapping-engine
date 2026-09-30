@@ -10,9 +10,10 @@
         "properties": {
           "Sku": {"type": "string"},
           "Qty": {"type": "integer"},
+          "Family": {"type": "string"},
           "Unit": {"type": ["number", "null"]}
         },
-        "required": ["Sku", "Qty"]
+        "required": ["Sku", "Qty", "Family"]
       }
     }
   },

@@ -36,6 +36,7 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAP_ORDERS AS
         v_line__dc := JSON_OBJECT_T();
         v_line__dc.put('Sku', p_src.get_String('sku'));
         v_line__dc.put('Qty', p_src.get_Number('qty'));
+        v_line__dc.put('Family', MAPPING_OWNER.J2JME_FUNCTIONS.split_first(p_src.get_String('sku'), '-'));
         BEGIN
             v_line__rc0 := fn_orders_unit_price(p_src, v_line__ro0);
         EXCEPTION

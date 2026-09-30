@@ -29,6 +29,7 @@ against a real Oracle only through the integration tests (golden cases); feature
 | `[target.plsql.mapping_packages]` | one of the two | — | Explicit table: `<mapping id> = "PACKAGE"` |
 | `mapping_package_prefix` / `mapping_package_suffix` | one of the two | — | Generated: `<prefix><MAPPING ID><suffix>`, upper-cased; at least one non-empty |
 | `mapping_index_package` | no | — | Extra package forwarding every entry point to the mapping's package |
+| `functions_package` | no | `J2JME_FUNCTIONS` | Shared package of the built-ins that are not 1:1 with PL/SQL (see below) |
 | `export_rule_functions` | no | `false` | `true` also lists every `fn_<mapping>_<rule>` in its package spec |
 | `fn_prefix` / `fn_suffix` | no | `""` | Decorate entry points and rule functions (see below) |
 
@@ -48,11 +49,26 @@ All names come from `naming.py`:
 | Rule functions | `<fn_prefix>fn_<id>_<rule><fn_suffix>` |
 | Mapping package | from the table, or `<mapping_package_prefix><ID><mapping_package_suffix>` |
 | Index package | `mapping_index_package` |
+| Functions package | `functions_package` (default `J2JME_FUNCTIONS`); its functions are not decorated by `fn_prefix` / `fn_suffix` |
 | Qualified | `[<schema>.]<package>` |
 
 All configured parts must be plain Oracle identifier parts (letters, digits, `_ $ #`; a
 prefix or name starts with a letter); anything else is a build error, as is a generated
 name over 128 bytes, or the index package equal to a mapping's package.
+
+### The functions package
+
+Most built-ins are inline PL/SQL expressions. Those that have no 1:1 PL/SQL function
+(`split_first`, `split_nth`, `lookup`) are functions of the shared `functions_package`
+instead, so their logic exists once instead of being pasted into every call site. Their
+bodies are the same expressions the inline templates used (`builtins.py`, `LIBRARY_FUNCTIONS`).
+
+- The package is generated only when at least one mapping calls one of them, and holds only
+  the functions used. Deployed first: the mapping packages call it.
+- `if_else` stays inline: a function would evaluate both branches, the `CASE` does not.
+  `concat`, `count` and the 1:1 ones (`coalesce`, `round`, `trunc`, `parse_date`) are inline too.
+- A project function of the same name still overrides the built-in and is rendered as such.
+- Project functions (`fn/`) are meant to live here as well, once the `fn/` loader exists.
 
 ### The index package
 
@@ -190,7 +206,7 @@ PL/SQL, without a SQL `ORDER BY`.
 
 - Only one mapping (`orders`) has golden cases (incl. `failed_member`, the isolated nested member); prefix/suffix are covered by offline tests only.
 - No `maxLength`-driven sizing of `VARCHAR2` locals.
-- The built-ins that are not 1:1 with a PL/SQL function are still inline; a shared functions package is a backlog item.
+- Project functions (`fn/`) do not yet go into the functions package: the loader does not exist.
 - A mapping whose root output is an array is not supported (the output accumulator is
   always a `JSON_OBJECT_T`).
 - `@parallel` scaffolding is document-level only.

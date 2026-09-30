@@ -6,6 +6,7 @@ from runtime.dsl_types import number
 class OrdersLine:
     Sku: str
     Qty: int
+    Family: str
     Unit: number | None = None
 
 @dataclass
