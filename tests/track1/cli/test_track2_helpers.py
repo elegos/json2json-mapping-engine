@@ -112,6 +112,9 @@ class _FakeCursor:
         if self._raises:
             raise self._raises
 
+    def fetchall(self):
+        return [(self._out,)]
+
 
 class _FakeConn:
     def __init__(self, raises: Exception | None = None, out: str = "{}"):
@@ -158,3 +161,22 @@ def test_check_raising_validates_error_payload(tmp_path: Path):
     assert "total_errors=1" in bad
     unexpected = track2.check_raising(_FakeConn(exc), "P.map_m", case, {}, [], -20000)
     assert "raised but _safe reported no rule errors" in unexpected
+
+
+def test_check_parallel_wrapper_compares_with_safe(tmp_path: Path):
+    conn = _FakeConn(out='{"a": 1}')
+    case = _case(tmp_path)
+    assert track2.check_parallel_wrapper(conn, "P.map_m_fn", case, {"a": 1}) == ""
+    assert "differs from _safe" in track2.check_parallel_wrapper(conn, "P.map_m_fn", case, {"a": 2})
+
+
+def test_check_parallel_wrapper_reports_sql_failure(tmp_path: Path):
+    import oracledb
+
+    class _Err:
+        code = 904
+        message = "ORA-00904: invalid identifier"
+
+    conn = _FakeConn(oracledb.DatabaseError(_Err()))
+    msg = track2.check_parallel_wrapper(conn, "P.map_m_fn", _case(tmp_path), {})
+    assert "failed from SQL" in msg
