@@ -1,7 +1,7 @@
 import type { ColDef, ICellRendererParams, ValueSetterParams } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
 import { ProjectButton } from "./ProjectButton";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   chooseProject,
   initialProject,
@@ -80,6 +80,7 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [reportId, setReportId] = useState(0);
   const [recent, setRecent] = useState<string[]>(loadRecent);
+  const folding = useRef(false);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [showIds, setShowIds] = usePersisted("showRuleIds");
   const [developerMode, setDeveloperMode] = usePersisted("developerMode");
@@ -257,7 +258,7 @@ export function App() {
         headerName: "Target",
         colId: "target",
         width: 200,
-        editable: true,
+        editable: () => !folding.current,
         valueGetter: (p) => (p.data ? nameOf(p.data.rule) : ""),
         valueSetter: (p: ValueSetterParams<Row>) => {
           edit(p.data.path, (r) => setName(r, String(p.newValue ?? "")));
@@ -271,10 +272,12 @@ export function App() {
                 <span
                   className="fold"
                   title={collapsed.has(p.data.path) ? "Expand" : "Collapse"}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleFold(p.data!.path);
+                  onMouseDown={() => {
+                    // the grid starts editing on the click that follows; tell it not to
+                    folding.current = true;
+                    setTimeout(() => (folding.current = false), 300);
                   }}
+                  onClick={() => toggleFold(p.data!.path)}
                 >
                   {collapsed.has(p.data.path) ? "▸" : "▾"}
                 </span>
