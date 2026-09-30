@@ -128,3 +128,11 @@ def test_fn_check_command(tmp_path: Path, monkeypatch) -> None:
     assert bad.exit_code == 1
     payload = json.loads(bad.stdout)
     assert payload["ok"] is False and payload["diagnostics"][0]["rule"] == "rules[0]"
+
+
+def test_a_loop_without_a_source_is_flagged() -> None:
+    from transpiler.edit import add_rule
+
+    file = add_rule(load_functional_file(FN), None, None, "loop")
+    issues = check_functional(file)
+    assert any(i.column == "source" and "needs a source" in i.message for i in issues)

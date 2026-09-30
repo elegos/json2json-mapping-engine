@@ -242,3 +242,22 @@ export const MAX_RECENT = 10;
 export function pushRecent(recent: string[], dir: string): string[] {
   return [dir, ...recent.filter((d) => d !== dir)].slice(0, MAX_RECENT);
 }
+
+/** Where "add a rule" puts it, given the selected row: inside a selected container (last),
+ * else right after the selected rule, else at the end of the document. */
+export function insertionPoint(selected: Row | undefined): { parent: string | null; index: number | null } {
+  if (!selected) return { parent: null, index: null };
+  if (selected.rule.kind === "object" || selected.rule.kind === "loop") {
+    return { parent: selected.path, index: null };
+  }
+  const match = /^(.*)\.rules\[(\d+)\]$|^rules\[(\d+)\]$/.exec(selected.path);
+  if (!match) return { parent: null, index: null };
+  if (match[1] !== undefined) return { parent: match[1], index: Number(match[2]) + 1 };
+  return { parent: null, index: Number(match[3]) + 1 };
+}
+
+/** Number of rules below a row (0 for leaves). */
+export function descendants(rule: Rule): number {
+  if (rule.kind !== "object" && rule.kind !== "loop") return 0;
+  return rule.rules.reduce((n, r) => n + 1 + descendants(r), 0);
+}

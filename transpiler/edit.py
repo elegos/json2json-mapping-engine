@@ -139,6 +139,53 @@ def retarget(file: FunctionalFile, path: str, text: str) -> FunctionalFile:
     return file
 
 
+def _fresh_name(children: list[Rule], base: str) -> str:
+    n = 1
+    name = base
+    while _name_taken(children, name, skip=None):  # type: ignore[arg-type]
+        n += 1
+        name = f"{base}{n}"
+    return name
+
+
+def add_rule(
+    file: FunctionalFile, parent: str | None, index: int | None, kind: str
+) -> FunctionalFile:
+    """Insert a new rule of `kind` (field / object / loop) into the container at `parent`
+    (None = the document root), at `index` (None = last). It gets a free default name
+    (`NewField`, `NewField2`, ...) and is incomplete on purpose: the check flags what is
+    still missing (a field's expression, a loop's source)."""
+    file = copy.deepcopy(file)
+    if parent is None:
+        children, top_level = file.rules, True
+    else:
+        holder, at = _locate(file, parent)
+        container = holder[at]
+        if not isinstance(container, ObjectRule | LoopRule):
+            raise FnYamlError("rules can only be added to an object or a loop")
+        children, top_level = container.rules, False
+    prefix = _scope_prefix(top_level)
+    rule: Rule
+    if kind == "field":
+        rule = FieldRule(id=None, field=_fresh_name(children, "NewField"), type="str")
+    elif kind == "object":
+        rule = ObjectRule(id=None, output=f"{prefix}{_fresh_name(children, 'NewObject')}")
+    elif kind == "loop":
+        rule = LoopRule(id=None, source="", output=f"{prefix}{_fresh_name(children, 'NewList')}[*]")
+    else:
+        raise FnYamlError(f"cannot add a rule of kind {kind!r}")
+    children.insert(len(children) if index is None else index, rule)
+    return file
+
+
+def delete_rule(file: FunctionalFile, path: str) -> FunctionalFile:
+    """Remove the rule at `path`, children included."""
+    file = copy.deepcopy(file)
+    holder, index = _locate(file, path)
+    holder.pop(index)
+    return file
+
+
 def normalize_source(text: str, top_level: bool) -> str:
     """A container's `source` gets its scope prefix: `items[*]` -> `$.items[*]` at the
     top level, `@.items[*]` inside a container. Already-anchored text is kept."""

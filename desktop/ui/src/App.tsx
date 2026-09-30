@@ -5,6 +5,7 @@ import { type Choice, Confirm } from "./Confirm";
 import { ProjectButton } from "./ProjectButton";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  changeStructure,
   checkTree,
   chooseProject,
   editTree,
@@ -19,6 +20,8 @@ import {
 } from "./api";
 import {
   columnOf,
+  descendants,
+  insertionPoint,
   diagnosticsByRule,
   expressionOf,
   flatten,
@@ -285,6 +288,44 @@ export function App() {
     },
     [],
   );
+
+  const selectedRow = () => grid.current?.api?.getSelectedRows()[0];
+
+  const addRule = useCallback(async (kind: string) => {
+    const current = treeRef.current;
+    if (!current) return;
+    const at = insertionPoint(selectedRow());
+    try {
+      setTree(await changeStructure(current, { op: "add_rule", ...at, kind }));
+      if (at.parent) setCollapsed((old) => new Set([...old].filter((p) => p !== at.parent)));
+      setStatus("");
+    } catch (e) {
+      setStatus(String(e instanceof Error ? e.message : e));
+    }
+  }, []);
+
+  const deleteRule = useCallback(async () => {
+    const current = treeRef.current;
+    const row = selectedRow();
+    if (!current || !row) return;
+    const below = descendants(row.rule);
+    if (below > 0) {
+      const choice = await ask(
+        `Delete "${nameOf(row.rule, 0)}" and the ${below} rule${below === 1 ? "" : "s"} inside it?`,
+        [
+          { id: "delete", label: "Delete", primary: true },
+          { id: "cancel", label: "Cancel" },
+        ],
+      );
+      if (choice !== "delete") return;
+    }
+    try {
+      setTree(await changeStructure(current, { op: "delete_rule", path: row.path }));
+      setStatus("");
+    } catch (e) {
+      setStatus(String(e instanceof Error ? e.message : e));
+    }
+  }, [ask]);
 
   const rows = useMemo(
     () => (tree ? visibleRows(flatten(tree.rules), collapsed) : []),
@@ -567,7 +608,16 @@ export function App() {
           ))}
         </nav>
         <main>
+          {tree && (
+            <div className="toolbar">
+              <button onClick={() => void addRule("field")}>+ Field</button>
+              <button onClick={() => void addRule("object")}>+ Object</button>
+              <button onClick={() => void addRule("loop")}>+ Loop</button>
+              <button onClick={() => void deleteRule()}>Delete</button>
+            </div>
+          )}
           {tree ? (
+            <div className="grid">
             <AgGridReact<Row>
               rowData={rows}
               columnDefs={columns}
@@ -583,6 +633,7 @@ export function App() {
                 },
               }}
               singleClickEdit
+              rowSelection={{ mode: "singleRow", checkboxes: false, enableClickSelection: true }}
               stopEditingWhenCellsLoseFocus
               rowClassRules={{
                 "row-error": (p) =>
@@ -593,6 +644,7 @@ export function App() {
                 "row-validated": (p) => (p.data ? reviewState(p.data.rule) === "validated" : false),
               }}
             />
+            </div>
           ) : (
             <div className="empty">{project ? "Pick a mapping" : "Open a project to begin"}</div>
           )}

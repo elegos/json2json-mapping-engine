@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   columnOfMessage,
+  insertionPoint,
+  type Row,
+  type Rule,
   pushRecent,
   rowIssues,
   treePrefix,
@@ -121,5 +124,29 @@ describe("model", () => {
     expect(recent).toHaveLength(10);
     expect(recent[0]).toBe("/p5");
     expect(recent.filter((d) => d === "/p5")).toHaveLength(1);
+  });
+});
+
+describe("insertionPoint", () => {
+  const leaf = (path: string): Row => ({
+    path,
+    depth: 0,
+    rule: { kind: "field", id: null, description: null, field: "A", type: "str", required: true, source_path: null, transform: { expression: null, status: "auto", code_override: null, last_auto_version: null }, validation: { validated: false, needs_review: false, notes: null } },
+    guides: [],
+    last: false,
+    hasChildren: false,
+  });
+  it("appends to the root when nothing is selected", () => {
+    expect(insertionPoint(undefined)).toEqual({ parent: null, index: null });
+  });
+  it("goes after a selected root field", () => {
+    expect(insertionPoint(leaf("rules[2]"))).toEqual({ parent: null, index: 3 });
+  });
+  it("goes after a selected nested field, in its container", () => {
+    expect(insertionPoint(leaf("rules[3].rules[0]"))).toEqual({ parent: "rules[3]", index: 1 });
+  });
+  it("goes inside a selected container", () => {
+    const row = { ...leaf("rules[3]"), rule: { kind: "object", id: null, description: null, output: "$.X", guard: null, rules: [] } as Rule };
+    expect(insertionPoint(row)).toEqual({ parent: "rules[3]", index: null });
   });
 });

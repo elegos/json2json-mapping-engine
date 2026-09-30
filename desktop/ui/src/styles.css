@@ -10,7 +10,9 @@ nav { width: 200px; border-right: 1px solid #8884; overflow: auto; }
 .file { padding: 6px 12px; cursor: pointer; }
 .file:hover { background: #8882; }
 .file.current { background: #2a5a9f44; font-weight: 600; }
-main { flex: 1; min-width: 0; }
+main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.grid { flex: 1; min-height: 0; }
+.toolbar { display: flex; gap: 6px; padding: 6px 8px; border-bottom: 1px solid #8884; }
 .empty { padding: 24px; opacity: 0.6; }
 footer { border-top: 1px solid #8884; max-height: 30%; overflow: auto; padding: 6px 12px; font-family: ui-monospace, monospace; font-size: 12px; }
 .report.failed { color: #c0392b; }

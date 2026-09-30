@@ -103,3 +103,18 @@ export async function checkTree(
   if (!parsed.ok) throw new Error(parsed.error ?? "check failed");
   return parsed.diagnostics ?? [];
 }
+
+/** Adds a rule (`parent` null = document root, `index` null = last) or deletes one. */
+export async function changeStructure(
+  tree: FunctionalFile,
+  change:
+    | { op: "add_rule"; parent: string | null; index: number | null; kind: string }
+    | { op: "delete_rule"; path: string },
+): Promise<FunctionalFile> {
+  const answer = await invoke<string>("edit_request", {
+    request: JSON.stringify({ id: 1, tree, ...change }),
+  });
+  const parsed = JSON.parse(answer) as { ok: boolean; tree?: FunctionalFile; error?: string };
+  if (!parsed.ok || !parsed.tree) throw new Error(parsed.error ?? "edit failed");
+  return parsed.tree;
+}

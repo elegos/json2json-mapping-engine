@@ -345,6 +345,8 @@ class _Checker:
             return
         # loop
         item: Node = UNKNOWN
+        if not rule.source.strip():
+            self.add(path, "source", "a loop needs a source")
         if self.has_in and rule.source:
             base = in_root if rule.source.startswith("$") else (items[-1] if items else in_root)
             reached, missing = self.inp.resolve(base, re.sub(r"^[$@]", "", rule.source))

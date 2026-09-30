@@ -410,6 +410,12 @@ Sliced; each slice is usable on its own:
       containers get `$.` (top level) or `@.` (nested); an emptied container is flagged
       "Empty container". Open: `Source` of a *nested* field is kept as typed (its
       `@item.…` / `$.items[*].…` convention is not settled).
+- [x] **Add / delete rules** (`add_rule`, `delete_rule` in `transpiler/edit.py`; toolbar
+      `+ Field` / `+ Object` / `+ Loop` / `Delete`). A new rule goes inside the selected
+      container, else after the selected rule, else at the end; it gets a free name
+      (`NewField`, `NewField2`, …) and is incomplete on purpose: the check flags the empty
+      expression / loop source, and Save refuses it until filled. Deleting a container asks
+      first. Not yet: reorder (drag), lookup rules (next).
 - [x] **M6.1b — check on edit** (`transpiler/check.py`; `mapper fn check FILE`; `check` op of
       `mapper serve`, run by the grid 150 ms after each edit). Per rule, so one bad rule
       hides no other: the loader's checks, expression syntax and anchors, duplicate

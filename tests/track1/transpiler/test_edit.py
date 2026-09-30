@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from cli.serve import serve
-from transpiler.edit import basename, retarget, set_source
+from transpiler.edit import add_rule, basename, delete_rule, retarget, set_source
 from transpiler.model import (
     FieldRule,
     FnYamlError,
@@ -178,3 +178,56 @@ def test_serve_check_op() -> None:
     serve(io.StringIO(json.dumps(request) + "\n"), out)
     answer = json.loads(out.getvalue())
     assert answer["ok"] and answer["diagnostics"][0]["rule"] == "rules[0]"
+
+
+def test_add_field_at_root_gets_a_free_name_and_is_incomplete() -> None:
+    once = add_rule(tree(), None, None, "field")
+    twice = add_rule(once, None, None, "field")
+    assert names(twice.rules)[-2:] == ["NewField", "NewField2"]
+    new = twice.rules[-1]
+    assert isinstance(new, FieldRule) and new.transform.expression is None
+
+
+def test_add_inside_a_loop_and_at_an_index() -> None:
+    result = add_rule(tree(), "rules[2]", 0, "object")
+    loop = result.rules[2]
+    assert isinstance(loop, LoopRule)
+    assert names(loop.rules) == ["@.NewObject", "Sku"]
+
+
+def test_add_loop_has_an_empty_source_and_the_array_suffix() -> None:
+    result = add_rule(tree(), None, 1, "loop")
+    new = result.rules[1]
+    assert isinstance(new, LoopRule) and new.source == "" and new.output == "$.NewList[*]"
+
+
+def test_add_rejects_a_field_as_parent_and_an_unknown_kind() -> None:
+    with pytest.raises(FnYamlError):
+        add_rule(tree(), "rules[0]", None, "field")
+    with pytest.raises(FnYamlError):
+        add_rule(tree(), None, None, "lookup")
+
+
+def test_delete_removes_a_rule_with_its_children() -> None:
+    assert names(delete_rule(tree(), "rules[2]").rules) == ["OrderId", "Note"]
+    loop_gone = delete_rule(tree(), "rules[2].rules[0]")
+    assert isinstance(loop_gone.rules[2], LoopRule) and loop_gone.rules[2].rules == []
+
+
+def test_serve_add_and_delete() -> None:
+    lines = [
+        {
+            "id": 1,
+            "op": "add_rule",
+            "tree": functional_to_dict(tree()),
+            "parent": None,
+            "index": None,
+            "kind": "field",
+        },
+        {"id": 2, "op": "delete_rule", "tree": functional_to_dict(tree()), "path": "rules[0]"},
+    ]
+    out = io.StringIO()
+    serve(io.StringIO("\n".join(json.dumps(x) for x in lines) + "\n"), out)
+    first, second = (json.loads(x) for x in out.getvalue().splitlines())
+    assert first["ok"] and len(first["tree"]["rules"]) == 4
+    assert second["ok"] and len(second["tree"]["rules"]) == 2
