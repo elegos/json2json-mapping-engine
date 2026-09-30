@@ -1462,7 +1462,7 @@ field-level sentinel. This is the mechanism for conditional sub-objects and cove
   example: "12.50"
   description: "Line amount. Fallback to header default price if item price is null."
   source:
-    path: "@.price * @.qty"          # source expression (documentation / LLM hint)
+    path: "@.price"                  # where the value comes from: a path, or `constant: 27`
   transform:
     expression: "round(coalesce(@.price, $.defaults.price) * @.qty, 2)"
     status: auto                     # auto | manual
@@ -1477,6 +1477,17 @@ field-level sentinel. This is the mechanism for conditional sub-objects and cove
     transform_modified: 2026-09-18T09:11:00
     description_modified: 2026-08-01T10:00:00
 ```
+
+**The Source value.** `source` names where a field's value comes from, and that value is
+available to the expression as the name `value`; an **empty expression** means "the
+Source value, as it is". So `source: {path: $.id}` alone copies `$.id`, and
+`expression: lookup(value, @countryCurrency, "N/A")` looks up the Source. A rule needs a
+Source or an expression, and `value` needs a Source. `value` is reserved (it cannot be
+assigned). A Source may also be a **constant** (`source: {constant: 27}`; a number,
+`true` / `false`, `null` or a string): the field then always gets that value, e.g. a
+mapping version. In a loop, a path through the loop (`$.items[*].sku`) and the relative
+`@.sku` name the same element. Changing a Source (path or constant) or the expression
+resets the rule's validation (§Rule validation).
 
 Field names in `field:` are always relative to the enclosing `loop` or `object`
 rule. The transpiler builds the full output path by walking the parent chain.

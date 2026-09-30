@@ -44,7 +44,7 @@ from typing import Any
 
 from compiler.loop_fusion import fuse_loops
 from compiler.schema_generator import SchemaTypes
-from transpiler.anchors import AnchorScope, LoopRef, resolve_anchors
+from transpiler.anchors import AnchorScope, LoopRef, resolve_anchors, uses_value
 from transpiler.expr import COMMENT_MARK, Block, comment_stmt, parse_block
 from transpiler.ids import assign_ids, ident_of, walk
 from transpiler.model import (
@@ -170,6 +170,8 @@ class _Frame:
 
     labels: tuple[str | None, ...] = ()
     types: tuple[str | None, ...] = ()
+    # each loop's source as an absolute path (`$.orders[*].lines[*]`), for a field's Source
+    sources: tuple[str, ...] = ()
 
     @property
     def depth(self) -> int:
@@ -192,8 +194,11 @@ class _Frame:
             for i, label in enumerate(self.labels)
         )
 
-    def child(self, label: str | None, type_name: str | None) -> _Frame:
-        return _Frame((*self.labels, label), (*self.types, type_name))
+    def child(self, label: str | None, type_name: str | None, source: str = "") -> _Frame:
+        raw = source.strip().replace("[]", "[*]")
+        if raw.startswith("@.") and self.sources:
+            raw = self.sources[-1] + raw[1:]
+        return _Frame((*self.labels, label), (*self.types, type_name), (*self.sources, raw))
 
 
 @dataclass
@@ -315,15 +320,49 @@ class _Builder:
             )
         return steps
 
-    def _field_block(self, rule: FieldRule, fq: str, scope: AnchorScope) -> Block:
+    def _value_text(
+        self, rule: FieldRule, frame: _Frame, scope: AnchorScope, where: str
+    ) -> str | None:
+        """The Source of a field as Python text: what the name `value` stands for. A path
+        that goes through an enclosing loop (`$.items[*].sku`) is rewritten to that loop's
+        element (`@.sku`)."""
+        if rule.has_constant:
+            constant = rule.source_constant
+            negative = isinstance(constant, int | float) and constant < 0
+            return f"({constant!r})" if negative else repr(constant)
+        path = (rule.source_path or "").strip().replace("[]", "[*]")
+        if not path:
+            return None
+        if "[*]" in path:
+            for depth in range(frame.depth, 0, -1):
+                prefix = frame.sources[depth - 1]
+                if path == prefix or path.startswith(prefix + "."):
+                    anchor = "@" if depth == frame.depth else f"@{frame.depth - depth + 1}"
+                    path = anchor + path[len(prefix) :]
+                    break
+            if "[*]" in path:
+                raise FnYamlError(
+                    f"{where}: the source {rule.source_path!r} does not go through an enclosing "
+                    "loop: write it relative to the loop (@.name) to use it as `value`"
+                )
+        return resolve_anchors(path, scope, f"{where} source").text
+
+    def _field_block(self, rule: FieldRule, fq: str, scope: AnchorScope, frame: _Frame) -> Block:
         where = f"rule '{fq}'"
         t = rule.transform
         if t.status == "manual":
             assert t.code_override is not None
             text = t.code_override
         else:
-            assert t.expression is not None
-            text = resolve_anchors(t.expression, scope, where).text
+            value = self._value_text(rule, frame, scope, where)
+            expression = t.expression or "value"  # no expression: the Source's value as it is
+            if re.search(r"(?<![\w.])value\s*=(?!=)", expression):
+                raise FnYamlError(f"{where}: `value` is reserved (the rule's Source value)")
+            if value is None and uses_value(expression):
+                raise FnYamlError(
+                    f"{where}: the expression uses `value` but the rule has no Source"
+                )
+            text = resolve_anchors(expression, scope, where, value).text
         block = parse_block(text, ident_of(fq), where)
         steps = self._post_steps(rule, where)
         if steps:
@@ -404,7 +443,7 @@ class _Builder:
     def _top_field(self, rule: FieldRule) -> None:
         assert rule.id is not None
         fq, ident = rule.id, ident_of(rule.id)
-        block = self._field_block(rule, fq, self._scope(_Frame()))
+        block = self._field_block(rule, fq, self._scope(_Frame()), _Frame())
         ret = _annotation(rule.type, not rule.required, block.returns_null)
         fn = ast.parse(f"def {ident}({self._params(_Frame(), set())}) -> {ret}:\n    pass").body[0]
         assert isinstance(fn, ast.FunctionDef)
@@ -424,7 +463,7 @@ class _Builder:
         where = f"rule '{fq}'"
         out_field = _output_field(rule.output, where)
         source = self._source_text(rule, self._scope(_Frame()), where)
-        frame = _Frame().child(rule.label, self._element_type(source, _Frame()))
+        frame = _Frame().child(rule.label, self._element_type(source, _Frame()), rule.source)
         comp = self._composite(rule, fq, frame, _pascal(out_field) + "Item", None)
         uses_index = 0 in comp.needs
         scope = self._scope(frame)
@@ -512,7 +551,7 @@ class _Builder:
             if isinstance(child, LookupRule):
                 continue
             if isinstance(child, FieldRule):
-                block = self._field_block(child, cfq, scope)
+                block = self._field_block(child, cfq, scope, frame)
                 if not block.is_simple:
                     raise FnYamlError(
                         f"{where}: inside a {node.kind} a field must be assignments followed by "
@@ -598,7 +637,7 @@ class _Builder:
         """`<id>_list = []` + a `for` filling it, inside the parent's function."""
         cid = ident_of(fq)
         source = self._source_text(rule, self._scope(frame), where)
-        child_frame = frame.child(rule.label, self._element_type(source, frame))
+        child_frame = frame.child(rule.label, self._element_type(source, frame), rule.source)
         out_field = _output_field(rule.output, where)
         sub = self._composite(rule, fq, child_frame, _pascal(out_field) + "Item", None)
 

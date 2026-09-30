@@ -22,7 +22,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from transpiler.anchors import AnchorScope, LoopRef, _split_strings, resolve_anchors
+from transpiler.anchors import (
+    AnchorScope,
+    LoopRef,
+    _split_strings,
+    resolve_anchors,
+    uses_value,
+)
 from transpiler.expr import parse_block
 from transpiler.exprtypes import ExprTyper
 from transpiler.model import (
@@ -192,6 +198,18 @@ _JSON_TYPE = {
 }
 
 
+def _constant_node(value: Any) -> Schema | _Unknown:
+    """A schema for a constant Source; a null tells nothing."""
+    kind = (
+        "boolean" if isinstance(value, bool)
+        else "integer" if isinstance(value, int)
+        else "number" if isinstance(value, float)
+        else "string" if isinstance(value, str)
+        else None
+    )  # fmt: skip
+    return {"type": kind} if kind else UNKNOWN
+
+
 def _lookup_node(rule: LookupRule) -> Schema:
     """A schema for a lookup's entries: an object whose values have the declared type, or,
     when none is declared, the type they all share (nothing stated if they differ)."""
@@ -327,6 +345,7 @@ class _Checker:
         root: Node,
         items: list[Node],
         labels: list[str | None],
+        value: Node = None,
     ) -> None:
         """What the expression yields against what the field is (`transpiler.exprtypes`)."""
         wanted = _TYPES.get(rule.type)
@@ -338,6 +357,7 @@ class _Checker:
             root,
             items,
             labels,
+            value,
         )
 
     def typecheck(
@@ -349,6 +369,7 @@ class _Checker:
         root: Node,
         items: list[Node],
         labels: list[str | None],
+        value: Node = None,
     ) -> None:
         loops = tuple(LoopRef(lbl, f"_L{i}", f"_I{i}") for i, lbl in enumerate(labels, 1))
         # a lookup is typed by its declared type: it stands for a name whose schema says so
@@ -357,7 +378,7 @@ class _Checker:
             resolved = resolve_anchors(text, AnchorScope(loops, tables), "expression").text  # type: ignore[arg-type]
         except FnYamlError:
             return  # reported by `block`
-        env: dict[str, Any] = {"root": root}
+        env: dict[str, Any] = {"root": root, "value": value}
         env.update({f"_LK_{label}": node for label, node in self.lookup_nodes.items()})
         env.update({f"_L{i}": node for i, node in enumerate(items, 1)})
         typer = ExprTyper(self.inp, env, lambda message: self.add(path, "expression", message))
@@ -416,18 +437,27 @@ class _Checker:
     def field(self, path, rule: FieldRule, scope, out, in_root, items, labels) -> None:
         t = rule.transform
         text = t.code_override if t.status == "manual" else t.expression
-        if text:
-            self.block(path, text, scope, "expression", dev=t.status == "manual")
-            if t.status != "manual":
-                self.refs(path, text, "expression", in_root, items, labels)
-        if text and t.status != "manual":
-            self.types(path, rule, text, in_root, items, labels)
-        if rule.source_path and self.has_in:
+        has_source = rule.has_constant or bool(rule.source_path)
+        value: Node = UNKNOWN  # what `value` stands for: the Source
+        if rule.has_constant:
+            value = _constant_node(rule.source_constant)
+        elif rule.source_path and self.has_in:
             src = rule.source_path
             base = in_root if src.startswith("$") else (items[-1] if items else in_root)
             node, missing = self.inp.resolve(base, re.sub(r"^[$@]", "", src))
             if node is None:
                 self.add(path, "source", f"'{missing}' is not in the input schema")
+            else:
+                value = node
+        if text:
+            self.block(path, text, scope, "expression", dev=t.status == "manual")
+            if t.status != "manual":
+                self.refs(path, text, "expression", in_root, items, labels)
+                if uses_value(text) and not has_source:
+                    self.add(path, "expression", "`value` is used but the rule has no Source")
+        if t.status != "manual" and (text or has_source):
+            # no expression: the field takes its Source value as it is
+            self.types(path, rule, text or "value", in_root, items, labels, value)
         if not self.has_out or not isinstance(out, dict):
             return
         node = self.out.prop(out, rule.field)

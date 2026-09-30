@@ -5,6 +5,7 @@
     "OrderId": {"type": "string"},
     "Currency": {"type": ["string", "null"]},
     "Warehouse": {"type": ["string", "null"]},
+    "MapVersion": {"type": "integer"},
     "Lines": {
       "type": "array",
       "items": {
@@ -19,5 +20,5 @@
       }
     }
   },
-  "required": ["OrderId", "Lines"]
+  "required": ["OrderId", "MapVersion", "Lines"]
 }

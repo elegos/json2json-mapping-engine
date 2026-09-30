@@ -8,6 +8,7 @@ import {
   parseTyped,
   parseValue,
   renameEntry,
+  sourceOf,
   showValue,
   type Row,
   type Rule,
@@ -32,6 +33,8 @@ const field = (id: string, name: string, expression: string) => ({
   type: "str",
   required: true,
   source_path: null,
+  source_constant: null,
+  has_constant: false,
   transform: { expression, status: "auto" as const, code_override: null, last_auto_version: null },
   validation: { validated: false, needs_review: false, notes: null },
 });
@@ -138,7 +141,7 @@ describe("insertionPoint", () => {
   const leaf = (path: string): Row => ({
     path,
     depth: 0,
-    rule: { kind: "field", id: null, description: null, field: "A", type: "str", required: true, source_path: null, transform: { expression: null, status: "auto", code_override: null, last_auto_version: null }, validation: { validated: false, needs_review: false, notes: null } },
+    rule: { kind: "field", id: null, description: null, field: "A", type: "str", required: true, source_path: null, source_constant: null, has_constant: false, transform: { expression: null, status: "auto", code_override: null, last_auto_version: null }, validation: { validated: false, needs_review: false, notes: null } },
     guides: [],
     last: false,
     hasChildren: false,
@@ -224,5 +227,22 @@ describe("project config helpers", () => {
     expect(shownValue({}, option)).toBe(true);
     expect(shownValue({ k: false }, option)).toBe(false);
     expect(issuesAt([{ path: "a.b", message: "m" }, { path: "a.c", message: "n" }], ["a"], "b")).toEqual(["m"]);
+  });
+});
+
+describe("sourceOf", () => {
+  const field = (extra: object) =>
+    ({
+      kind: "field", id: null, description: null, field: "A", type: "int", required: true,
+      source_path: null, source_constant: null, has_constant: false,
+      transform: { expression: null, status: "auto", code_override: null, last_auto_version: null },
+      validation: { validated: false, needs_review: false, notes: null },
+      ...extra,
+    }) as Rule;
+  it("shows a path as written and a constant as JSON", () => {
+    expect(sourceOf(field({ source_path: "$.id" }))).toBe("$.id");
+    expect(sourceOf(field({ has_constant: true, source_constant: 27 }))).toBe("27");
+    expect(sourceOf(field({ has_constant: true, source_constant: "x" }))).toBe('"x"');
+    expect(sourceOf(field({ has_constant: true, source_constant: null }))).toBe("null");
   });
 });

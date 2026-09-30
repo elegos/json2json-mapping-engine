@@ -720,3 +720,82 @@ def test_cached_stages_match_a_direct_run(tmp_path: Path):
     assert run_stages(src, options, 4, out, cached=True) == direct
     # the load artifact round-trips into the same tree
     assert run_stages(src, options, 2, out, cached=True) == artifact(out, 2).read_text()
+
+
+# -- the Source value: `value`, an empty expression, a constant ---------------------------
+
+
+def sourced(id_: str, expr: str | None, source: dict, name: str = "F", type_: str = "str") -> dict:
+    transform = {"expression": expr} if expr else {}
+    return {
+        "id": id_,
+        "kind": "field",
+        "field": name,
+        "type": type_,
+        "source": source,
+        "transform": transform,
+    }
+
+
+def test_no_expression_takes_the_source_value() -> None:
+    text = tr([sourced("a", None, {"path": "$.id"})])
+    assert "return root.id" in text
+
+
+def test_value_in_an_expression_is_the_source() -> None:
+    text = tr([sourced("a", 'concat(value, "-x")', {"path": "$.id"})])
+    assert "concat(root.id, '-x')" in text
+
+
+def test_value_can_feed_a_lookup() -> None:
+    lookup = {"id": "t", "kind": "lookup", "label": "tab", "entries": {"IT": "EUR"}}
+    text = tr([lookup, sourced("a", 'lookup(value, @tab, "N/A")', {"path": "$.country"})])
+    assert "lookup(root.country" in text
+
+
+def test_a_constant_source() -> None:
+    text = tr([sourced("v", None, {"constant": 27}, "MapVersion", "int")])
+    assert "return 27" in text
+    text = tr([sourced("v", "value + 1", {"constant": -3}, "N", "int")])
+    assert "return -3 + 1" in text
+    assert "return 'x'" in tr([sourced("v", None, {"constant": "x"})])
+
+
+def test_a_nested_source_through_the_loop_is_the_element() -> None:
+    rules = [
+        loop(
+            [
+                sourced("s", None, {"path": "$.items[*].sku"}, "Sku"),
+                sourced("t", 'concat(value, "!")', {"path": "@.sku"}, "Tag"),
+            ]
+        )
+    ]
+    text = tr(rules)
+    assert "Sku=src.sku" in text and "Tag=concat(src.sku, '!')" in text
+
+
+def test_a_nested_source_that_misses_the_loop_is_an_error() -> None:
+    with pytest.raises(FnYamlError, match="does not go through an enclosing loop"):
+        tr([loop([sourced("s", None, {"path": "$.other[*].sku"}, "Sku")])])
+
+
+def test_value_without_a_source_is_an_error() -> None:
+    with pytest.raises(FnYamlError, match="no Source"):
+        tr([field("a", "value")])
+
+
+def test_value_is_reserved() -> None:
+    with pytest.raises(FnYamlError, match="reserved"):
+        tr([sourced("a", "value = 1\nvalue", {"path": "$.id"})])
+
+
+def test_a_rule_needs_a_source_or_an_expression() -> None:
+    with pytest.raises(FnYamlError, match="neither a source nor an expression"):
+        model([{"id": "a", "kind": "field", "field": "F", "type": "str"}])
+    with pytest.raises(FnYamlError, match="both a path and a constant"):
+        model([sourced("a", None, {"path": "$.id", "constant": 1})])
+
+
+def test_value_is_left_alone_in_strings_and_attributes() -> None:
+    text = tr([sourced("a", "concat('value', $.other.value)", {"path": "$.id"})])
+    assert "'value'" in text and "root.other.value" in text

@@ -20,6 +20,7 @@ document root.
 from __future__ import annotations
 
 import copy
+import json
 import re
 
 from transpiler.model import (
@@ -211,10 +212,22 @@ def normalize_source(text: str, top_level: bool) -> str:
     return f"{_scope_prefix(top_level)}{raw}"
 
 
+def parse_constant(text: str) -> tuple[bool, object]:
+    """(is a constant, its value): a number, `true` / `false` / `null` or a quoted string.
+    Anything else is a path (a bare `id` means `$.id`)."""
+    try:
+        value = json.loads(text)
+    except ValueError:
+        return False, None
+    if isinstance(value, dict | list):
+        raise FnYamlError('a constant Source is a scalar: 27, true, null or "text"')
+    return True, value
+
+
 def set_source(file: FunctionalFile, path: str, text: str) -> FunctionalFile:
     """Set the Source column of the rule at `path`. A loop's `source` and a top-level
-    field's `source.path` are normalised; a nested field's path is documentation and
-    is kept as typed."""
+    field's `source.path` are normalised; a nested field's path is kept as typed. A number,
+    `true`, `false`, `null` or a quoted string is a constant (`27`, `"text"`); the rest is a path."""
     file = copy.deepcopy(file)
     holder, index = _locate(file, path)
     rule = holder[index]
@@ -223,7 +236,12 @@ def set_source(file: FunctionalFile, path: str, text: str) -> FunctionalFile:
         rule.source = normalize_source(text, top_level)
     elif isinstance(rule, FieldRule):
         value = text.strip()
-        rule.source_path = (normalize_source(value, True) if top_level else value) or None
+        rule.source_path, rule.source_constant, rule.has_constant = None, None, False
+        is_constant, constant = parse_constant(value) if value else (False, None)
+        if is_constant:
+            rule.source_constant, rule.has_constant = constant, True
+        else:
+            rule.source_path = (normalize_source(value, True) if top_level else value) or None
     else:
         raise FnYamlError("only field and loop rules have a Source")
     return file

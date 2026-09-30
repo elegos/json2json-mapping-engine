@@ -322,3 +322,70 @@ def test_guards_and_filters_take_any_value_but_their_insides_are_checked() -> No
         (i.rule, i.message) for i in check_functional(parse_functional(raw, "t"), inp, None)
     ]
     assert messages == [("rules[1]", "an operand of '*' is string, but must be numeric")]
+
+
+def _value_issues(expression: str | None, source: dict, field_type: str = "str", inp=None):
+    transform = {"expression": expression} if expression else {}
+    file = parse_functional(
+        {
+            "id": "t",
+            "rules": [
+                {
+                    "kind": "field",
+                    "field": "X",
+                    "type": field_type,
+                    "source": source,
+                    "transform": transform,
+                }
+            ],
+        },
+        default_id="t",
+    )
+    return [i.message for i in check_functional(file, inp, None) if i.severity == "error"]
+
+
+VALUE_SCHEMA = {
+    "type": "object",
+    "properties": {"s": {"type": "string"}, "n": {"type": "integer"}},
+}
+
+
+def test_no_expression_is_typed_by_the_source() -> None:
+    assert _value_issues(None, {"path": "$.s"}, "str", VALUE_SCHEMA) == []
+    [message] = _value_issues(None, {"path": "$.s"}, "int", VALUE_SCHEMA)
+    assert "the expression is string" in message and "'int'" in message
+    assert _value_issues(None, {"path": "$.nope"}, "int", VALUE_SCHEMA) == [
+        "'nope' is not in the input schema"
+    ]
+
+
+def test_value_is_typed_by_the_source() -> None:
+    assert _value_issues("value + 1", {"path": "$.n"}, "int", VALUE_SCHEMA) == []
+    messages = _value_issues("value * 2", {"path": "$.s"}, "int", VALUE_SCHEMA)
+    assert any("operand of '*' is string" in m for m in messages)
+
+
+def test_a_constant_source_has_its_own_type() -> None:
+    assert _value_issues(None, {"constant": 27}, "int") == []
+    assert _value_issues(None, {"constant": "x"}, "int")[0].startswith("the expression is string")
+    assert _value_issues(None, {"constant": None}, "int") == []
+
+
+def test_value_without_a_source_is_reported() -> None:
+    file = parse_functional(
+        {
+            "id": "t",
+            "rules": [
+                {
+                    "kind": "field",
+                    "field": "X",
+                    "type": "str",
+                    "transform": {"expression": "value"},
+                }
+            ],
+        },
+        default_id="t",
+    )
+    assert [i.message for i in check_functional(file)] == [
+        "`value` is used but the rule has no Source"
+    ]

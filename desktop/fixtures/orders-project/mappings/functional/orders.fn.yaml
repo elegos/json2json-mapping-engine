@@ -8,8 +8,7 @@ rules:
     description: The order id, unchanged.
     source:
       path: $.id
-    transform:
-      expression: $.id
+    transform: {}
   - id: cur
     kind: field
     field: Currency
@@ -19,7 +18,7 @@ rules:
     source:
       path: $.country
     transform:
-      expression: lookup($.country, @countryCurrency, "N/A")
+      expression: lookup(value, @countryCurrency, "N/A")
   - id: wh
     kind: field
     field: Warehouse
@@ -29,7 +28,15 @@ rules:
     source:
       path: $.ref
     transform:
-      expression: split_nth($.ref, ",", 2)
+      expression: split_nth(value, ",", 2)
+  - id: ver
+    kind: field
+    field: MapVersion
+    type: int
+    description: Version of this mapping, a constant.
+    source:
+      constant: 27
+    transform: {}
   - id: lines
     kind: loop
     label: item
@@ -42,16 +49,14 @@ rules:
         type: str
         source:
           path: $.items[*].sku
-        transform:
-          expression: "@.sku"
+        transform: {}
       - id: qty
         kind: field
         field: Qty
         type: int
         source:
           path: $.items[*].qty
-        transform:
-          expression: "@.qty"
+        transform: {}
       - id: fam
         kind: field
         field: Family

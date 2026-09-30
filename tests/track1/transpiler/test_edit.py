@@ -241,3 +241,20 @@ def test_serve_add_and_delete() -> None:
     first, second = (json.loads(x) for x in out.getvalue().splitlines())
     assert first["ok"] and len(first["tree"]["rules"]) == 4
     assert second["ok"] and len(second["tree"]["rules"]) == 2
+
+
+def test_a_source_that_is_a_scalar_literal_is_a_constant() -> None:
+    for text, value in (("27", 27), ("-1.5", -1.5), ("true", True), ("null", None), ('"x"', "x")):
+        result = set_source(tree(), "rules[0]", text)
+        rule = result.rules[0]
+        assert isinstance(rule, FieldRule)
+        assert rule.has_constant and rule.source_constant == value and rule.source_path is None
+
+
+def test_changing_a_constant_back_to_a_path_and_rejecting_structures() -> None:
+    constant = set_source(tree(), "rules[0]", "27")
+    path = set_source(constant, "rules[0]", "id")
+    rule = path.rules[0]
+    assert isinstance(rule, FieldRule) and not rule.has_constant and rule.source_path == "$.id"
+    with pytest.raises(FnYamlError):
+        set_source(tree(), "rules[0]", "[1, 2]")

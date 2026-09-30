@@ -25,7 +25,7 @@ from typing import Any
 
 from transpiler.model import FnYamlError
 
-_ANCHOR = re.compile(r"\$|@(?:index(?:\.\d+)?(?![\w])|\d+|[A-Za-z_]\w*)?")
+_ANCHOR = re.compile(r"\$|@(?:index(?:\.\d+)?(?![\w])|\d+|[A-Za-z_]\w*)?|(?<![\w.])value(?!\w)")
 
 
 @dataclass(frozen=True)
@@ -78,7 +78,11 @@ def _split_strings(text: str) -> list[tuple[bool, str]]:
     return parts
 
 
-def resolve_anchors(text: str, scope: AnchorScope, where: str) -> Resolved:
+def resolve_anchors(
+    text: str, scope: AnchorScope, where: str, value: str | None = None
+) -> Resolved:
+    """`value` is the Python text of the rule's Source value: the name `value` in the
+    expression stands for it. Without one, `value` is left alone (a plain name)."""
     out = Resolved(text="")
     depth = len(scope.loops)
 
@@ -95,6 +99,8 @@ def resolve_anchors(text: str, scope: AnchorScope, where: str) -> Resolved:
 
     def sub(m: re.Match[str]) -> str:
         tok = m.group(0)
+        if tok == "value":
+            return tok if value is None else value
         if tok == "$":
             return "root"
         name = tok[1:]
@@ -124,3 +130,11 @@ def resolve_anchors(text: str, scope: AnchorScope, where: str) -> Resolved:
         chunks.append(chunk if is_str else _ANCHOR.sub(sub, chunk))
     out.text = "".join(chunks)
     return out
+
+
+_VALUE = re.compile(r"(?<![\w.$@])value(?!\w)")
+
+
+def uses_value(text: str) -> bool:
+    """Whether the expression names `value` (the rule's Source value), outside strings."""
+    return any(_VALUE.search(chunk) for is_str, chunk in _split_strings(text) if not is_str)

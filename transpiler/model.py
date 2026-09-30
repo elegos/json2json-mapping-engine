@@ -72,6 +72,9 @@ class FieldRule:
     example: Any = None
     description: str | None = None
     source_path: str | None = None
+    # a constant Source (`source: {constant: 27}`): the value is not read from the input
+    source_constant: Any = None
+    has_constant: bool = False
     transform: Transform = dc_field(default_factory=Transform)
     validation: Validation = dc_field(default_factory=Validation)
     version: dict[str, Any] = dc_field(default_factory=dict)
@@ -261,8 +264,6 @@ def _load_field(where: str, raw: dict[str, Any]) -> FieldRule:
     )
     if status == "manual" and not transform.code_override:
         raise _err(where, "transform.status is 'manual' but code_override is empty")
-    if status == "auto" and not transform.expression:
-        raise _err(where, "transform.status is 'auto' but expression is empty")
 
     v_raw = _get_dict(where, raw, "validation")
     _check_keys(f"{where}.validation", v_raw, {"validated", "needs_review", "notes"})
@@ -272,7 +273,14 @@ def _load_field(where: str, raw: dict[str, Any]) -> FieldRule:
         notes=v_raw.get("notes"),
     )
     s_raw = _get_dict(where, raw, "source")
-    _check_keys(f"{where}.source", s_raw, {"path"})
+    _check_keys(f"{where}.source", s_raw, {"path", "constant"})
+    if "path" in s_raw and "constant" in s_raw:
+        raise _err(where, "'source' has both a path and a constant — pick one")
+    has_source = "path" in s_raw or "constant" in s_raw
+    if status == "auto" and not transform.expression and not has_source:
+        raise _err(where, "the rule has neither a source nor an expression")
+    if "constant" in s_raw and isinstance(s_raw["constant"], dict | list):
+        raise _err(where, "'source.constant' must be a scalar")
     allowed = raw.get("allowed")
     if allowed is not None and not isinstance(allowed, dict):
         raise _err(where, "'allowed' must be a mapping")
@@ -288,6 +296,8 @@ def _load_field(where: str, raw: dict[str, Any]) -> FieldRule:
         example=raw.get("example"),
         description=_get_str(where, raw, "description"),
         source_path=s_raw.get("path"),
+        source_constant=s_raw.get("constant"),
+        has_constant="constant" in s_raw,
         transform=transform,
         validation=validation,
         version=_get_dict(where, raw, "version"),
@@ -420,11 +430,14 @@ def parse_functional(raw: Any, default_id: str, path: Path | None = None) -> Fun
 
 def apply_decay(old: FieldRule, new: FieldRule) -> FieldRule:
     """Validation decay: `validated` resets to false and `needs_review` to true
-    whenever the *functional* side changed — `source.path` or
+    whenever the *functional* side changed — `source.path` / `source.constant` or
     `transform.expression`. A `code_override` change alone never decays (the
     developer owns that code)."""
     functional_change = (
-        old.source_path != new.source_path or old.transform.expression != new.transform.expression
+        old.source_path != new.source_path
+        or old.source_constant != new.source_constant
+        or old.has_constant != new.has_constant
+        or old.transform.expression != new.transform.expression
     )
     if not functional_change:
         return new

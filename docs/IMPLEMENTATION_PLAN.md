@@ -438,6 +438,11 @@ Sliced; each slice is usable on its own:
       single-expression rules are typed. Not yet: `format` / `enum` / ranges, typing of
       manual code, aggregates, nullability. Guards and filters take any value (Python truthiness,
       ARCHITECTURE.md §Truthiness); their insides are checked.
+- [x] **Source value** (`transpiler/transpile.py::_value_text`, `anchors.uses_value`): the
+      Source is `value` in the expression; an empty expression passes it through; a Source
+      may be a constant (`source: {constant: 27}`, typed in the grid as `27`, `"x"`, `true`,
+      `null`). The check types `value` by the Source (schema node or constant). Bare words in
+      the Source column stay paths (`id` → `$.id`).
 - [x] **Truthiness** in conditions (`_ExprTranslator.condition`, `truthy` in the functions
       package, golden mapping `truthiness`); the golden cases are not yet run on Oracle.
 - [x] **Unsaved changes.** Save is explicit (no autosave). Build / Check / Transpile ask

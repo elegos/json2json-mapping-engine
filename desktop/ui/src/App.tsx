@@ -563,6 +563,13 @@ export function App() {
         minWidth: 260,
         editable: editableFor(["field", "loop", "object"]),
         valueGetter: (p) => (p.data ? expressionOf(p.data.rule) : ""),
+        // no expression: a field takes its Source value as it is
+        cellRenderer: (p: ICellRendererParams<Row>) =>
+          !p.value && p.data?.rule.kind === "field" && sourceOf(p.data.rule) ? (
+            <span className="muted">= Source value</span>
+          ) : (
+            p.value
+          ),
         valueSetter: (p: ValueSetterParams<Row>) => {
           edit(p.data.path, (r) => setExpression(r, String(p.newValue ?? "")));
           return true;

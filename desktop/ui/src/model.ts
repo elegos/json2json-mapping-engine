@@ -25,6 +25,9 @@ export interface FieldRule extends Base {
   type: string;
   required: boolean;
   source_path: string | null;
+  /** A constant Source (`27`, `"text"`, `true`, `null`); only meaningful when `has_constant`. */
+  source_constant: unknown;
+  has_constant: boolean;
   transform: Transform;
   validation: Validation;
   [extra: string]: unknown;
@@ -138,7 +141,9 @@ export function nameOf(rule: Rule, depth = 1): string {
 
 /** Source column: a field's `source.path`, a loop's `source`. */
 export function sourceOf(rule: Rule): string {
-  if (rule.kind === "field") return rule.source_path ?? "";
+  if (rule.kind === "field") {
+    return rule.has_constant ? JSON.stringify(rule.source_constant) : (rule.source_path ?? "");
+  }
   if (rule.kind === "loop") return rule.source;
   return "";
 }

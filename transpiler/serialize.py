@@ -49,7 +49,9 @@ def _field_to_raw(rule: FieldRule) -> dict[str, Any]:
     _put(raw, "allowed", rule.allowed)
     _put(raw, "example", rule.example)
     _put(raw, "description", rule.description)
-    if rule.source_path is not None:
+    if rule.has_constant:
+        raw["source"] = {"constant": rule.source_constant}
+    elif rule.source_path is not None:
         raw["source"] = {"path": rule.source_path}
     transform: dict[str, Any] = {}
     _put(transform, "expression", rule.transform.expression)
