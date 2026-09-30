@@ -425,7 +425,16 @@ Sliced; each slice is usable on its own:
       names; and, when a schema exists, Target / Type / Req. against the output schema,
       container kind and required fields, Source and every `$.` / `@.` reference of an
       expression against the input schema. Schema constructs it cannot follow count as
-      unknown. Not yet: type of an expression's result, `format` / `enum` / ranges.
+      unknown. **Expression types** (`transpiler/exprtypes.py`): bottom-up inference
+      (literals, operators, references, built-in results) checked against what each place
+      expects, flowing down: a built-in's parameter, an operand, the field's type. E.g.
+      `round(lookup($.c, $.t, 0))` into `int` checks the values of `$.t` against `round`'s
+      parameter and `round`'s result against `int`; a `lookup` table read from the input
+      must be an object. `number` does not fit an `int` field. Unknown (no schema, project
+      functions, unfollowed constructs) is never reported. Built-in signatures live in
+      `exprtypes.SIGNATURES` (a test requires every built-in to have one); only
+      single-expression rules are typed. Not yet: `format` / `enum` / ranges, typing of
+      manual code, aggregates, guards / filters, nullability.
 - [x] **Unsaved changes.** Save is explicit (no autosave). Build / Check / Transpile ask
       "Save before continuing?" (they read the files on disk); switching file or project
       and closing the window ask too (Save / discard / Cancel).

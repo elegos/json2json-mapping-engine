@@ -24,6 +24,7 @@ from typing import Any
 
 from transpiler.anchors import AnchorScope, LoopRef, _split_strings, resolve_anchors
 from transpiler.expr import parse_block
+from transpiler.exprtypes import ExprTyper
 from transpiler.model import (
     FieldRule,
     FnYamlError,
@@ -174,7 +175,7 @@ class _Schemas:
         return out
 
 
-_TABLE_REF = re.compile(r"^(\$|@(?:\d+|[A-Za-z_]\w*)?)((?:\.[A-Za-z_]\w*|\[\*\])+)$")
+_REF = re.compile(r"^(\$|@(?:\d+|[A-Za-z_]\w*)?)((?:\.[A-Za-z_]\w*|\[\*\])+)$")
 
 
 def _lookup_calls(text: str) -> list[tuple[str, bool]]:
@@ -283,7 +284,7 @@ class _Checker:
                         path, column, f"'{missing}' is not in the input schema ({anchor}{chain})"
                     )
 
-    def lookup_tables(
+    def types(
         self,
         path: str,
         rule: FieldRule,
@@ -292,42 +293,17 @@ class _Checker:
         items: list[Node],
         labels: list[str | None],
     ) -> None:
-        """`lookup(key, $.table, ...)` with a table read from the input: the schema must say
-        it is an object, and — when the call is the whole expression — its values must fit the
-        field's type. A reference that does not exist is reported by `refs`."""
-        want = _TYPES.get(rule.type, set())
-        for table, whole in _lookup_calls(text):
-            ref = _TABLE_REF.match(table)
-            if not ref:
-                continue
-            base = self._anchor(ref.group(1), root, items, labels)
-            if base is UNKNOWN or base is None:
-                continue
-            node, _ = self.inp.resolve(base, ref.group(2))
-            if node is None or node is UNKNOWN or not isinstance(node, dict):
-                continue
-            kinds = self.inp.types(node)
-            if kinds and "object" not in kinds:
-                self.add(
-                    path,
-                    "expression",
-                    f"{table} is {'/'.join(sorted(kinds))} in the input schema; "
-                    "a lookup table must be an object",
-                )
-                continue
-            values = self.inp.values(node)
-            if not whole or not want or values is None:
-                continue
-            found = set().union(*(self.inp.types(v) for v in values)) if values else set()
-            if any(not self.inp.types(v) for v in values):
-                continue  # a value schema without a type: nothing to compare
-            if found and not found & want:
-                self.add(
-                    path,
-                    "expression",
-                    f"{table} holds {'/'.join(sorted(found))} values, "
-                    f"but the field is '{rule.type}'",
-                )
+        """What the expression yields against what the field is (`transpiler.exprtypes`)."""
+        loops = tuple(LoopRef(lbl, f"_L{i}", f"_I{i}") for i, lbl in enumerate(labels, 1))
+        try:
+            resolved = resolve_anchors(text, AnchorScope(loops, self.lookups), "expression").text
+        except FnYamlError:
+            return  # reported by `block`
+        env: dict[str, Any] = {"root": root}
+        env.update({f"_L{i}": node for i, node in enumerate(items, 1)})
+        typer = ExprTyper(self.inp, env, lambda message: self.add(path, "expression", message))
+        wanted = _TYPES.get(rule.type)
+        typer.check(resolved, frozenset(wanted) if wanted else None, f"the field is '{rule.type}'")
 
     def _anchor(self, anchor: str, root: Node, items: list[Node], labels: list[str | None]) -> Node:
         if anchor == "$":
@@ -386,8 +362,8 @@ class _Checker:
             self.block(path, text, scope, "expression", dev=t.status == "manual")
             if t.status != "manual":
                 self.refs(path, text, "expression", in_root, items, labels)
-        if text and self.has_in and t.status != "manual":
-            self.lookup_tables(path, rule, text, in_root, items, labels)
+        if text and t.status != "manual":
+            self.types(path, rule, text, in_root, items, labels)
         if rule.source_path and self.has_in:
             src = rule.source_path
             base = in_root if src.startswith("$") else (items[-1] if items else in_root)

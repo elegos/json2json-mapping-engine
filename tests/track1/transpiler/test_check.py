@@ -140,7 +140,7 @@ def test_a_loop_without_a_source_is_flagged() -> None:
 
 def _lookup_issues(table_schema: dict, field_type: str = "str", expression: str | None = None):
     inp = {"type": "object", "properties": {"c": {"type": "string"}, "t": table_schema}}
-    json_type = {"str": "string", "int": "integer"}[field_type]
+    json_type = {"str": "string", "int": "integer", "number": "number"}[field_type]
     out = {"type": "object", "properties": {"X": {"type": json_type}}}
     file = parse_functional(
         {
@@ -167,9 +167,9 @@ def test_lookup_table_from_the_input_with_compatible_values_is_fine() -> None:
 
 def test_lookup_table_with_incompatible_values_is_an_error() -> None:
     table = {"type": "object", "additionalProperties": {"type": "integer"}}
-    [message] = _lookup_issues(table)
-    assert "integer values" in message and "'str'" in message
-    assert _lookup_issues(table, "int") == []
+    [message] = _lookup_issues(table, expression="lookup($.c, $.t, 0)")
+    assert "the expression is integer" in message and "'str'" in message
+    assert _lookup_issues(table, "int", "lookup($.c, $.t, 0)") == []
 
 
 def test_lookup_table_that_is_not_an_object_is_an_error() -> None:
@@ -183,6 +183,45 @@ def test_lookup_table_reference_that_does_not_exist_is_an_error() -> None:
     assert "'nope' is not in the input schema" in message
 
 
-def test_lookup_inside_a_larger_expression_only_checks_the_table_shape() -> None:
+def test_lookup_default_must_fit_the_table_values() -> None:
     table = {"type": "object", "additionalProperties": {"type": "integer"}}
-    assert _lookup_issues(table, expression='str(lookup($.c, $.t, "N/A"))') == []
+    [message] = _lookup_issues(table, "int", 'lookup($.c, $.t, "N/A")')
+    assert "argument 3 of lookup()" in message
+
+
+INT_TABLE = {"type": "object", "additionalProperties": {"type": "integer"}}
+STR_TABLE = {"type": "object", "additionalProperties": {"type": "string"}}
+
+
+def test_a_lookup_inside_a_function_is_checked_both_ways() -> None:
+    # the values must suit the function's parameter, and its result the field
+    assert _lookup_issues(INT_TABLE, "number", "round(lookup($.c, $.t, 0))") == []
+    [message] = _lookup_issues(INT_TABLE, "int", "round(lookup($.c, $.t, 0))")
+    assert "the expression is number" in message and "'int'" in message
+    [message] = _lookup_issues(STR_TABLE, "number", 'round(lookup($.c, $.t, "0"))')
+    assert "argument 1 of round() is string" in message
+    [message] = _lookup_issues(INT_TABLE, "str", 'split_first(lookup($.c, $.t, 0), "-")')
+    assert "argument 1 of split_first() is integer" in message
+    assert _lookup_issues(INT_TABLE, "str", "str(lookup($.c, $.t, 0))") == []
+
+
+def test_expression_types_beyond_lookup() -> None:
+    assert _lookup_issues(STR_TABLE, "str", 'concat($.c, "-", 1)') == []
+    [message] = _lookup_issues(STR_TABLE, "int", "$.c.strip()")
+    assert "the expression is string" in message
+    [message] = _lookup_issues(STR_TABLE, "number", "$.c * 2")
+    assert "operand of '*' is string" in message
+    [message] = _lookup_issues(STR_TABLE, "int", "1 / 2")
+    assert "the expression is number" in message
+    [message] = _lookup_issues(STR_TABLE, "str", 'if_else($.c, "a", "b")')
+    assert "argument 1 of if_else() is string" in message
+    [message] = _lookup_issues(STR_TABLE, "int", 'if_else($.c == "x", 1, "b")')
+    assert "a branch is string" in message
+    assert _lookup_issues(STR_TABLE, "int", "project_fn($.c)") == []
+
+
+def test_every_builtin_is_typed_or_knowingly_left_out() -> None:
+    from compiler.backends.plsql.builtins import BUILTIN_FUNCTIONS
+    from transpiler.exprtypes import HANDLED, SIGNATURES
+
+    assert set(BUILTIN_FUNCTIONS) <= set(SIGNATURES) | HANDLED
