@@ -10,7 +10,7 @@ from typer.testing import CliRunner
 
 from cli.main import app
 from transpiler.check import check_functional, schemas_for
-from transpiler.model import FieldRule, LoopRule, load_functional_file
+from transpiler.model import FieldRule, LoopRule, load_functional_file, parse_functional
 
 PROJECT = Path(__file__).parents[3] / "desktop" / "fixtures" / "orders-project"
 FN = PROJECT / "mappings" / "functional" / "orders.fn.yaml"
@@ -136,3 +136,53 @@ def test_a_loop_without_a_source_is_flagged() -> None:
     file = add_rule(load_functional_file(FN), None, None, "loop")
     issues = check_functional(file)
     assert any(i.column == "source" and "needs a source" in i.message for i in issues)
+
+
+def _lookup_issues(table_schema: dict, field_type: str = "str", expression: str | None = None):
+    inp = {"type": "object", "properties": {"c": {"type": "string"}, "t": table_schema}}
+    json_type = {"str": "string", "int": "integer"}[field_type]
+    out = {"type": "object", "properties": {"X": {"type": json_type}}}
+    file = parse_functional(
+        {
+            "id": "t",
+            "rules": [
+                {
+                    "kind": "field",
+                    "field": "X",
+                    "type": field_type,
+                    "transform": {"expression": expression or 'lookup($.c, $.t, "N/A")'},
+                }
+            ],
+        },
+        default_id="t",
+    )
+    return [i.message for i in check_functional(file, inp, out) if i.severity == "error"]
+
+
+def test_lookup_table_from_the_input_with_compatible_values_is_fine() -> None:
+    table = {"type": "object", "additionalProperties": {"type": "string"}}
+    assert _lookup_issues(table) == []
+    assert _lookup_issues({"type": "object", "properties": {"a": {"type": "string"}}}) == []
+
+
+def test_lookup_table_with_incompatible_values_is_an_error() -> None:
+    table = {"type": "object", "additionalProperties": {"type": "integer"}}
+    [message] = _lookup_issues(table)
+    assert "integer values" in message and "'str'" in message
+    assert _lookup_issues(table, "int") == []
+
+
+def test_lookup_table_that_is_not_an_object_is_an_error() -> None:
+    [message] = _lookup_issues({"type": "array", "items": {"type": "string"}})
+    assert "must be an object" in message
+
+
+def test_lookup_table_reference_that_does_not_exist_is_an_error() -> None:
+    table = {"type": "object", "additionalProperties": {"type": "string"}}
+    [message] = _lookup_issues(table, expression='lookup($.c, $.nope, "N/A")')
+    assert "'nope' is not in the input schema" in message
+
+
+def test_lookup_inside_a_larger_expression_only_checks_the_table_shape() -> None:
+    table = {"type": "object", "additionalProperties": {"type": "integer"}}
+    assert _lookup_issues(table, expression='str(lookup($.c, $.t, "N/A"))') == []

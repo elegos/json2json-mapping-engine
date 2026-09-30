@@ -125,6 +125,21 @@ class _Schemas:
                 unknown = True
         return UNKNOWN if unknown else None
 
+    def values(self, node: Schema) -> list[Schema] | None:
+        """The schemas of an object's values (its properties, or `additionalProperties`);
+        None where they cannot be listed."""
+        found: list[Schema] = []
+        for v in self.variants(node):
+            props = v.get("properties")
+            extra = v.get("additionalProperties")
+            if "patternProperties" in v or extra is True:
+                return None
+            if isinstance(props, dict):
+                found += [self.deref(p) for p in props.values() if isinstance(p, dict)]
+            if isinstance(extra, dict):
+                found.append(self.deref(extra))
+        return found
+
     def items(self, node: Node) -> Node:
         if not isinstance(node, dict):
             return node
@@ -157,6 +172,38 @@ class _Schemas:
             req = v.get("required")
             out += [r for r in req if isinstance(r, str)] if isinstance(req, list) else []
         return out
+
+
+_TABLE_REF = re.compile(r"^(\$|@(?:\d+|[A-Za-z_]\w*)?)((?:\.[A-Za-z_]\w*|\[\*\])+)$")
+
+
+def _lookup_calls(text: str) -> list[tuple[str, bool]]:
+    """For each `lookup(...)` call of `text`: its second argument as written, and whether
+    the call is the whole expression. Strings and nested brackets are skipped over."""
+    calls: list[tuple[str, bool]] = []
+    for m in re.finditer(r"\blookup\s*\(", text):
+        depth, quote, args, start = 1, "", [], m.end()
+        i = start
+        while i < len(text) and depth:
+            c = text[i]
+            if quote:
+                quote = "" if c == quote and text[i - 1] != "\\" else quote
+            elif c in "\"'":
+                quote = c
+            elif c in "([{":
+                depth += 1
+            elif c in ")]}":
+                depth -= 1
+                if depth == 0:
+                    args.append(text[start:i])
+            elif c == "," and depth == 1:
+                args.append(text[start:i])
+                start = i + 1
+            i += 1
+        if depth == 0 and len(args) >= 2:
+            whole = m.start() == len(text) - len(text.lstrip()) and text[i:].strip() == ""
+            calls.append((args[1].strip(), whole))
+    return calls
 
 
 _REF = re.compile(
@@ -236,6 +283,52 @@ class _Checker:
                         path, column, f"'{missing}' is not in the input schema ({anchor}{chain})"
                     )
 
+    def lookup_tables(
+        self,
+        path: str,
+        rule: FieldRule,
+        text: str,
+        root: Node,
+        items: list[Node],
+        labels: list[str | None],
+    ) -> None:
+        """`lookup(key, $.table, ...)` with a table read from the input: the schema must say
+        it is an object, and — when the call is the whole expression — its values must fit the
+        field's type. A reference that does not exist is reported by `refs`."""
+        want = _TYPES.get(rule.type, set())
+        for table, whole in _lookup_calls(text):
+            ref = _TABLE_REF.match(table)
+            if not ref:
+                continue
+            base = self._anchor(ref.group(1), root, items, labels)
+            if base is UNKNOWN or base is None:
+                continue
+            node, _ = self.inp.resolve(base, ref.group(2))
+            if node is None or node is UNKNOWN or not isinstance(node, dict):
+                continue
+            kinds = self.inp.types(node)
+            if kinds and "object" not in kinds:
+                self.add(
+                    path,
+                    "expression",
+                    f"{table} is {'/'.join(sorted(kinds))} in the input schema; "
+                    "a lookup table must be an object",
+                )
+                continue
+            values = self.inp.values(node)
+            if not whole or not want or values is None:
+                continue
+            found = set().union(*(self.inp.types(v) for v in values)) if values else set()
+            if any(not self.inp.types(v) for v in values):
+                continue  # a value schema without a type: nothing to compare
+            if found and not found & want:
+                self.add(
+                    path,
+                    "expression",
+                    f"{table} holds {'/'.join(sorted(found))} values, "
+                    f"but the field is '{rule.type}'",
+                )
+
     def _anchor(self, anchor: str, root: Node, items: list[Node], labels: list[str | None]) -> Node:
         if anchor == "$":
             return root
@@ -293,6 +386,8 @@ class _Checker:
             self.block(path, text, scope, "expression", dev=t.status == "manual")
             if t.status != "manual":
                 self.refs(path, text, "expression", in_root, items, labels)
+        if text and self.has_in and t.status != "manual":
+            self.lookup_tables(path, rule, text, in_root, items, labels)
         if rule.source_path and self.has_in:
             src = rule.source_path
             base = in_root if src.startswith("$") else (items[-1] if items else in_root)
