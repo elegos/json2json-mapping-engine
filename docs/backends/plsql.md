@@ -53,7 +53,8 @@ the artifact; it always lists them in its spec (the main body calls them as
 holds only the entry points.
 
 The integration harness connects as `ADMIN`, creates `<schema>` if missing, deploys
-and calls `<schema>.<package>.<entry point>`. Not run against a real Oracle yet.
+and calls `<schema>.<package>.<entry point>`. Verified on Oracle by the `orders` golden
+cases (CI, Forgejo).
 
 ## The generated artifact
 
@@ -140,7 +141,8 @@ What it does and does not do:
 - Fusion: rules fused into one loop must agree on the degree (see ARCHITECTURE.md,
   §`@parallel(degree=N)`); `optimizer.parallel_conflict = "max" | "min"` only avoids the
   build error today, it does not choose a degree.
-- *Not run against Oracle.*
+- Exercised on Oracle by the `orders` golden cases: the harness calls `map_orders_fn` from
+  a `SELECT … FROM dual` and compares with `_safe`. The degree itself is not observable there.
 
 Considered and not implemented:
 
@@ -168,11 +170,11 @@ PL/SQL, without a SQL `ORDER BY`.
 
 ## Known gaps
 
-- Schema/package wiring (`schema`, `fn_package`) is covered by offline tests only; no run on a real Oracle.
+- Only one mapping (`orders`) has golden cases; prefix/suffix are covered by offline tests only.
 - No `maxLength`-driven sizing of `VARCHAR2` locals.
 - One package per project; a grouping key for several packages is a backlog item.
 - A mapping whose root output is an array is not supported (the output accumulator is
   always a `JSON_OBJECT_T`).
-- `@parallel` scaffolding is document-level only and not run against Oracle.
+- `@parallel` scaffolding is document-level only.
 - The integration harness (`cli/track2.py`, `[test]` settings) is the PL/SQL one; when
   more backends exist, integration tests will be per target.
