@@ -438,6 +438,24 @@ built-in function. To facilitate this, the tool ships reference `.fn` files (the
 source the built-ins are compiled from) as open-source material that teams can copy,
 read, and adapt.
 
+### Truthiness
+
+A condition is true or false the way it is in Python. **False:** a missing value, `null`,
+`false`, `0` / `0.0`, `""`, `[]` and `{}`. **True:** everything else, so `"0"`, `" "` and
+`[0]` are true. This holds wherever a condition is expected: an `object`'s `guard`, a
+loop's `filter`, `if`, `if_else`'s first argument, `x if c else y`, and `and` / `or` /
+`not`. `if $.customer` is therefore shorthand for "`customer` is present and not empty"
+(with `0` and `false` counting as *absent*: to test presence only, compare with `None`).
+
+This is a language rule, not a backend's: every backend must give the same answer, and
+the `truthiness` golden cases pin it down value by value. The PL/SQL backend has no
+truthiness of its own, so it lowers a condition by what it tests: comparisons and boolean
+operators stay as they are, a value read from the source document goes to the shared
+`truthy` function (which inspects the JSON element at runtime), and a typed local is
+tested by its type (`IS NOT NULL` for text, `<> 0` for numbers, `get_size > 0` for
+collections). Because the check does not expect a particular type of a condition, a
+`guard` or `filter` accepts any value; only what is *inside* it is type-checked.
+
 ### Project functions and overrides
 
 Custom functions and built-in overrides are declared in `.fn` files placed in the

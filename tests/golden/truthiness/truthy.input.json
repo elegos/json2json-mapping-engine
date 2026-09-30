@@ -1,0 +1,1 @@
+{"json_null": "x", "bool_false": true, "zero": 1, "zero_float": 0.5, "empty_string": " ", "empty_array": [0], "empty_object": {"a": null}, "bool_true": true, "one": 1, "text": "abc", "zero_string": "0", "array": [1], "object": {"a": 1}, "missing": 1}

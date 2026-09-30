@@ -70,6 +70,8 @@ bodies are the same expressions the inline templates used (`builtins.py`, `LIBRA
   the functions used. Deployed first: the mapping packages call it.
 - `if_else` stays inline: a function would evaluate both branches, the `CASE` does not.
   `concat`, `count` and the 1:1 ones (`coalesce`, `round`, `trunc`, `parse_date`) are inline too.
+- `truthy` (not callable from a mapping) is the runtime truthiness test of a value read from the
+  document (ARCHITECTURE.md, §Truthiness); it is in the package whenever a condition uses one.
 - A project function of the same name still overrides the built-in and is rendered as such.
 - Project functions (`fn/`) are meant to live here as well, once the `fn/` loader exists.
 
@@ -206,6 +208,11 @@ with `JSON_ELEMENT_T.compare_to()` (numbers and strings alike). It stays in nati
 PL/SQL, without a SQL `ORDER BY`.
 
 ## Known gaps
+
+- Truthiness of a *local variable* is by its declared PL/SQL type, not by the JSON type it was read
+  from: a number read into an untyped local is text, so `"0"` is true. Conditions on values read
+  directly from the document are exact.
+- The `truthiness` golden cases and the `truthy` function are *not run against Oracle* yet.
 
 - Only one mapping (`orders`) has golden cases (incl. `failed_member`, the isolated nested member); prefix/suffix are covered by offline tests only.
 - No `maxLength`-driven sizing of `VARCHAR2` locals.

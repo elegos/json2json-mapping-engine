@@ -436,7 +436,10 @@ Sliced; each slice is usable on its own:
       functions, unfollowed constructs) is never reported. Built-in signatures live in
       `exprtypes.SIGNATURES` (a test requires every built-in to have one); only
       single-expression rules are typed. Not yet: `format` / `enum` / ranges, typing of
-      manual code, aggregates, guards / filters, nullability.
+      manual code, aggregates, nullability. Guards and filters take any value (Python truthiness,
+      ARCHITECTURE.md §Truthiness); their insides are checked.
+- [x] **Truthiness** in conditions (`_ExprTranslator.condition`, `truthy` in the functions
+      package, golden mapping `truthiness`); the golden cases are not yet run on Oracle.
 - [x] **Unsaved changes.** Save is explicit (no autosave). Build / Check / Transpile ask
       "Save before continuing?" (they read the files on disk); switching file or project
       and closing the window ask too (Save / discard / Cancel).

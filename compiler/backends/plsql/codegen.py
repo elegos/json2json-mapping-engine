@@ -601,18 +601,64 @@ class _ExprTranslator:
         right = self.translate(node.comparators[0], operand_expected)
         return f"({left} {_COMPARE_OPS[type(op)]} {right})"
 
+    def condition(self, node: ast.expr) -> str:
+        """A condition (`if`, `guard`, `filter`, `and` / `or` / `not`, `if_else`'s first
+        argument) with Python's truthiness (docs/ARCHITECTURE.md, §Truthiness): a missing
+        value, `null`, `false`, `0`, `""`, `[]` and `{}` are false, anything else is true.
+        Comparisons and boolean operators are conditions already; any other value is
+        tested by its type, or, for a value read from the source document, at runtime."""
+        if isinstance(node, ast.BoolOp):
+            joiner = " AND " if isinstance(node.op, ast.And) else " OR "
+            return "(" + joiner.join(self.condition(v) for v in node.values) + ")"
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+            return f"(NOT {self.condition(node.operand)})"
+        if isinstance(node, ast.Compare):
+            return self.translate(node, "BOOLEAN")
+        if isinstance(node, ast.Constant):
+            return "TRUE" if node.value else "FALSE"
+        if isinstance(node, ast.Attribute):
+            return self._truthy_of_document_value(node)
+        if isinstance(node, ast.IfExp):
+            body, orelse = self.condition(node.body), self.condition(node.orelse)
+            return f"(CASE WHEN {self.condition(node.test)} THEN {body} ELSE {orelse} END)"
+        kind = infer_type(node, self.ctx) if isinstance(self.ctx, _FnCtx) else "BOOLEAN"
+        value = self.translate(node, kind)
+        if kind == "BOOLEAN":
+            return f"COALESCE({value}, FALSE)"
+        if kind == "NUMBER":
+            return f"(COALESCE({value}, 0) <> 0)"
+        if kind in ("ARRAY", "OBJECT"):
+            return f"({value} IS NOT NULL AND {value}.get_size > 0)"
+        return f"({value} IS NOT NULL)"  # text ('' is NULL in Oracle), dates
+
+    def _truthy_of_document_value(self, node: ast.Attribute) -> str:
+        """`root.a.b` tested without knowing its JSON type: the element goes to the shared
+        `truthy` function, which looks at what it is."""
+        segments: list[str] = []
+        cur: ast.expr = node
+        while isinstance(cur, ast.Attribute):
+            segments.append(cur.attr)
+            cur = cur.value
+        segments.reverse()
+        code = self.translate(cur, None)
+        for seg in segments[:-1]:
+            code = f"{code}.get_Object({_quote(seg)})"
+        element = f"{code}.get({_quote(segments[-1])})"
+        library = self.library_name("truthy") if self.library_name else None
+        if library is None:
+            raise CodeGenError("the shared functions package is not available for `truthy`")
+        return f"{library}({element})"
+
     def _t_BoolOp(self, node: ast.BoolOp, expected: str | None) -> str:
-        joiner = " AND " if isinstance(node.op, ast.And) else " OR "
-        parts = [self.translate(v, "BOOLEAN") for v in node.values]
-        return "(" + joiner.join(parts) + ")"
+        return self.condition(node)
 
     def _t_UnaryOp(self, node: ast.UnaryOp, expected: str | None) -> str:
         if not isinstance(node.op, ast.Not):
             raise CodeGenError("unsupported unary operator")
-        return f"(NOT {self.translate(node.operand, 'BOOLEAN')})"
+        return self.condition(node)
 
     def _t_IfExp(self, node: ast.IfExp, expected: str | None) -> str:
-        test = self.translate(node.test, "BOOLEAN")
+        test = self.condition(node.test)
         body = self.translate(node.body, expected)
         orelse = self.translate(node.orelse, expected)
         return f"(CASE WHEN {test} THEN {body} ELSE {orelse} END)"
@@ -636,6 +682,10 @@ class _ExprTranslator:
             )
 
         impl = self.function_linker.resolve(name)
+        if name == "if_else" and len(node.args) == 3:
+            test = self.condition(node.args[0])
+            arms = [self.translate(a, expected) for a in node.args[1:]]
+            return impl.render("plsql", [test, *arms])
         if name == "concat":
             arg_exprs = [self.translate(a, "VARCHAR2") for a in node.args]
         else:
@@ -1092,14 +1142,14 @@ def _translate_fn_if(
     translator: _ExprTranslator,
     loop_counter: itertools.count,
 ) -> list[str]:
-    lines = [f"IF {translator.translate(stmt.test, 'BOOLEAN')} THEN"]
+    lines = [f"IF {translator.condition(stmt.test)} THEN"]
     lines.extend(
         _indent(_translate_fn_body(stmt.body, ctx, return_expected, translator, loop_counter))
     )
     orelse = stmt.orelse
     while len(orelse) == 1 and isinstance(orelse[0], ast.If):
         elif_stmt = orelse[0]
-        lines.append(f"ELSIF {translator.translate(elif_stmt.test, 'BOOLEAN')} THEN")
+        lines.append(f"ELSIF {translator.condition(elif_stmt.test)} THEN")
         lines.extend(
             _indent(
                 _translate_fn_body(elif_stmt.body, ctx, return_expected, translator, loop_counter)
@@ -1379,12 +1429,12 @@ class PlsqlCodeGenerator:
         def recurse(body: list[ast.stmt]) -> list[str]:
             return self._emit_flow(body, loop_vars, rule_signatures, dataclasses, list_accumulators)
 
-        lines = [f"IF {translator.translate(stmt.test, 'BOOLEAN')} THEN"]
+        lines = [f"IF {translator.condition(stmt.test)} THEN"]
         lines.extend(_indent(recurse(stmt.body)))
         orelse = stmt.orelse
         while len(orelse) == 1 and isinstance(orelse[0], ast.If):
             elif_stmt = orelse[0]
-            lines.append(f"ELSIF {translator.translate(elif_stmt.test, 'BOOLEAN')} THEN")
+            lines.append(f"ELSIF {translator.condition(elif_stmt.test)} THEN")
             lines.extend(_indent(recurse(elif_stmt.body)))
             orelse = elif_stmt.orelse
         if orelse:

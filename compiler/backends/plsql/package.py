@@ -49,7 +49,7 @@ def _functions_package(naming: PlsqlNaming, used: list[str]) -> str:
     specs = [f"FUNCTION {n}({LIBRARY_FUNCTIONS[n].spec};" for n in used]
     bodies = [
         f"FUNCTION {n}({LIBRARY_FUNCTIONS[n].spec} IS\nBEGIN\n"
-        f"    RETURN {LIBRARY_FUNCTIONS[n].body_expression()};\nEND {n};"
+        f"    {LIBRARY_FUNCTIONS[n].body_text()}\nEND {n};"
         for n in used
     ]
     return _package(naming, naming.functions_package, specs, bodies)

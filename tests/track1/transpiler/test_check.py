@@ -273,3 +273,52 @@ def test_lookup_values_must_have_the_declared_type() -> None:
     assert "'a'" in message
     [message] = _named_lookup_issues("bogus", {"a": 1}, "int", "0")
     assert "'type' must be one of" in message
+
+
+def test_guards_and_filters_take_any_value_but_their_insides_are_checked() -> None:
+    inp = {
+        "type": "object",
+        "properties": {
+            "c": {"type": "string"},
+            "items": {
+                "type": "array",
+                "items": {"type": "object", "properties": {"q": {"type": "string"}}},
+            },
+        },
+    }
+    raw = {
+        "id": "t",
+        "rules": [
+            {
+                "kind": "object",
+                "output": "$.O",
+                "guard": "$.c",  # a text as a condition: fine
+                "rules": [
+                    {
+                        "kind": "field",
+                        "field": "A",
+                        "type": "str",
+                        "transform": {"expression": "$.c"},
+                    }
+                ],
+            },
+            {
+                "kind": "loop",
+                "source": "$.items[*]",
+                "output": "$.L[*]",
+                "filter": "@.q * 2 > 1",  # arithmetic on text: an error
+                "rules": [
+                    {
+                        "kind": "field",
+                        "field": "B",
+                        "type": "str",
+                        "transform": {"expression": "@.q"},
+                    }
+                ],
+            },
+        ],
+    }
+    messages = [
+        (i.rule, i.message) for i in check_functional(parse_functional(raw, "t"), inp, None)
+    ]
+    assert messages == [("rules[1]", "an operand of '*' is string, but must be numeric")]

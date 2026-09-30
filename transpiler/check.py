@@ -329,6 +329,27 @@ class _Checker:
         labels: list[str | None],
     ) -> None:
         """What the expression yields against what the field is (`transpiler.exprtypes`)."""
+        wanted = _TYPES.get(rule.type)
+        self.typecheck(
+            path,
+            text,
+            frozenset(wanted) if wanted else None,
+            f"the field is '{rule.type}'",
+            root,
+            items,
+            labels,
+        )
+
+    def typecheck(
+        self,
+        path: str,
+        text: str,
+        want: frozenset[str] | None,
+        what: str,
+        root: Node,
+        items: list[Node],
+        labels: list[str | None],
+    ) -> None:
         loops = tuple(LoopRef(lbl, f"_L{i}", f"_I{i}") for i, lbl in enumerate(labels, 1))
         # a lookup is typed by its declared type: it stands for a name whose schema says so
         tables = {label: _TableName(f"_LK_{label}") for label in self.lookups}
@@ -340,8 +361,7 @@ class _Checker:
         env.update({f"_LK_{label}": node for label, node in self.lookup_nodes.items()})
         env.update({f"_L{i}": node for i, node in enumerate(items, 1)})
         typer = ExprTyper(self.inp, env, lambda message: self.add(path, "expression", message))
-        wanted = _TYPES.get(rule.type)
-        typer.check(resolved, frozenset(wanted) if wanted else None, f"the field is '{rule.type}'")
+        typer.check(resolved, want, what)
 
     def _anchor(self, anchor: str, root: Node, items: list[Node], labels: list[str | None]) -> Node:
         if anchor == "$":
@@ -450,6 +470,8 @@ class _Checker:
             if rule.guard:
                 self.block(path, rule.guard, scope, "expression")
                 self.refs(path, rule.guard, "expression", in_root, items, labels)
+                # a condition is true or false as in Python: no type is expected of it
+                self.typecheck(path, rule.guard, None, "", in_root, items, labels)
             self.walk(rule.rules, f"{path}.rules", scope, node, in_root, items, labels)
             return
         # loop
@@ -470,6 +492,9 @@ class _Checker:
             self.block(path, rule.filter, inner, "expression")
             self.refs(
                 path, rule.filter, "expression", in_root, [*items, item], [*labels, rule.label]
+            )
+            self.typecheck(
+                path, rule.filter, None, "", in_root, [*items, item], [*labels, rule.label]
             )
         self.walk(
             rule.rules, f"{path}.rules", inner, node, in_root, [*items, item], [*labels, rule.label]

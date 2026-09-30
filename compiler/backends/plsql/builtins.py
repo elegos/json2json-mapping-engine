@@ -200,10 +200,15 @@ class LibraryFunction:
     returns: str
     arg_names: list[str]
     render: Callable[[list[str]], str]
+    # a body of statements, for a function that is not one expression
+    body: str | None = None
 
     @property
     def spec(self) -> str:
         return f"{self.params}) RETURN {self.returns}"
+
+    def body_text(self) -> str:
+        return self.body or f"RETURN {self.body_expression()};"
 
     def body_expression(self) -> str:
         return self.render(self.arg_names)
@@ -212,7 +217,33 @@ class LibraryFunction:
 # Not here: `if_else` (as a function both branches would be evaluated, the inline `CASE`
 # is lazy), `concat` (variadic), `count` and the 1:1 ones (`coalesce`, `round`, `trunc`,
 # `parse_date`), which stay inline.
+_TRUTHY_BODY = """\
+IF p_el IS NULL OR p_el.is_Null THEN
+        RETURN FALSE;
+    ELSIF p_el.is_Boolean THEN
+        RETURN COALESCE(p_el.to_Boolean, FALSE);
+    ELSIF p_el.is_Number THEN
+        RETURN COALESCE(p_el.to_Number, 0) <> 0;
+    ELSIF p_el.is_String THEN
+        RETURN p_el.to_String IS NOT NULL;
+    ELSIF p_el.is_Array THEN
+        RETURN TREAT(p_el AS JSON_ARRAY_T).get_size > 0;
+    ELSIF p_el.is_Object THEN
+        RETURN TREAT(p_el AS JSON_OBJECT_T).get_size > 0;
+    END IF;
+    RETURN TRUE;"""
+
+
+def truthy_py(value) -> bool:
+    """Python truthiness, which is the language's (docs/ARCHITECTURE.md, §Truthiness)."""
+    return bool(value)
+
+
 LIBRARY_FUNCTIONS: dict[str, LibraryFunction] = {
+    # not callable from a mapping: the conditions of the code generator use it
+    "truthy": LibraryFunction(
+        "p_el IN JSON_ELEMENT_T", "BOOLEAN", ["p_el"], lambda a: "NULL", body=_TRUTHY_BODY
+    ),
     "split_first": LibraryFunction(
         "p_s IN VARCHAR2, p_sep IN VARCHAR2",
         "VARCHAR2",
