@@ -5,7 +5,7 @@ so that per-edit operations (Target / Source normalisation) cost a message, not 
 Python start-up. Requests: `{"id", "op", ...}`; answers `{"id", "ok", ...}`.
 
 Ops: `ping`; `check` (`tree`, `project`, `stem`); `retarget` (`tree`, `path`, `value`); `set_source` (`tree`, `path`,
-`value`); `add_rule` (`tree`, `parent`, `index`, `kind`); `delete_rule` (`tree`, `path`). `tree` is the file as `mapper fn read` prints it; the answer carries the new
+`value`); `add_rule` (`tree`, `parent`, `index`, `kind`); `delete_rule` (`tree`, `path`); `config_read` (`project`), `config_check` (`values`), `config_write` (`project`, `values`): `mapper.toml`, see `cli/project_config.py`. `tree` is the file as `mapper fn read` prints it; the answer carries the new
 `tree`, or `error`.
 """
 
@@ -16,6 +16,8 @@ import sys
 from pathlib import Path
 from typing import Any, TextIO
 
+from cli import project_config
+from cli.config import MapperConfigError
 from transpiler.check import check_functional, schemas_for
 from transpiler.edit import add_rule, delete_rule, retarget, set_source
 from transpiler.model import FnYamlError, functional_from_dict, functional_to_dict
@@ -37,6 +39,13 @@ def handle(request: dict[str, Any]) -> dict[str, Any]:
             "ok": True,
             "tree": functional_to_dict(change(file, request["path"], request["value"])),
         }
+    if op == "config_read":
+        return {"ok": True, **project_config.read(Path(request["project"]))}
+    if op == "config_check":
+        return {"ok": True, "issues": project_config.check(request["values"])}
+    if op == "config_write":
+        project_config.write(Path(request["project"]), request["values"])
+        return {"ok": True}
     if op in ("add_rule", "delete_rule"):
         file = functional_from_dict(request["tree"])
         if op == "add_rule":
@@ -56,7 +65,7 @@ def serve(stdin: TextIO = sys.stdin, stdout: TextIO = sys.stdout) -> None:
             request = json.loads(line)
             request_id = request.get("id")
             answer = handle(request)
-        except (FnYamlError, ValueError, KeyError, TypeError) as exc:
+        except (FnYamlError, MapperConfigError, ValueError, KeyError, TypeError) as exc:
             answer = {"ok": False, "error": f"{exc}"}
         answer["id"] = request_id
         stdout.write(json.dumps(answer, ensure_ascii=False) + "\n")

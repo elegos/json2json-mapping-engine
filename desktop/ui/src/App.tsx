@@ -3,11 +3,20 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AgGridReact } from "ag-grid-react";
 import { type Choice, Confirm } from "./Confirm";
 import { Lookups } from "./Lookups";
+import { ProjectProperties } from "./ProjectProperties";
+import {
+  type ConfigIssue,
+  type ConfigSchema,
+  type ConfigValues,
+} from "./projectConfig";
 import { ProjectButton } from "./ProjectButton";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   changeStructure,
   checkTree,
+  configCheck,
+  configRead,
+  configWrite,
   chooseProject,
   editTree,
   initialProject,
@@ -99,7 +108,12 @@ export function App() {
   const folding = useRef(false);
   const treeRef = useRef<FunctionalFile | null>(null);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
-  const [view, setView] = useState<"rules" | "lookups">("rules");
+  const [view, setView] = useState<"rules" | "lookups" | "project">("rules");
+  // mapper.toml: the form's descriptors, the file's values, the draft being edited
+  const [configSchema, setConfigSchema] = useState<ConfigSchema | null>(null);
+  const [configSaved, setConfigSaved] = useState("");
+  const [config, setConfig] = useState<ConfigValues | null>(null);
+  const [configIssues, setConfigIssues] = useState<ConfigIssue[]>([]);
   const [showIds, setShowIds] = usePersisted("showRuleIds");
   const [developerMode, setDeveloperMode] = usePersisted("developerMode");
 
@@ -108,7 +122,9 @@ export function App() {
   }, []);
 
   treeRef.current = tree;
-  const dirty = tree !== null && JSON.stringify(tree) !== saved;
+  const fnDirty = tree !== null && JSON.stringify(tree) !== saved;
+  const configDirty = config !== null && JSON.stringify(config) !== configSaved;
+  const dirty = fnDirty || configDirty;
   dirtyRef.current = dirty;
 
   const ask = useCallback(
@@ -172,6 +188,9 @@ export function App() {
     try {
       const found = await listFnFiles(dir);
       setProject(dir);
+      setConfig(null);
+      setConfigSchema(null);
+      setView("rules");
       setCollapsed(new Set());
       setRecent((old) => {
         const next = pushRecent(old, dir);
@@ -219,11 +238,20 @@ export function App() {
   }, [openDir]);
 
   const save = useCallback(async (): Promise<boolean> => {
-    if (!project || !current || !tree) return true;
+    if (!project) return true;
     setBusy(true);
     try {
-      const decayed = await writeFn(project, current, tree);
-      await load(current);
+      let decayed: string[] = [];
+      if (current && tree && fnDirty) {
+        decayed = await writeFn(project, current, tree);
+        await load(current);
+      }
+      if (config && configDirty) {
+        await configWrite(project, config);
+        const again = await configRead(project);
+        setConfig(again.values);
+        setConfigSaved(JSON.stringify(again.values));
+      }
       setStatus(
         decayed.length
           ? `saved; validation reset on: ${decayed.join(", ")}`
@@ -236,7 +264,7 @@ export function App() {
     } finally {
       setBusy(false);
     }
-  }, [project, current, tree, load]);
+  }, [project, current, tree, load, config, fnDirty, configDirty]);
   saveRef.current = save;
 
   const run = useCallback(
@@ -291,6 +319,43 @@ export function App() {
     },
     [],
   );
+
+  const openProperties = useCallback(async () => {
+    if (!project) return;
+    try {
+      if (!config) {
+        const read = await configRead(project);
+        setConfigSchema(read.schema);
+        setConfig(read.values);
+        setConfigSaved(JSON.stringify(read.values));
+      }
+      setView("project");
+      setStatus("");
+    } catch (e) {
+      setStatus(String(e instanceof Error ? e.message : e));
+    }
+  }, [project, config]);
+
+  // check the draft of mapper.toml as it is edited
+  useEffect(() => {
+    if (!config) {
+      setConfigIssues([]);
+      return;
+    }
+    let stale = false;
+    const timer = setTimeout(() => {
+      configCheck(config).then(
+        (found) => {
+          if (!stale) setConfigIssues(found);
+        },
+        () => {},
+      );
+    }, 150);
+    return () => {
+      stale = true;
+      clearTimeout(timer);
+    };
+  }, [config]);
 
   const selectedRow = () => grid.current?.api?.getSelectedRows()[0];
 
@@ -598,7 +663,7 @@ export function App() {
           <button
             className="project-properties"
             disabled={!project}
-            onClick={() => setStatus("Project properties (mapper.toml) are not editable here yet")}
+            onClick={() => void openProperties()}
           >
             Project properties…
           </button>
@@ -615,7 +680,7 @@ export function App() {
           ))}
         </nav>
         <main>
-          {tree && (
+          {(tree || config) && (
             <div className="tabs">
               <button className={view === "rules" ? "tab active" : "tab"} onClick={() => setView("rules")}>
                 Rules
@@ -623,7 +688,20 @@ export function App() {
               <button className={view === "lookups" ? "tab active" : "tab"} onClick={() => setView("lookups")}>
                 Lookups
               </button>
+              {config && (
+                <button className={view === "project" ? "tab active" : "tab"} onClick={() => setView("project")}>
+                  mapper.toml{configDirty ? " ●" : ""}
+                </button>
+              )}
             </div>
+          )}
+          {view === "project" && config && configSchema && (
+            <ProjectProperties
+              schema={configSchema}
+              values={config}
+              issues={configIssues}
+              onChange={setConfig}
+            />
           )}
           {tree && view === "lookups" && (
             <Lookups
@@ -675,7 +753,7 @@ export function App() {
               }}
             />
             </div>
-          ) : tree ? null : (
+          ) : tree || view === "project" ? null : (
             <div className="empty">{project ? "Pick a mapping" : "Open a project to begin"}</div>
           )}
         </main>

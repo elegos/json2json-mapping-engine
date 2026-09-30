@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { Diagnostic, FunctionalFile } from "./model";
+import type { ConfigIssue, ConfigSchema, ConfigValues } from "./projectConfig";
 
 export interface PythonStatus {
   available: boolean;
@@ -117,4 +118,28 @@ export async function changeStructure(
   const parsed = JSON.parse(answer) as { ok: boolean; tree?: FunctionalFile; error?: string };
   if (!parsed.ok || !parsed.tree) throw new Error(parsed.error ?? "edit failed");
   return parsed.tree;
+}
+
+async function configRequest<T>(request: Record<string, unknown>): Promise<T> {
+  const answer = await invoke<string>("edit_request", {
+    request: JSON.stringify({ id: 1, ...request }),
+  });
+  const parsed = JSON.parse(answer) as { ok: boolean; error?: string } & T;
+  if (!parsed.ok) throw new Error(parsed.error ?? "request failed");
+  return parsed;
+}
+
+/** `mapper.toml` of the project: its values, and the descriptors the form is drawn from. */
+export async function configRead(
+  project: string,
+): Promise<{ schema: ConfigSchema; values: ConfigValues }> {
+  return configRequest({ op: "config_read", project });
+}
+
+export async function configCheck(values: ConfigValues): Promise<ConfigIssue[]> {
+  return (await configRequest<{ issues: ConfigIssue[] }>({ op: "config_check", values })).issues;
+}
+
+export async function configWrite(project: string, values: ConfigValues): Promise<void> {
+  await configRequest({ op: "config_write", project, values });
 }

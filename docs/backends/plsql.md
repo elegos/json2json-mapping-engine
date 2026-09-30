@@ -22,6 +22,9 @@ against a real Oracle only through the integration tests (golden cases); feature
 
 ## Configuration (`[target.plsql]` in `mapper.toml`)
 
+The keys below are also declared in `PlsqlBackend.options`, which is what the loader checks
+(unknown keys, value kinds) and what the desktop tool's project-properties form is drawn from.
+
 | Key | Required | Default | Effect |
 |---|---|---|---|
 | `schema` | yes | — | Owner: packages are created as `<schema>.<package>`. The integration harness creates the schema (no login) and reads compile errors from it |

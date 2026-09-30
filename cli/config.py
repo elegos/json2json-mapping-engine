@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-from compiler.backends.base import CodeGenError
+from compiler.backends.base import CodeGenError, check_options
 from compiler.backends.registry import backend_class
 
 CONFIG_FILENAME = "mapper.toml"
@@ -120,6 +120,11 @@ def _validate_target_section(target: str, section: dict[str, Any]) -> dict[str, 
         cls = backend_class(target)
     except CodeGenError as exc:
         raise MapperConfigError(f"[target.{target}]: {exc}") from exc
+    if cls.options:
+        problems = check_options(cls.options, section, missing=False)
+        if problems:
+            listed = "; ".join(f"{key}: {message}" for key, message in problems)
+            raise MapperConfigError(f"[target.{target}] {listed}")
     missing = [key for key in cls.required_keys if key not in section]
     if missing:
         raise MapperConfigError(

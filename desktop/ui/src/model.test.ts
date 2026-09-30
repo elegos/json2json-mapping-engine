@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { type ConfigOption, issuesAt, setAt, shownValue, tableAt } from "./projectConfig";
 import {
   columnOfMessage,
   addEntry,
@@ -186,5 +187,32 @@ describe("lookup entries", () => {
       { kind: "object", id: null, description: null, output: "$.X", guard: null, rules: [lookup] },
     ]);
     expect(found.map((f) => f.path)).toEqual(["rules[0]", "rules[1].rules[0]"]);
+  });
+});
+
+describe("project config helpers", () => {
+  const values = { project: { target: "plsql" }, target: { plsql: { schema: "S" } } };
+  it("reads a table, missing ones as empty", () => {
+    expect(tableAt(values, ["target", "plsql"])).toEqual({ schema: "S" });
+    expect(tableAt(values, ["nope", "x"])).toEqual({});
+  });
+  it("sets and removes a key without touching the original", () => {
+    const changed = setAt(values, ["target", "plsql"], "error_code", -20000);
+    expect(tableAt(changed, ["target", "plsql"])).toEqual({ schema: "S", error_code: -20000 });
+    expect(tableAt(values, ["target", "plsql"])).toEqual({ schema: "S" });
+    expect(tableAt(setAt(changed, ["target", "plsql"], "schema", undefined), ["target", "plsql"])).toEqual({
+      error_code: -20000,
+    });
+  });
+  it("creates the tables on the way", () => {
+    expect(setAt({}, ["compiler", "default_choices"], "format", "truncate")).toEqual({
+      compiler: { default_choices: { format: "truncate" } },
+    });
+  });
+  it("shows the default for an absent key and picks the issues of one path", () => {
+    const option: ConfigOption = { key: "k", kind: "bool", help: "", required: false, default: true, choices: [] };
+    expect(shownValue({}, option)).toBe(true);
+    expect(shownValue({ k: false }, option)).toBe(false);
+    expect(issuesAt([{ path: "a.b", message: "m" }, { path: "a.c", message: "n" }], ["a"], "b")).toEqual(["m"]);
   });
 });

@@ -616,6 +616,7 @@ class Backend(ABC):
     target: ClassVar[str]                 # "plsql" for PlsqlBackend
     required_keys: ClassVar[tuple[str, ...]]   # [target.<name>] keys it needs
     defaults: ClassVar[dict[str, Any]]         # ... and their defaults
+    options: ClassVar[tuple[Option, ...]]      # every key it reads: kind, help, choices
     def compile_module(tree, mapping_id, scope_resolution) -> CompiledUnit
     def unit_from_json(data) -> CompiledUnit   # build-cache entries
     def assemble(units) -> str                 # the artifact text
@@ -631,7 +632,7 @@ A backend contributes:
 | `@override` / `@parallel` | Resolution of `@override(target=...)` and the parallelism mechanism (§Decorators) |
 | Assembly and namespacing | How the units of a project become the deployable artifact (PL/SQL: one package per mapping, `<package>.sql` each; others may use a module or namespace per mapping) |
 | Error reporting | The failure mechanism behind the raising entry point (§Runtime error semantics, *Other targets*) |
-| Configuration | Required keys and defaults of its `[target.<name>]` section |
+| Configuration | Its `[target.<name>]` section: `options` lists every key with its kind (`string`, `int`, `bool`, `choice`, `table`), help text, default and valid values; the loader rejects unknown keys and wrong kinds, and `validate_config` keeps the rules that span keys. The desktop tool draws the project-properties form from `options`, so a backend that declares them gets its form for free |
 | Integration tests | Its own golden-case tests and test environment (image or runner), §Testing |
 
 **Backends are interchangeable.** For the same mapping and input, every backend must

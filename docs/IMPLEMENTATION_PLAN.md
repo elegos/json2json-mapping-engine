@@ -429,8 +429,18 @@ Sliced; each slice is usable on its own:
 - [x] **Unsaved changes.** Save is explicit (no autosave). Build / Check / Transpile ask
       "Save before continuing?" (they read the files on disk); switching file or project
       and closing the window ask too (Save / discard / Cancel).
-- [ ] **Project properties** (GUI for `mapper.toml`): the button exists in the sidebar, the
-      form does not.
+- [x] **Project properties** (`mapper.toml` form; `cli/project_config.py`, `config_read` /
+      `config_check` / `config_write` of `mapper serve`). Engine sections (`[project]`,
+      `[optimizer]`, `[compiler.default_choices]`, `[test]`) are described in
+      `cli/project_config.py`; the target's keys come from the backend:
+      `Backend.options` (`Option`: key, kind, help, required, default, choices), which the
+      loader also enforces (unknown keys, value kinds) and a conformance test requires to
+      cover `required_keys` / `defaults`. The form has no code of a backend's own; a backend
+      without `options` shows a "edit by hand" note. Rules spanning keys stay in
+      `validate_config` and show as one message. Saving goes through `tomlkit`, so comments
+      and key order survive and only changed lines change; an invalid config is refused.
+      Choosing another target creates its `[target.X]` section. New dependency: `tomlkit`
+      (the bundled Python runtime must include it).
 - [ ] **M6.2 — validation UX.** validated / needs_review states, manual-override split
       pane, function-changed warnings.
 - [ ] **M6.3 — VCS.** Gitoxide save-as-commit, pull --rebase, semantic rule-level merge.

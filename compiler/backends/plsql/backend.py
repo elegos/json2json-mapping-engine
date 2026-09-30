@@ -12,7 +12,7 @@ from __future__ import annotations
 import ast
 from typing import Any, ClassVar
 
-from compiler.backends.base import Backend, CodeGenError
+from compiler.backends.base import Backend, CodeGenError, Option
 from compiler.backends.plsql.builtins import BUILTIN_FUNCTIONS
 from compiler.backends.plsql.codegen import PlsqlCodeGenerator, PlsqlUnit
 from compiler.backends.plsql.naming import PlsqlNaming
@@ -33,6 +33,47 @@ class PlsqlBackend(Backend):
         # map_<id>/map_<id>_safe) — §Generated artifact, "Rule-function visibility".
         "export_rule_functions": False,
     }
+
+    options: ClassVar[tuple[Option, ...]] = (
+        Option("schema", "string", "Owner of the generated packages", required=True),
+        Option(
+            "error_code",
+            "int",
+            "Code of the RAISE_APPLICATION_ERROR raised by the raising entry point",
+            required=True,
+        ),
+        Option(
+            "mapping_package_prefix",
+            "string",
+            "Mapping package name = prefix + MAPPING ID + suffix (one of prefix / suffix, "
+            "or the table below)",
+        ),
+        Option("mapping_package_suffix", "string", "See the prefix"),
+        Option(
+            "mapping_packages",
+            "table",
+            "Explicit table: mapping id -> package name (instead of prefix / suffix)",
+        ),
+        Option(
+            "mapping_index_package",
+            "string",
+            "Extra package forwarding every entry point to the mapping's package",
+        ),
+        Option(
+            "functions_package",
+            "string",
+            "Shared package of the built-ins that are not 1:1 with PL/SQL",
+            default="J2JME_FUNCTIONS",
+        ),
+        Option(
+            "export_rule_functions",
+            "bool",
+            "List every fn_<mapping>_<rule> in its package spec too",
+            default=False,
+        ),
+        Option("fn_prefix", "string", "Prefix of generated procedure / function names", default=""),
+        Option("fn_suffix", "string", "Suffix of generated procedure / function names", default=""),
+    )
 
     @classmethod
     def validate_config(cls, section: dict[str, Any]) -> None:
