@@ -1,0 +1,25 @@
+[project]
+mode = "driven"
+target = "plsql"       # compilation target
+
+[optimizer]
+loop_fusion       = true          # disable if side-effects are suspected
+parallel_conflict = "exception"   # exception (default) | max | min
+
+[target.plsql]
+schema     = "MAPPING_OWNER"   # Oracle schema that owns the generated packages
+mapping_package_prefix = "J2JME_MAP_"   # one package per mapping: <prefix><ID><suffix>
+# mapping_package_suffix = "_MAP"       # (or an explicit [target.plsql.mapping_packages] table)
+mapping_index_package  = "J2JME_MAPPINGS"   # optional: one package forwarding to all of them
+fn_prefix  = ""                # optional prefix for generated procedure/function names
+fn_suffix  = ""                # optional suffix
+error_code = -20000            # reserved RAISE_APPLICATION_ERROR code
+export_rule_functions = false  # true = list every fn_<rule_id> in the package spec too
+
+[compiler.default_choices]   # per-rule `choices` in the .fn.yaml override these
+format     = "round"         # round | truncate — `format` decimals
+multipleOf = "round"         # round | truncate — `allowed.multipleOf` snapping
+
+[test]
+container_image = "container-registry.oracle.com/database/adb-free"
+container_tag   = "latest-23ai"

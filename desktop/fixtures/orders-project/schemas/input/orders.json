@@ -1,0 +1,23 @@
+{
+  "title": "Orders",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string"},
+    "country": {"type": "string"},
+    "ref": {"type": "string"},
+    "currencies": {"type": "object", "additionalProperties": {"type": "string"}},
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "sku": {"type": "string"},
+          "qty": {"type": "integer"},
+          "total": {"type": "number"}
+        },
+        "required": ["sku", "qty", "total"]
+      }
+    }
+  },
+  "required": ["id", "items", "country", "currencies", "ref"]
+}

@@ -1,0 +1,69 @@
+name: Orders
+id: orders
+rules:
+  - id: oid
+    kind: field
+    field: OrderId
+    type: str
+    description: The order id, unchanged.
+    source:
+      path: $.id
+    transform:
+      expression: $.id
+  - id: cur
+    kind: field
+    field: Currency
+    type: str
+    required: false
+    description: Currency of the order's country; N/A when the country is unknown.
+    source:
+      path: $.country
+    transform:
+      expression: lookup($.country, $.currencies, "N/A")
+  - id: wh
+    kind: field
+    field: Warehouse
+    type: str
+    required: false
+    description: Third element of the comma separated reference.
+    source:
+      path: $.ref
+    transform:
+      expression: split_nth($.ref, ",", 2)
+  - id: lines
+    kind: loop
+    label: item
+    source: $.items[*]
+    output: $.Lines[*]
+    rules:
+      - id: sku
+        kind: field
+        field: Sku
+        type: str
+        source:
+          path: $.items[*].sku
+        transform:
+          expression: "@item.sku"
+      - id: qty
+        kind: field
+        field: Qty
+        type: int
+        source:
+          path: $.items[*].qty
+        transform:
+          expression: "@item.qty"
+      - id: fam
+        kind: field
+        field: Family
+        type: str
+        description: SKU family, the part before the first dash.
+        transform:
+          expression: split_first(@item.sku, "-")
+      - id: unit
+        kind: field
+        field: Unit
+        type: number
+        required: false
+        description: Unit price; left out when the quantity is zero.
+        transform:
+          expression: "@item.total / @item.qty"

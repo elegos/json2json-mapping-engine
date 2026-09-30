@@ -1,0 +1,17 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "J2JME Desktop",
+  "version": "0.1.0",
+  "identifier": "dev.j2jme.desktop",
+  "build": {
+    "beforeDevCommand": "npm --prefix ../ui run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm --prefix ../ui run build",
+    "frontendDist": "../ui/dist"
+  },
+  "app": {
+    "windows": [{ "title": "J2JME", "width": 1280, "height": 800 }],
+    "security": { "csp": null }
+  },
+  "bundle": { "active": false }
+}

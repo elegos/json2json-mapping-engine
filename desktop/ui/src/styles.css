@@ -1,0 +1,22 @@
+:root { color-scheme: light dark; font-family: system-ui, sans-serif; font-size: 14px; }
+html, body, #root { height: 100%; margin: 0; }
+.app { display: flex; flex-direction: column; height: 100%; }
+header { display: flex; gap: 8px; align-items: center; padding: 8px 12px; border-bottom: 1px solid #8884; }
+header .spacer { flex: 1; }
+.project { opacity: 0.7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.banner { background: #b8860b33; padding: 6px 12px; }
+.body { display: flex; flex: 1; min-height: 0; }
+nav { width: 200px; border-right: 1px solid #8884; overflow: auto; }
+.file { padding: 6px 12px; cursor: pointer; }
+.file:hover { background: #8882; }
+.file.current { background: #2a5a9f44; font-weight: 600; }
+main { flex: 1; min-width: 0; }
+.empty { padding: 24px; opacity: 0.6; }
+footer { border-top: 1px solid #8884; max-height: 30%; overflow: auto; padding: 6px 12px; font-family: ui-monospace, monospace; font-size: 12px; }
+.report.failed { color: #c0392b; }
+.report .warning { color: #b8860b; }
+.report .error { color: #c0392b; }
+.row-error { background: #c0392b33 !important; }
+.row-warning { background: #b8860b33 !important; }
+.row-review { box-shadow: inset 3px 0 0 #e0a100; }
+.row-validated { box-shadow: inset 3px 0 0 #2e9e4f; }
