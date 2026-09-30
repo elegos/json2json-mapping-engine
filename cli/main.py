@@ -22,7 +22,13 @@ from cli.config import MapperConfigError, load_config
 from cli.stubs import generate_stubs
 from cli.track1 import run_track1
 from cli.track2 import Track2Error, detect_runtime, run_track2, runtime_diagnostic
-from transpiler.model import FnYamlError
+from transpiler.model import (
+    FnYamlError,
+    functional_from_dict,
+    functional_to_dict,
+    load_functional_file,
+)
+from transpiler.serialize import apply_decay_tree, write_functional
 from transpiler.stages import STAGES, artifact, parse_stage
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
@@ -300,6 +306,43 @@ def check() -> None:
         typer.echo("run `mapper build`")
         raise typer.Exit(code=1)
     typer.echo(f"OK — {BUILD_COMPILED_DIR} is in sync ({len(mappings)} mapping(s))")
+
+
+fn_app = typer.Typer(
+    no_args_is_help=True, help="Read and write .fn.yaml files as JSON (desktop tool)."
+)
+app.add_typer(fn_app, name="fn")
+
+
+@fn_app.command("read")
+def fn_read(file: str = typer.Argument(..., help=".fn.yaml file")) -> None:
+    """Print the file's Rule Tree as JSON (validated by the strict loader)."""
+    try:
+        tree = load_functional_file(Path(file))
+    except (FnYamlError, OSError) as exc:
+        typer.echo(json.dumps({"ok": False, "error": str(exc)}))
+        raise typer.Exit(code=1) from exc
+    typer.echo(json.dumps({"ok": True, "file": functional_to_dict(tree)}, ensure_ascii=False))
+
+
+@fn_app.command("write")
+def fn_write(file: str = typer.Argument(..., help=".fn.yaml file to write")) -> None:
+    """Read a Rule Tree as JSON from stdin (the shape `fn read` prints), apply
+    validation decay against the file on disk and write it. Prints
+    `{"ok": true, "decayed": [rule ids]}`; a tree the loader rejects is not written."""
+    import sys
+
+    path = Path(file)
+    try:
+        new = functional_from_dict(json.load(sys.stdin)["file"])
+        decayed: list[str] = []
+        if path.is_file():
+            new, decayed = apply_decay_tree(load_functional_file(path), new)
+        write_functional(path, new)
+    except (FnYamlError, OSError, ValueError, KeyError, TypeError) as exc:
+        typer.echo(json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"}))
+        raise typer.Exit(code=1) from exc
+    typer.echo(json.dumps({"ok": True, "decayed": decayed}))
 
 
 if __name__ == "__main__":

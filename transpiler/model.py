@@ -434,5 +434,7 @@ def _rule_from_dict(data: dict[str, Any]) -> Rule:
         return FieldRule(**data)
     if kind == "lookup":
         return LookupRule(**data)
+    if kind not in ("object", "loop"):
+        raise FnYamlError(f"unknown rule kind {kind!r}")
     data["rules"] = [_rule_from_dict(r) for r in data["rules"]]
     return ObjectRule(**data) if kind == "object" else LoopRule(**data)
