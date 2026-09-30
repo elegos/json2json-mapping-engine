@@ -427,6 +427,15 @@ Sliced; each slice is usable on its own:
 - [ ] **M6.3 — VCS.** Gitoxide save-as-commit, pull --rebase, semantic rule-level merge.
 - [ ] **M6.4 — LLM assist.** Validation suggestions, expression builder (Ollama / API).
 
+**Extra mile (after M6.4, not scheduled).** *Try a mapping in the tool*: import an input JSON
+for the open mapping and run it, with Python as the transformation language, showing the
+output next to the input (and the per-rule errors, as `_safe` reports them). Things to settle
+first: ARCHITECTURE.md says the `.map` files are "never executed as Python" (§Python as
+syntax, not runtime), so this needs a sandboxed evaluator over the built-ins' Python
+reference implementations (§Function library) rather than a plain `exec`; the result is a
+preview and can differ from Oracle, so the golden cases stay the authority; the same
+runner could feed `tests/golden/<mapping>/*.input.json` cases from the tool.
+
 Prerequisites on the dev machine: `webkit2gtk-4.1` dev packages, `tauri-cli`.
 
 ---
