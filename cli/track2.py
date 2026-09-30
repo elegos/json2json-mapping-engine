@@ -134,7 +134,9 @@ def detect_runtime() -> str | None:
             done = subprocess.run(_info_cmd(name), capture_output=True, timeout=30)
         except (OSError, subprocess.TimeoutExpired):
             continue
-        if done.returncode == 0:
+        # docker-cli 26 can exit 0 with an empty --format result when the daemon is
+        # unreachable, so a docker answer counts only if it printed a server version.
+        if done.returncode == 0 and (name != "docker" or done.stdout.strip()):
             return name
     return None
 
@@ -150,7 +152,10 @@ def runtime_diagnostic() -> str:
         try:
             done = subprocess.run(_info_cmd(name), capture_output=True, text=True, timeout=30)
             err = (done.stderr or done.stdout).strip().splitlines()
-            lines.append(f"{name}: `info` exit {done.returncode}: {err[-1] if err else ''}")
+            lines.append(
+                f"{name}: `info` exit {done.returncode}, "
+                f"stdout {done.stdout.strip()!r}: {err[-1] if err else ''}"
+            )
         except (OSError, subprocess.TimeoutExpired) as exc:
             lines.append(f"{name}: `info` failed: {exc}")
     lines.append(f"DOCKER_HOST={os.environ.get('DOCKER_HOST', '<unset>')}")
