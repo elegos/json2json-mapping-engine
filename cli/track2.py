@@ -325,6 +325,22 @@ def check_raising(
     return f"{proc} output differs from _safe:\n{diff}" if diff else ""
 
 
+def check_parallel_wrapper(conn: Any, fn: str, case: TestCase, safe_out: Any) -> str:
+    """Call the SQL-callable `PARALLEL_ENABLE` wrapper `fn` from a query (the way it
+    is meant to be used) and compare with the `_safe` result. "" = consistent."""
+    import oracledb
+
+    cur = conn.cursor()
+    src = conn.createlob(oracledb.DB_TYPE_CLOB, case.input_path.read_text())
+    try:
+        cur.execute(f"SELECT {fn}(:s) FROM dual", s=src)
+        (row,) = cur.fetchall()
+    except oracledb.Error as exc:
+        return f"{fn} failed from SQL: {exc}"
+    diff = json_diff(safe_out, json.loads(_lob_text(row[0]) or "null"))
+    return f"{fn} output differs from _safe:\n{diff}" if diff else ""
+
+
 def run_case(
     conn: Any,
     proc: str,
@@ -332,6 +348,7 @@ def run_case(
     raising_proc: str | None = None,
     error_code: int = -20000,
     constraints: dict[tuple[str, ...], dict[str, Any]] | None = None,
+    sql_fn: str | None = None,
 ) -> CaseResult:
     import oracledb
 
@@ -358,6 +375,8 @@ def run_case(
         if raising_proc
         else ""
     )
+    if sql_fn and not rule_errors and not twin:  # the wrapper raises on a failing document
+        twin = check_parallel_wrapper(conn, sql_fn, case, actual)
     if case.expected_path is None:
         if twin:
             return CaseResult(case, False, actual, rule_errors, message=twin, warnings=warnings)
@@ -388,7 +407,8 @@ def run_track2(config: MapperConfig, mapping: str | None = None, log=print) -> l
         conn = oracledb.connect(user=db.user, password=db.password, dsn=db.dsn)
         try:
             naming = PlsqlNaming.from_config(config.target_config())
-            deploy(conn, package_sql.read_text(), naming.schema)
+            package_text = package_sql.read_text()
+            deploy(conn, package_text, naming.schema)
             for c in cases:
                 src = find_source(c.mapping, config)
                 mapping_id = mapping_id_of(src) if src else c.mapping
@@ -405,6 +425,11 @@ def run_track2(config: MapperConfig, mapping: str | None = None, log=print) -> l
                         raising_proc=naming.call_path(mapping_id),
                         error_code=int(config.target_config()["error_code"]),
                         constraints=constraints,
+                        sql_fn=(
+                            naming.call_path(mapping_id, "_fn")
+                            if f"FUNCTION {naming.entry(mapping_id, '_fn')} " in package_text
+                            else None
+                        ),
                     )
                 )
         finally:

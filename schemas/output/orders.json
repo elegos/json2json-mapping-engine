@@ -1,0 +1,19 @@
+{
+  "title": "OrdersOut",
+  "type": "object",
+  "properties": {
+    "OrderId": {"type": "string"},
+    "Lines": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "Sku": {"type": "string"},
+          "Qty": {"type": "integer"}
+        },
+        "required": ["Sku", "Qty"]
+      }
+    }
+  },
+  "required": ["OrderId", "Lines"]
+}

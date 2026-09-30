@@ -1,0 +1,19 @@
+{
+  "title": "Orders",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string"},
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "sku": {"type": "string"},
+          "qty": {"type": "integer"}
+        },
+        "required": ["sku", "qty"]
+      }
+    }
+  },
+  "required": ["id", "items"]
+}
