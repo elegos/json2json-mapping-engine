@@ -397,8 +397,13 @@ Sliced; each slice is usable on its own:
             `transpiler.model` loader (`transpiler/serialize.py` writes it back); `write`
             applies `apply_decay` per rule id and refuses a tree the loader rejects. YAML
             comments and hand-edited key order are not preserved.
-      - [ ] Python resolution order (bundled → `python3.XX` → `python3` → `python`);
-            read-only mode when none is found.
+      - [x] Python resolution order (engine `.venv` in a checkout → bundled → `python3.12`
+            → `python3` → `python`); a candidate must import the engine. Banner + disabled
+            actions when none is found.
+      - [x] Tauri shell (`desktop/src-tauri`), React + AG Grid UI (`desktop/ui`), fixture
+            `desktop/fixtures/orders-project`; `cargo test` drives the real `mapper`.
+      - [ ] Run it by hand (`cargo tauri dev`) and fix what the GUI shows — not yet done:
+            nothing here could open a window.
 - [ ] **M6.2 — validation UX.** validated / needs_review states, manual-override split
       pane, function-changed warnings.
 - [ ] **M6.3 — VCS.** Gitoxide save-as-commit, pull --rebase, semantic rule-level merge.
