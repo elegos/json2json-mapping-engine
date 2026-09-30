@@ -408,6 +408,31 @@ def fn_read(file: str = typer.Argument(..., help=".fn.yaml file")) -> None:
     typer.echo(json.dumps({"ok": True, "file": functional_to_dict(tree)}, ensure_ascii=False))
 
 
+@fn_app.command("check")
+def fn_check(file: str = typer.Argument(..., help=".fn.yaml file")) -> None:
+    """Check every rule of a file (form, and validity against the project's schemas);
+    prints `{"ok", "diagnostics"}`. Exit 1 when a rule has an error."""
+    from transpiler.check import check_functional, schemas_for
+
+    path = Path(file)
+    try:
+        tree = load_functional_file(path)
+    except (FnYamlError, OSError) as exc:
+        typer.echo(json.dumps({"ok": False, "error": str(exc)}))
+        raise typer.Exit(code=1) from exc
+    stem = path.name.removesuffix(".fn.yaml")
+    inp, out = schemas_for(Path.cwd(), stem)
+    issues = check_functional(tree, inp, out)
+    failed = any(i.severity == "error" for i in issues)
+    typer.echo(
+        json.dumps(
+            {"ok": not failed, "diagnostics": [i.to_json() for i in issues]}, ensure_ascii=False
+        )
+    )
+    if failed:
+        raise typer.Exit(code=1)
+
+
 @fn_app.command("write")
 def fn_write(file: str = typer.Argument(..., help=".fn.yaml file to write")) -> None:
     """Read a Rule Tree as JSON from stdin (the shape `fn read` prints), apply

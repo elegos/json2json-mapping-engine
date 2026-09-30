@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+from pathlib import Path
 
 import pytest
 
@@ -16,6 +17,7 @@ from transpiler.model import (
     LoopRule,
     ObjectRule,
     functional_to_dict,
+    load_functional_file,
     parse_functional,
 )
 
@@ -166,3 +168,13 @@ def test_serve_answers_one_line_per_request() -> None:
     assert not answers[2]["ok"] and "already a rule" in answers[2]["error"]
     assert not answers[3]["ok"] and not answers[4]["ok"]
 
+
+def test_serve_check_op() -> None:
+    project = Path(__file__).parents[3] / "desktop" / "fixtures" / "orders-project"
+    tree = functional_to_dict(load_functional_file(project / "mappings/functional/orders.fn.yaml"))
+    tree["rules"][0]["field"] = "Nope"
+    request = {"id": 1, "op": "check", "tree": tree, "project": str(project), "stem": "orders"}
+    out = io.StringIO()
+    serve(io.StringIO(json.dumps(request) + "\n"), out)
+    answer = json.loads(out.getvalue())
+    assert answer["ok"] and answer["diagnostics"][0]["rule"] == "rules[0]"

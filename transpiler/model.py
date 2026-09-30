@@ -366,6 +366,11 @@ def _load_rule(where: str, raw: Any) -> Rule:
     raise _err(where, f"'kind' must be one of field, object, loop, lookup — got {kind!r}")
 
 
+def load_rule(where: str, raw: Any) -> Rule:
+    """One rule (children included) from its raw mapping — for checking a rule on its own."""
+    return _load_rule(where, raw)
+
+
 def load_functional_file(path: Path) -> FunctionalFile:
     try:
         raw = yaml.safe_load(path.read_text())

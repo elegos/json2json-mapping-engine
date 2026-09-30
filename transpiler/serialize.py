@@ -104,6 +104,10 @@ def _rule_to_raw(rule: Rule) -> dict[str, Any]:
     return raw
 
 
+def rule_to_raw(rule: Rule) -> dict[str, Any]:
+    return _rule_to_raw(rule)
+
+
 def functional_to_raw(file: FunctionalFile) -> dict[str, Any]:
     return {"name": file.name, "id": file.id, "rules": [_rule_to_raw(r) for r in file.rules]}
 

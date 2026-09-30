@@ -4,7 +4,7 @@ Reads one JSON request per line on stdin, answers one JSON line on stdout. It ex
 so that per-edit operations (Target / Source normalisation) cost a message, not a
 Python start-up. Requests: `{"id", "op", ...}`; answers `{"id", "ok", ...}`.
 
-Ops: `ping`; `retarget` (`tree`, `path`, `value`); `set_source` (`tree`, `path`,
+Ops: `ping`; `check` (`tree`, `project`, `stem`); `retarget` (`tree`, `path`, `value`); `set_source` (`tree`, `path`,
 `value`). `tree` is the file as `mapper fn read` prints it; the answer carries the new
 `tree`, or `error`.
 """
@@ -13,8 +13,10 @@ from __future__ import annotations
 
 import json
 import sys
+from pathlib import Path
 from typing import Any, TextIO
 
+from transpiler.check import check_functional, schemas_for
 from transpiler.edit import retarget, set_source
 from transpiler.model import FnYamlError, functional_from_dict, functional_to_dict
 
@@ -23,6 +25,11 @@ def handle(request: dict[str, Any]) -> dict[str, Any]:
     op = request.get("op")
     if op == "ping":
         return {"ok": True}
+    if op == "check":
+        file = functional_from_dict(request["tree"])
+        inp, out = schemas_for(Path(request["project"]), request["stem"])
+        issues = check_functional(file, inp, out)
+        return {"ok": True, "diagnostics": [i.to_json() for i in issues]}
     if op in ("retarget", "set_source"):
         file = functional_from_dict(request["tree"])
         change = retarget if op == "retarget" else set_source
