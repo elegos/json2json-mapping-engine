@@ -57,6 +57,7 @@ describe("model", () => {
   it("finds a rule by path", () => {
     const rule = ruleAt(file, "rules[1].rules[0]");
     expect(rule && nameOf(rule)).toBe("B");
+    expect(nameOf(file.rules[0], 0)).toBe("$.A");
     expect(ruleAt(file, "rules[5]")).toBeUndefined();
   });
 

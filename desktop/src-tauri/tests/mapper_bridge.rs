@@ -13,9 +13,9 @@ pub struct MapperOutput {
     pub code: i32,
 }
 
-fn fixture() -> std::path::PathBuf {
+fn fixture(name: &str) -> std::path::PathBuf {
     let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../fixtures/orders-project");
-    let dst = std::env::temp_dir().join(format!("j2jme-bridge-{}", std::process::id()));
+    let dst = std::env::temp_dir().join(format!("j2jme-bridge-{}-{name}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dst);
     copy(&src, &dst);
     dst
@@ -40,7 +40,7 @@ fn read_write_build_round_trip() {
         eprintln!("no usable Python — skipped");
         return;
     };
-    let project = fixture();
+    let project = fixture("roundtrip");
     let file = "mappings/functional/orders.fn.yaml";
 
     let read = python::run_mapper(&found, &project, &["fn", "read", file], None).unwrap();
@@ -57,5 +57,33 @@ fn read_write_build_round_trip() {
     let build = python::run_mapper(&found, &project, &["build", "--json"], None).unwrap();
     assert_eq!(build.code, 0, "{}", build.stdout);
     assert_eq!(build.json["ok"], true);
+    let _ = std::fs::remove_dir_all(&project);
+}
+
+#[test]
+fn worker_answers_edits_on_one_process() {
+    let Ok(found) = python::resolve() else {
+        eprintln!("no usable Python — skipped");
+        return;
+    };
+    let project = fixture("worker");
+    let file = "mappings/functional/orders.fn.yaml";
+    let read = python::run_mapper(&found, &project, &["fn", "read", file], None).unwrap();
+    let tree = read.json["file"].clone();
+
+    let mut worker = python::Worker::start(&found).unwrap();
+    let ping: serde_json::Value =
+        serde_json::from_str(&worker.ask(r#"{"id":1,"op":"ping"}"#).unwrap()).unwrap();
+    assert_eq!(ping["ok"], true);
+
+    let request = serde_json::json!({
+        "id": 2, "op": "retarget", "tree": tree, "path": "rules[2]", "value": "Shipping.Warehouse"
+    });
+    let answer: serde_json::Value =
+        serde_json::from_str(&worker.ask(&request.to_string()).unwrap()).unwrap();
+    assert_eq!(answer["ok"], true, "{answer}");
+    assert_eq!(answer["id"], 2);
+    let rules = answer["tree"]["rules"].as_array().unwrap();
+    assert!(rules.iter().any(|r| r["output"] == "$.Shipping"));
     let _ = std::fs::remove_dir_all(&project);
 }

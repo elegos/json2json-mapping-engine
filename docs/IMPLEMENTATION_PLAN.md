@@ -404,6 +404,12 @@ Sliced; each slice is usable on its own:
             `desktop/fixtures/orders-project`; `cargo test` drives the real `mapper`.
       - [ ] Run it by hand (`cargo tauri dev`) and fix what the GUI shows — not yet done:
             nothing here could open a window.
+- [x] **Target / Source editing** (`transpiler/edit.py`, served by `mapper serve` to the
+      grid so edits are instant): `OrderId` → `$.OrderId`; `A.B` creates the object `A` and
+      moves the field under it; `Lines.A.B` on a declared loop puts `A` in every element;
+      containers get `$.` (top level) or `@.` (nested); an emptied container is flagged
+      "Empty container". Open: `Source` of a *nested* field is kept as typed (its
+      `@item.…` / `$.items[*].…` convention is not settled).
 - [ ] **M6.1b — check on edit.** Every rule, when modified, is checked for form (the loader
       and the expression parser) and for validity against the input / output JSON Schema
       when present; findings flag the row. Needs a per-rule check entry in the CLI.

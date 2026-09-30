@@ -428,5 +428,13 @@ def fn_write(file: str = typer.Argument(..., help=".fn.yaml file to write")) -> 
     typer.echo(json.dumps({"ok": True, "decayed": decayed}))
 
 
+@app.command()
+def serve() -> None:
+    """Worker for the desktop tool: JSON requests on stdin, one JSON answer per line."""
+    from cli.serve import serve as run
+
+    run()
+
+
 if __name__ == "__main__":
     app()

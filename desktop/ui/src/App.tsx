@@ -4,6 +4,7 @@ import { ProjectButton } from "./ProjectButton";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   chooseProject,
+  editTree,
   initialProject,
   listFnFiles,
   type CommandReport,
@@ -28,8 +29,6 @@ import {
   reviewState,
   type Row,
   setExpression,
-  setName,
-  setSource,
   sourceOf,
 } from "./model";
 
@@ -81,6 +80,7 @@ export function App() {
   const [reportId, setReportId] = useState(0);
   const [recent, setRecent] = useState<string[]>(loadRecent);
   const folding = useRef(false);
+  const treeRef = useRef<FunctionalFile | null>(null);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [showIds, setShowIds] = usePersisted("showRuleIds");
   const [developerMode, setDeveloperMode] = usePersisted("developerMode");
@@ -89,6 +89,7 @@ export function App() {
     pythonStatus().then(setPython, (e) => setStatus(String(e)));
   }, []);
 
+  treeRef.current = tree;
   const dirty = tree !== null && JSON.stringify(tree) !== saved;
   const canBuild = python?.available === true && project !== null && !busy;
 
@@ -207,6 +208,21 @@ export function App() {
     });
   }, []);
 
+  /** Target / Source edits are done by the Python worker (one implementation of the path rules). */
+  const remoteEdit = useCallback(
+    async (op: "retarget" | "set_source", path: string, value: string) => {
+      const current = treeRef.current;
+      if (!current) return;
+      try {
+        setTree(await editTree(current, op, path, value));
+        setStatus("");
+      } catch (e) {
+        setStatus(String(e instanceof Error ? e.message : e));
+      }
+    },
+    [],
+  );
+
   const rows = useMemo(
     () => (tree ? visibleRows(flatten(tree.rules), collapsed) : []),
     [tree, collapsed],
@@ -258,10 +274,10 @@ export function App() {
         headerName: "Target",
         colId: "target",
         width: 200,
-        editable: () => !folding.current,
-        valueGetter: (p) => (p.data ? nameOf(p.data.rule) : ""),
+        editable: (p) => !folding.current && p.data?.rule.kind !== "lookup",
+        valueGetter: (p) => (p.data ? nameOf(p.data.rule, p.data.depth) : ""),
         valueSetter: (p: ValueSetterParams<Row>) => {
-          edit(p.data.path, (r) => setName(r, String(p.newValue ?? "")));
+          void remoteEdit("retarget", p.data.path, String(p.newValue ?? ""));
           return true;
         },
         cellRenderer: (p: ICellRendererParams<Row>) =>
@@ -329,7 +345,7 @@ export function App() {
         editable: editableFor(["field", "loop"]),
         valueGetter: (p) => (p.data ? sourceOf(p.data.rule) : ""),
         valueSetter: (p: ValueSetterParams<Row>) => {
-          edit(p.data.path, (r) => setSource(r, String(p.newValue ?? "")));
+          void remoteEdit("set_source", p.data.path, String(p.newValue ?? ""));
           return true;
         },
       },
@@ -411,7 +427,7 @@ export function App() {
         },
       },
     ];
-  }, [edit, showIds, developerMode, diagnostics, collapsed, toggleFold]);
+  }, [edit, remoteEdit, showIds, developerMode, diagnostics, collapsed, toggleFold]);
 
   return (
     <div className="app">

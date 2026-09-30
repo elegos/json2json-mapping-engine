@@ -11,9 +11,9 @@
 //! only if it can import the engine (`cli.main`).
 
 use crate::MapperOutput;
-use std::io::Write;
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
 /// Minimum Python minor version (`requires-python` in pyproject.toml).
 const MIN_MINOR: u32 = 12;
@@ -125,4 +125,54 @@ pub fn run_mapper(
         stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
         code: out.status.code().unwrap_or(-1),
     })
+}
+
+/// A long-lived `mapper serve` process: one JSON line in, one JSON line out. Used for
+/// the per-edit operations, which must not pay a Python start-up each.
+pub struct Worker {
+    child: Child,
+    stdin: ChildStdin,
+    stdout: BufReader<ChildStdout>,
+}
+
+impl Worker {
+    pub fn start(found: &Found) -> Result<Worker, String> {
+        let mut child = Command::new(&found.python)
+            .env("PYTHONPATH", &found.engine)
+            .args(["-m", "cli.main", "serve"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|e| format!("cannot start the worker: {e}"))?;
+        let stdin = child.stdin.take().ok_or("worker has no stdin")?;
+        let stdout = BufReader::new(child.stdout.take().ok_or("worker has no stdout")?);
+        Ok(Worker {
+            child,
+            stdin,
+            stdout,
+        })
+    }
+
+    /// Sends one request line and returns the answer line.
+    pub fn ask(&mut self, request: &str) -> Result<String, String> {
+        let line = request.replace('\n', " ");
+        writeln!(self.stdin, "{line}").map_err(|e| e.to_string())?;
+        self.stdin.flush().map_err(|e| e.to_string())?;
+        let mut answer = String::new();
+        let read = self
+            .stdout
+            .read_line(&mut answer)
+            .map_err(|e| e.to_string())?;
+        if read == 0 {
+            return Err("the worker stopped".into());
+        }
+        Ok(answer)
+    }
+}
+
+impl Drop for Worker {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+    }
 }

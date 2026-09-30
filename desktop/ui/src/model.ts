@@ -121,11 +121,12 @@ export function ruleAt(file: FunctionalFile, path: string): Rule | undefined {
   return rule;
 }
 
-/** What the "Name" column shows and edits, per kind. */
-export function nameOf(rule: Rule): string {
+/** What the Target column shows: a top-level field as `$.Name`, a nested one relative to its
+ * parent (`Name`), a container by its stored output (`$.Lines[*]`, `@.Tax`). */
+export function nameOf(rule: Rule, depth = 1): string {
   switch (rule.kind) {
     case "field":
-      return rule.field;
+      return depth === 0 ? `$.${rule.field}` : rule.field;
     case "lookup":
       return rule.label;
     default:
@@ -133,22 +134,11 @@ export function nameOf(rule: Rule): string {
   }
 }
 
-export function setName(rule: Rule, value: string): void {
-  if (rule.kind === "field") rule.field = value;
-  else if (rule.kind === "lookup") rule.label = value;
-  else rule.output = value;
-}
-
 /** Source column: a field's `source.path`, a loop's `source`. */
 export function sourceOf(rule: Rule): string {
   if (rule.kind === "field") return rule.source_path ?? "";
   if (rule.kind === "loop") return rule.source;
   return "";
-}
-
-export function setSource(rule: Rule, value: string): void {
-  if (rule.kind === "field") rule.source_path = value || null;
-  else if (rule.kind === "loop") rule.source = value;
 }
 
 /** Expression column: a field's expression, a loop's `filter`, an object's `guard`. */
@@ -228,6 +218,9 @@ export function rowIssues(rule: Rule, diagnostics: Diagnostic[]): string[] {
     const column = columnOfMessage(d.message);
     const what = column ? `Invalid ${COLUMN_LABELS[column] ?? column}` : "Invalid rule";
     issues.push(`${d.severity === "error" ? what : "Warning"}: ${d.message}`);
+  }
+  if ((rule.kind === "loop" || rule.kind === "object") && rule.rules.length === 0) {
+    issues.push("Empty container");
   }
   if (rule.kind === "field") {
     if (rule.validation.needs_review) issues.push("Review flag");

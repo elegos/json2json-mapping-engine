@@ -8,6 +8,7 @@ mod python;
 use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 /// Result of a `mapper` invocation, as the UI needs it.
 #[derive(serde::Serialize)]
@@ -81,8 +82,45 @@ fn write_fn(project: String, file: String, tree: String) -> Result<MapperOutput,
     run_mapper(&project, &["fn", "write", &file], Some(&tree))
 }
 
+/// The edit worker, started on first use (or by `warm_worker`) and restarted if it dies.
+struct EditWorker(Mutex<Option<python::Worker>>);
+
+fn ask_worker(state: &EditWorker, request: &str) -> Result<String, String> {
+    let mut slot = state
+        .0
+        .lock()
+        .map_err(|_| "worker lock poisoned".to_string())?;
+    for _ in 0..2 {
+        if slot.is_none() {
+            *slot = Some(python::Worker::start(&python::resolve()?)?);
+        }
+        match slot.as_mut().map(|w| w.ask(request)) {
+            Some(Ok(answer)) => return Ok(answer),
+            _ => *slot = None, // dead or broken: start a fresh one and retry once
+        }
+    }
+    Err("the edit worker does not answer".into())
+}
+
+/// One JSON request to `mapper serve`; returns the JSON answer line.
+#[tauri::command]
+fn edit_request(state: tauri::State<EditWorker>, request: String) -> Result<String, String> {
+    ask_worker(&state, &request)
+}
+
 fn main() {
     tauri::Builder::default()
+        .manage(EditWorker(Mutex::new(None)))
+        .setup(|app| {
+            // start the worker in the background so the first edit is already instant
+            let handle = app.handle().clone();
+            std::thread::spawn(move || {
+                use tauri::Manager;
+                let state = handle.state::<EditWorker>();
+                let _ = ask_worker(&state, r#"{"id":0,"op":"ping"}"#);
+            });
+            Ok(())
+        })
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             python_status,
@@ -90,7 +128,8 @@ fn main() {
             list_fn_files,
             mapper_command,
             read_fn,
-            write_fn
+            write_fn,
+            edit_request
         ])
         .run(tauri::generate_context!())
         .expect("error while running the desktop tool");

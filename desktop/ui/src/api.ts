@@ -73,3 +73,19 @@ export async function runMapper(project: string, command: string): Promise<Comma
     }
   );
 }
+
+/** One edit on the tree, done by the Python worker (`mapper serve`): Target and Source
+ * normalisation. Resolves to the new tree. */
+export async function editTree(
+  tree: FunctionalFile,
+  op: "retarget" | "set_source",
+  path: string,
+  value: string,
+): Promise<FunctionalFile> {
+  const answer = await invoke<string>("edit_request", {
+    request: JSON.stringify({ id: 1, op, tree, path, value }),
+  });
+  const parsed = JSON.parse(answer) as { ok: boolean; tree?: FunctionalFile; error?: string };
+  if (!parsed.ok || !parsed.tree) throw new Error(parsed.error ?? "edit failed");
+  return parsed.tree;
+}
