@@ -16,10 +16,10 @@ footer { border-top: 1px solid #8884; max-height: 30%; overflow: auto; padding: 
 .report.failed { color: #c0392b; }
 .report .warning { color: #b8860b; }
 .report .error { color: #c0392b; }
-.row-error { background: #c0392b33 !important; }
 .row-warning { background: #b8860b33 !important; }
 .row-review { box-shadow: inset 3px 0 0 #e0a100; }
 .row-validated { box-shadow: inset 3px 0 0 #2e9e4f; }
 .project-properties { display: block; width: calc(100% - 16px); margin: 8px; }
 .switches { display: flex; gap: 16px; padding: 4px 12px; border-top: 1px solid #8884; font-size: 12px; }
 .switches label { display: flex; gap: 4px; align-items: center; }
+.cell-invalid { background: #e57c7c33 !important; }

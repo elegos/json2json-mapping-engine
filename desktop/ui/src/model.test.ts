@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  columnOfMessage,
   diagnosticsByRule,
   expressionOf,
   flatten,
@@ -82,5 +83,13 @@ describe("model", () => {
     );
     expect(grouped.get("rules[0]")).toHaveLength(1);
     expect(grouped.get("")).toHaveLength(2);
+  });
+
+  it("names the column a message is about", () => {
+    expect(columnOfMessage("'type' must be one of str, int — got 'x'")).toBe("type");
+    expect(columnOfMessage("transform.status is 'manual' but code_override is empty")).toBe(
+      "expression",
+    );
+    expect(columnOfMessage("something else entirely")).toBeNull();
   });
 });

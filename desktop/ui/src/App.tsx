@@ -13,6 +13,7 @@ import {
   writeFn,
 } from "./api";
 import {
+  columnOfMessage,
   diagnosticsByRule,
   expressionOf,
   flatten,
@@ -63,6 +64,7 @@ export function App() {
   const [report, setReport] = useState<CommandReport | null>(null);
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
+  const [reportId, setReportId] = useState(0);
   const [showIds, setShowIds] = usePersisted("showRuleIds");
   const [developerMode, setDeveloperMode] = usePersisted("developerMode");
 
@@ -147,6 +149,7 @@ export function App() {
       setBusy(true);
       try {
         setReport(await runMapper(project, command));
+        setReportId((n) => n + 1);
       } catch (e) {
         setStatus(String(e));
       } finally {
@@ -183,6 +186,18 @@ export function App() {
     [current, report],
   );
 
+  /** Columns (by colId) with an error on this row; "*" = the whole row. */
+  const invalidColumns = useCallback(
+    (path: string): Set<string> => {
+      const found = new Set<string>();
+      for (const d of diagnostics.get(path) ?? []) {
+        if (d.severity === "error") found.add(columnOfMessage(d.message) ?? "*");
+      }
+      return found;
+    },
+    [diagnostics],
+  );
+
   const columns = useMemo<ColDef<Row>[]>(() => {
     const isField = (r?: Row) => r?.rule.kind === "field";
     const editableFor = (kinds: string[]) => (p: { data?: Row }) =>
@@ -191,6 +206,7 @@ export function App() {
       { headerName: "Id", colId: "id", hide: !showIds, valueGetter: (p) => p.data?.rule.id ?? "", width: 100 },
       {
         headerName: "Target",
+        colId: "target",
         width: 200,
         editable: true,
         valueGetter: (p) => (p.data ? nameOf(p.data.rule) : ""),
@@ -200,14 +216,20 @@ export function App() {
         },
         cellStyle: (p: CellClassParams<Row>) => ({ paddingLeft: `${8 + (p.data?.depth ?? 0) * 18}px` }),
       },
-      { headerName: "Kind", valueGetter: (p) => p.data?.rule.kind, width: 80 },
+      { headerName: "Kind",
+        colId: "kind", valueGetter: (p) => p.data?.rule.kind, width: 80 },
       {
         headerName: "Type",
+        colId: "type",
         width: 90,
         editable: editableFor(["field"]),
         cellEditor: "agSelectCellEditor",
         cellEditorParams: { values: ["str", "int", "number", "bool", "date", "datetime"] },
-        valueGetter: (p) => (p.data?.rule.kind === "field" ? p.data.rule.type : ""),
+        valueGetter: (p) => {
+          const rule = p.data?.rule;
+          if (rule?.kind === "field") return rule.type;
+          return rule?.kind === "loop" ? "array" : rule?.kind === "object" ? "object" : "";
+        },
         valueSetter: (p: ValueSetterParams<Row>) => {
           edit(p.data.path, (r) => {
             if (r.kind === "field") r.type = String(p.newValue);
@@ -217,6 +239,7 @@ export function App() {
       },
       {
         headerName: "Req.",
+        colId: "req",
         width: 70,
         editable: editableFor(["field"]),
         cellDataType: "boolean",
@@ -231,6 +254,7 @@ export function App() {
       },
       {
         headerName: "Source",
+        colId: "source",
         width: 200,
         editable: editableFor(["field", "loop"]),
         valueGetter: (p) => (p.data ? sourceOf(p.data.rule) : ""),
@@ -241,6 +265,7 @@ export function App() {
       },
       {
         headerName: "Expression / filter / guard",
+        colId: "expression",
         flex: 1,
         minWidth: 260,
         editable: editableFor(["field", "loop", "object"]),
@@ -252,6 +277,7 @@ export function App() {
       },
       {
         headerName: "Description",
+        colId: "description",
         width: 260,
         editable: true,
         valueGetter: (p) => p.data?.rule.description ?? "",
@@ -264,12 +290,14 @@ export function App() {
       },
       {
         headerName: "Status",
+        colId: "status",
         hide: !developerMode,
         width: 80,
         valueGetter: (p) => (p.data?.rule.kind === "field" ? p.data.rule.transform.status : ""),
       },
       {
         headerName: "Validated",
+        colId: "validated",
         width: 100,
         editable: editableFor(["field"]),
         cellDataType: "boolean",
@@ -286,6 +314,7 @@ export function App() {
       },
       {
         headerName: "Review",
+        colId: "review",
         width: 90,
         editable: editableFor(["field"]),
         cellDataType: "boolean",
@@ -300,6 +329,7 @@ export function App() {
       },
       {
         headerName: "Notes",
+        colId: "notes",
         width: 220,
         editable: editableFor(["field"]),
         valueGetter: (p) => (p.data?.rule.kind === "field" ? p.data.rule.validation.notes ?? "" : ""),
@@ -358,6 +388,15 @@ export function App() {
               rowData={rows}
               columnDefs={columns}
               getRowId={(p) => p.data.path}
+              key={reportId}
+              defaultColDef={{
+                cellClassRules: {
+                  "cell-invalid": (p) => {
+                    const cols = invalidColumns(p.data?.path ?? "");
+                    return cols.has(p.column.getColId()) || cols.has("*");
+                  },
+                },
+              }}
               singleClickEdit
               stopEditingWhenCellsLoseFocus
               rowClassRules={{

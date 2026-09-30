@@ -167,3 +167,20 @@ export function reviewState(rule: Rule): ReviewState {
   if (rule.validation.validated) return "validated";
   return rule.validation.needs_review ? "review" : "none";
 }
+
+/** Grid column a loader / checker message is about, from the key it names
+ * (`'type' must be…`, `transform.status …`); null when it names none. */
+export function columnOfMessage(message: string): string | null {
+  const keys: [RegExp, string][] = [
+    [/\b(field|output|label)\b/, "target"],
+    [/\btype\b/, "type"],
+    [/\brequired\b/, "req"],
+    [/\bsource\b/, "source"],
+    [/\b(expression|transform|code_override|filter|guard|sort|parallel)\b/, "expression"],
+    [/\bdescription\b/, "description"],
+    [/\bvalidation\b/, "validated"],
+  ];
+  const named = /'([A-Za-z_.]+)'|\b(transform\.\w+)/.exec(message)?.[0] ?? "";
+  for (const [pattern, column] of keys) if (pattern.test(named)) return column;
+  return null;
+}
