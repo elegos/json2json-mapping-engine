@@ -68,18 +68,44 @@ export interface Row {
   path: string;
   depth: number;
   rule: Rule;
+  /** For each ancestor level, whether that ancestor has later siblings (draws a `│`). */
+  guides: boolean[];
+  /** Last child of its parent (draws `└` instead of `├`). */
+  last: boolean;
+  hasChildren: boolean;
 }
 
-export function flatten(rules: Rule[], prefix = "rules", depth = 0): Row[] {
+export function flatten(
+  rules: Rule[],
+  prefix = "rules",
+  depth = 0,
+  guides: boolean[] = [],
+): Row[] {
   const rows: Row[] = [];
   rules.forEach((rule, i) => {
     const path = `${prefix}[${i}]`;
-    rows.push({ path, depth, rule });
-    if (rule.kind === "object" || rule.kind === "loop") {
-      rows.push(...flatten(rule.rules, `${path}.rules`, depth + 1));
-    }
+    const last = i === rules.length - 1;
+    const children = rule.kind === "object" || rule.kind === "loop" ? rule.rules : [];
+    rows.push({ path, depth, rule, guides, last, hasChildren: children.length > 0 });
+    // the top level draws no connectors, so its children have no guide for it
+    const below = depth === 0 ? guides : [...guides, !last];
+    rows.push(...flatten(children, `${path}.rules`, depth + 1, below));
   });
   return rows;
+}
+
+/** The rows that are visible when the rules at `collapsed` paths are folded. */
+export function visibleRows(rows: Row[], collapsed: ReadonlySet<string>): Row[] {
+  return rows.filter((row) => {
+    for (const path of collapsed) if (row.path.startsWith(`${path}.rules[`)) return false;
+    return true;
+  });
+}
+
+/** The tree drawing that precedes a Target: `│  ├ `, `   └ `; empty at the top level. */
+export function treePrefix(row: Row): string {
+  if (row.depth === 0) return "";
+  return row.guides.map((more) => (more ? "│  " : "   ")).join("") + (row.last ? "└─ " : "├─ ");
 }
 
 /** The rule at a `rules[0].rules[1]` path, or undefined. */
@@ -183,4 +209,36 @@ export function columnOfMessage(message: string): string | null {
   const named = /'([A-Za-z_.]+)'|\b(transform\.\w+)/.exec(message)?.[0] ?? "";
   for (const [pattern, column] of keys) if (pattern.test(named)) return column;
   return null;
+}
+
+const COLUMN_LABELS: Record<string, string> = {
+  target: "Target",
+  type: "Type",
+  req: "Req.",
+  source: "Source",
+  expression: "Expression / filter / guard",
+  description: "Description",
+  validated: "Validated",
+};
+
+/** What makes a row worth a warning sign, one line per issue (the sign's tooltip). */
+export function rowIssues(rule: Rule, diagnostics: Diagnostic[]): string[] {
+  const issues: string[] = [];
+  for (const d of diagnostics) {
+    const column = columnOfMessage(d.message);
+    const what = column ? `Invalid ${COLUMN_LABELS[column] ?? column}` : "Invalid rule";
+    issues.push(`${d.severity === "error" ? what : "Warning"}: ${d.message}`);
+  }
+  if (rule.kind === "field") {
+    if (rule.validation.needs_review) issues.push("Review flag");
+    else if (!rule.validation.validated) issues.push("Not validated");
+  }
+  return issues;
+}
+
+export const MAX_RECENT = 10;
+
+/** `dir` moved to the front of the recent list, without duplicates, capped. */
+export function pushRecent(recent: string[], dir: string): string[] {
+  return [dir, ...recent.filter((d) => d !== dir)].slice(0, MAX_RECENT);
 }

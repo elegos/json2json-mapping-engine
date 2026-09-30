@@ -1,5 +1,6 @@
-import type { CellClassParams, ColDef, ValueSetterParams } from "ag-grid-community";
+import type { ColDef, ICellRendererParams, ValueSetterParams } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
+import { ProjectButton } from "./ProjectButton";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   chooseProject,
@@ -19,6 +20,10 @@ import {
   flatten,
   type FunctionalFile,
   nameOf,
+  pushRecent,
+  rowIssues,
+  treePrefix,
+  visibleRows,
   ruleAt,
   reviewState,
   type Row,
@@ -52,6 +57,15 @@ function usePersisted(key: string): [boolean, (value: boolean) => void] {
   return [value, set];
 }
 
+function loadRecent(): string[] {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem("recentProjects") ?? "[]");
+    return Array.isArray(parsed) ? parsed.filter((d): d is string => typeof d === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 const COMMANDS = ["transpile", "build", "check"] as const;
 
 export function App() {
@@ -65,6 +79,8 @@ export function App() {
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
   const [reportId, setReportId] = useState(0);
+  const [recent, setRecent] = useState<string[]>(loadRecent);
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [showIds, setShowIds] = usePersisted("showRuleIds");
   const [developerMode, setDeveloperMode] = usePersisted("developerMode");
 
@@ -95,6 +111,16 @@ export function App() {
     try {
       const found = await listFnFiles(dir);
       setProject(dir);
+      setCollapsed(new Set());
+      setRecent((old) => {
+        const next = pushRecent(old, dir);
+        try {
+          localStorage.setItem("recentProjects", JSON.stringify(next));
+        } catch {
+          /* not persisted */
+        }
+        return next;
+      });
       setFiles(found);
       setCurrent(null);
       setTree(null);
@@ -112,9 +138,9 @@ export function App() {
   }, []);
 
   const openProject = useCallback(async () => {
-    const dir = await chooseProject();
+    const dir = await chooseProject(recent[0]);
     if (dir) await openDir(dir);
-  }, [openDir]);
+  }, [openDir, recent]);
 
   useEffect(() => {
     initialProject().then(
@@ -180,7 +206,17 @@ export function App() {
     });
   }, []);
 
-  const rows = useMemo(() => (tree ? flatten(tree.rules) : []), [tree]);
+  const rows = useMemo(
+    () => (tree ? visibleRows(flatten(tree.rules), collapsed) : []),
+    [tree, collapsed],
+  );
+  const toggleFold = useCallback((path: string) => {
+    setCollapsed((old) => {
+      const next = new Set(old);
+      if (!next.delete(path)) next.add(path);
+      return next;
+    });
+  }, []);
   const diagnostics = useMemo(
     () => (current && report ? diagnosticsByRule(report.diagnostics, current) : new Map()),
     [current, report],
@@ -203,6 +239,19 @@ export function App() {
     const editableFor = (kinds: string[]) => (p: { data?: Row }) =>
       p.data !== undefined && kinds.includes(p.data.rule.kind);
     return [
+      {
+        headerName: "",
+        colId: "warn",
+        width: 56,
+        pinned: "left",
+        sortable: false,
+        resizable: false,
+        cellClass: "warn-cell",
+        valueGetter: (p) =>
+          p.data && rowIssues(p.data.rule, diagnostics.get(p.data.path) ?? []).length ? "⚠️" : "",
+        tooltipValueGetter: (p) =>
+          p.data ? rowIssues(p.data.rule, diagnostics.get(p.data.path) ?? []).join("\n") : "",
+      },
       { headerName: "Id", colId: "id", hide: !showIds, valueGetter: (p) => p.data?.rule.id ?? "", width: 100 },
       {
         headerName: "Target",
@@ -214,7 +263,25 @@ export function App() {
           edit(p.data.path, (r) => setName(r, String(p.newValue ?? "")));
           return true;
         },
-        cellStyle: (p: CellClassParams<Row>) => ({ paddingLeft: `${8 + (p.data?.depth ?? 0) * 18}px` }),
+        cellRenderer: (p: ICellRendererParams<Row>) =>
+          p.data ? (
+            <span>
+              <span className="tree">{treePrefix(p.data)}</span>
+              {p.data.hasChildren ? (
+                <span
+                  className="fold"
+                  title={collapsed.has(p.data.path) ? "Expand" : "Collapse"}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleFold(p.data!.path);
+                  }}
+                >
+                  {collapsed.has(p.data.path) ? "▸" : "▾"}
+                </span>
+              ) : null}
+              {p.value}
+            </span>
+          ) : null,
       },
       { headerName: "Kind",
         colId: "kind", valueGetter: (p) => p.data?.rule.kind, width: 80 },
@@ -341,12 +408,12 @@ export function App() {
         },
       },
     ];
-  }, [edit, showIds, developerMode]);
+  }, [edit, showIds, developerMode, diagnostics, collapsed, toggleFold]);
 
   return (
     <div className="app">
       <header>
-        <button onClick={openProject}>Open project…</button>
+        <ProjectButton recent={recent} onOpen={openProject} onPick={(d) => void openDir(d)} />
         <span className="project">{project ?? "no project"}</span>
         <span className="spacer" />
         <button disabled={!dirty || busy} onClick={save}>
@@ -389,6 +456,7 @@ export function App() {
               columnDefs={columns}
               getRowId={(p) => p.data.path}
               key={reportId}
+              tooltipShowDelay={200}
               defaultColDef={{
                 cellClassRules: {
                   "cell-invalid": (p) => {

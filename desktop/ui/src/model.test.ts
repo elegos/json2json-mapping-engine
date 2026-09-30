@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   columnOfMessage,
+  pushRecent,
+  rowIssues,
+  treePrefix,
+  visibleRows,
   diagnosticsByRule,
   expressionOf,
   flatten,
@@ -91,5 +95,30 @@ describe("model", () => {
       "expression",
     );
     expect(columnOfMessage("something else entirely")).toBeNull();
+  });
+
+  it("draws the tree and folds a loop", () => {
+    const rows = flatten(file.rules);
+    expect(rows.map(treePrefix)).toEqual(["", "", "└─ "]);
+    expect(visibleRows(rows, new Set(["rules[1]"])).map((r) => r.path)).toEqual([
+      "rules[0]",
+      "rules[1]",
+    ]);
+  });
+
+  it("lists what is wrong with a row", () => {
+    const rule = ruleAt(file, "rules[0]")!;
+    expect(rowIssues(rule, [])).toEqual(["Not validated"]);
+    const d = { severity: "error" as const, file: null, rule: null, message: "'type' is bad" };
+    expect(rowIssues(rule, [d])[0]).toBe("Invalid Type: 'type' is bad");
+  });
+
+  it("keeps the ten most recent projects, latest first", () => {
+    let recent: string[] = [];
+    for (let i = 0; i < 12; i++) recent = pushRecent(recent, `/p${i}`);
+    recent = pushRecent(recent, "/p5");
+    expect(recent).toHaveLength(10);
+    expect(recent[0]).toBe("/p5");
+    expect(recent.filter((d) => d === "/p5")).toHaveLength(1);
   });
 });

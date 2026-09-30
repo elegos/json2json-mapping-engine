@@ -23,3 +23,13 @@ footer { border-top: 1px solid #8884; max-height: 30%; overflow: auto; padding: 
 .switches { display: flex; gap: 16px; padding: 4px 12px; border-top: 1px solid #8884; font-size: 12px; }
 .switches label { display: flex; gap: 4px; align-items: center; }
 .cell-invalid { background: #e57c7c33 !important; }
+.split { position: relative; display: inline-flex; }
+.split-main { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.split-caret { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: -1px; padding-left: 6px; padding-right: 6px; font-size: 10px; }
+.split-menu { position: absolute; top: 100%; left: 0; z-index: 10; margin: 2px 0 0; padding: 4px 0; list-style: none; min-width: 100%; max-width: 70vw; background: Canvas; color: CanvasText; border: 1px solid #8886; border-radius: 4px; box-shadow: 0 4px 12px #0006; }
+.split-menu li { padding: 5px 12px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.split-menu li:hover { background: #2a5a9f55; }
+.tree { white-space: pre; font-family: ui-monospace, monospace; opacity: 0.55; }
+.fold { cursor: pointer; display: inline-block; width: 1.2em; }
+.warn-cell { text-align: center; cursor: default; }
+.warn-cell { padding: 0 !important; text-overflow: clip !important; }
