@@ -38,9 +38,11 @@ jobs:
 
   # Integration tests (`mapper test --integration`, harness in cli/track2.py) start an
   # ephemeral Oracle container (container-registry.oracle.com/database/adb-free)
-  # and connects to its published port on 127.0.0.1, so the job needs a
-  # docker daemon reachable from the job. Runners with the `docker-dind`
-  # label provide one.
+  # and connects to its published port, so the job needs a docker daemon reachable
+  # from the job. Runners with the `docker-dind` label create the job container on
+  # a dind daemon (tcp://docker-dind:2375) but pass no DOCKER_HOST to it, and the
+  # job sits on that daemon's bridge, where the name `docker-dind` does not
+  # resolve; the daemon is at the bridge's default gateway.
   track2:
     name: Integration tests
     runs-on: docker-dind
@@ -60,6 +62,12 @@ jobs:
 
       - name: Sync dependencies
         run: uv sync --all-extras --dev
+
+      - name: Locate the Docker daemon (dind, at the bridge gateway)
+        run: |
+          gw=$(python -c "import socket, struct; print(next(socket.inet_ntoa(struct.pack('<L', int(f[2], 16))) for f in (l.split() for l in open('/proc/net/route').readlines()[1:]) if f[1] == '00000000'))")
+          echo "DOCKER_HOST=tcp://$gw:2375" >> "$GITHUB_ENV"
+          echo "docker daemon: tcp://$gw:2375"
 
       - name: mapper build
         run: uv run mapper build
