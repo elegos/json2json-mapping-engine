@@ -67,3 +67,10 @@ rules:
         description: Unit price; left out when the quantity is zero.
         transform:
           expression: "@.total / @.qty"
+  - id: lut_currency
+    kind: lookup
+    label: countryCurrency
+    description: Fallback currency by country code.
+    entries:
+      IT: EUR
+      US: USD

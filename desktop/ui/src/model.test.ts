@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   columnOfMessage,
+  addEntry,
   insertionPoint,
+  lookups,
+  parseValue,
+  renameEntry,
+  showValue,
   type Row,
   type Rule,
   pushRecent,
@@ -148,5 +153,38 @@ describe("insertionPoint", () => {
   it("goes inside a selected container", () => {
     const row = { ...leaf("rules[3]"), rule: { kind: "object", id: null, description: null, output: "$.X", guard: null, rules: [] } as Rule };
     expect(insertionPoint(row)).toEqual({ parent: "rules[3]", index: null });
+  });
+});
+
+describe("lookup entries", () => {
+  it("parses typed text back to a value", () => {
+    expect(parseValue("12")).toBe(12);
+    expect(parseValue("true")).toBe(true);
+    expect(parseValue("null")).toBeNull();
+    expect(parseValue("EUR")).toBe("EUR");
+    expect(parseValue('"12"')).toBe("12");
+    expect(parseValue('"broken')).toBe('"broken');
+  });
+  it("shows strings bare and the rest as JSON", () => {
+    expect(showValue("EUR")).toBe("EUR");
+    expect(showValue(12)).toBe("12");
+    expect(showValue(null)).toBe("null");
+  });
+  it("renames a key in place and refuses a taken or empty one", () => {
+    const entries = { a: 1, b: 2, c: 3 };
+    expect(Object.keys(renameEntry(entries, "b", "x"))).toEqual(["a", "x", "c"]);
+    expect(renameEntry(entries, "b", "c")).toBe(entries);
+    expect(renameEntry(entries, "b", "")).toBe(entries);
+  });
+  it("adds an entry with a free key", () => {
+    expect(Object.keys(addEntry(addEntry({})))).toEqual(["key", "key2"]);
+  });
+  it("finds lookups at any depth with their path", () => {
+    const lookup = { kind: "lookup", id: null, description: null, label: "L", entries: { a: 1 } } as const;
+    const found = lookups([
+      lookup,
+      { kind: "object", id: null, description: null, output: "$.X", guard: null, rules: [lookup] },
+    ]);
+    expect(found.map((f) => f.path)).toEqual(["rules[0]", "rules[1].rules[0]"]);
   });
 });

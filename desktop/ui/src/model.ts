@@ -261,3 +261,55 @@ export function descendants(rule: Rule): number {
   if (rule.kind !== "object" && rule.kind !== "loop") return 0;
   return rule.rules.reduce((n, r) => n + 1 + descendants(r), 0);
 }
+
+/** Every lookup rule of the file with its path (they can sit inside containers). */
+export function lookups(rules: Rule[], prefix = "rules"): { path: string; rule: LookupRule }[] {
+  const found: { path: string; rule: LookupRule }[] = [];
+  rules.forEach((rule, i) => {
+    const path = `${prefix}[${i}]`;
+    if (rule.kind === "lookup") found.push({ path, rule });
+    else if (rule.kind === "object" || rule.kind === "loop") {
+      found.push(...lookups(rule.rules, `${path}.rules`));
+    }
+  });
+  return found;
+}
+
+/** A lookup value as the table shows it: strings bare, everything else as JSON. */
+export function showValue(value: unknown): string {
+  return typeof value === "string" ? value : JSON.stringify(value);
+}
+
+/** Typed text back to a value: a JSON number / true / false / null keeps that type,
+ * anything else is a string. Quote it (`"1"`) to force a string that looks like one. */
+export function parseValue(text: string): unknown {
+  const trimmed = text.trim();
+  if (/^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(trimmed) || ["true", "false", "null"].includes(trimmed)) {
+    return JSON.parse(trimmed) as unknown;
+  }
+  if (/^".*"$/.test(trimmed)) {
+    try {
+      return JSON.parse(trimmed) as unknown;
+    } catch {
+      return text;
+    }
+  }
+  return text;
+}
+
+/** `entries` with `from` renamed to `to`, keeping its position; unchanged if `to` is taken. */
+export function renameEntry(
+  entries: Record<string, unknown>,
+  from: string,
+  to: string,
+): Record<string, unknown> {
+  if (from === to || to === "" || to in entries) return entries;
+  return Object.fromEntries(Object.entries(entries).map(([k, v]) => [k === from ? to : k, v]));
+}
+
+/** `entries` plus a new row with a free key (`key`, `key2`, …). */
+export function addEntry(entries: Record<string, unknown>): Record<string, unknown> {
+  let key = "key";
+  for (let n = 2; key in entries; n++) key = `key${n}`;
+  return { ...entries, [key]: "" };
+}

@@ -57,3 +57,18 @@ button:disabled { opacity: 0.45; cursor: default; }
 .modal-buttons { display: flex; gap: 8px; justify-content: flex-end; }
 button.primary { background: #2a5a9f; border-color: #2a5a9f; color: white; }
 button.primary:hover:not(:disabled) { background: #3468b3; }
+
+.tabs { display: flex; gap: 4px; padding: 6px 8px 0; border-bottom: 1px solid #8884; }
+.tab { border-bottom-left-radius: 0; border-bottom-right-radius: 0; margin-bottom: -1px; }
+.tab.active { background: color-mix(in srgb, CanvasText 16%, Canvas); font-weight: 600; }
+.lookups { flex: 1; min-height: 0; display: flex; }
+.lookup-list { width: 220px; border-right: 1px solid #8884; overflow: auto; }
+.lookup-detail { flex: 1; padding: 12px 16px; overflow: auto; }
+.lookup-head { display: flex; gap: 12px; margin-bottom: 10px; }
+.lookup-head label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
+.lookup-head .grow { flex: 1; }
+.lookup-issue.error { color: #c0392b; }
+.lookup-issue.warning { color: #b8860b; }
+.lookup-detail table { border-collapse: collapse; margin: 8px 0; }
+.lookup-detail th { text-align: left; font-weight: 600; padding: 2px 6px; }
+.lookup-detail td { padding: 2px 4px; }

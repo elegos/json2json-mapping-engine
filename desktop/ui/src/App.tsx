@@ -2,6 +2,7 @@ import type { ColDef, ICellRendererParams, ValueSetterParams } from "ag-grid-com
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AgGridReact } from "ag-grid-react";
 import { type Choice, Confirm } from "./Confirm";
+import { Lookups } from "./Lookups";
 import { ProjectButton } from "./ProjectButton";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -27,6 +28,7 @@ import {
   flatten,
   type Diagnostic,
   type FunctionalFile,
+  type LookupRule,
   nameOf,
   pushRecent,
   rowIssues,
@@ -97,6 +99,7 @@ export function App() {
   const folding = useRef(false);
   const treeRef = useRef<FunctionalFile | null>(null);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  const [view, setView] = useState<"rules" | "lookups">("rules");
   const [showIds, setShowIds] = usePersisted("showRuleIds");
   const [developerMode, setDeveloperMode] = usePersisted("developerMode");
 
@@ -291,10 +294,10 @@ export function App() {
 
   const selectedRow = () => grid.current?.api?.getSelectedRows()[0];
 
-  const addRule = useCallback(async (kind: string) => {
+  const addRule = useCallback(async (kind: string, atRoot = false) => {
     const current = treeRef.current;
     if (!current) return;
-    const at = insertionPoint(selectedRow());
+    const at = atRoot ? { parent: null, index: null } : insertionPoint(selectedRow());
     try {
       setTree(await changeStructure(current, { op: "add_rule", ...at, kind }));
       if (at.parent) setCollapsed((old) => new Set([...old].filter((p) => p !== at.parent)));
@@ -304,9 +307,11 @@ export function App() {
     }
   }, []);
 
-  const deleteRule = useCallback(async () => {
+  const deleteRule = useCallback(async (path?: string) => {
     const current = treeRef.current;
-    const row = selectedRow();
+    const row = path
+      ? flatten(current?.rules ?? []).find((r) => r.path === path)
+      : selectedRow();
     if (!current || !row) return;
     const below = descendants(row.rule);
     if (below > 0) {
@@ -328,7 +333,9 @@ export function App() {
   }, [ask]);
 
   const rows = useMemo(
-    () => (tree ? visibleRows(flatten(tree.rules), collapsed) : []),
+    // lookups have their own view
+    () =>
+      tree ? visibleRows(flatten(tree.rules), collapsed).filter((r) => r.rule.kind !== "lookup") : [],
     [tree, collapsed],
   );
   const toggleFold = useCallback((path: string) => {
@@ -609,6 +616,29 @@ export function App() {
         </nav>
         <main>
           {tree && (
+            <div className="tabs">
+              <button className={view === "rules" ? "tab active" : "tab"} onClick={() => setView("rules")}>
+                Rules
+              </button>
+              <button className={view === "lookups" ? "tab active" : "tab"} onClick={() => setView("lookups")}>
+                Lookups
+              </button>
+            </div>
+          )}
+          {tree && view === "lookups" && (
+            <Lookups
+              tree={tree}
+              diagnostics={diagnostics}
+              onEdit={(path, change) =>
+                edit(path, (r) => {
+                  if (r.kind === "lookup") change(r as LookupRule);
+                })
+              }
+              onAdd={() => void addRule("lookup", true)}
+              onDelete={(path) => void deleteRule(path)}
+            />
+          )}
+          {tree && view === "rules" && (
             <div className="toolbar">
               <button onClick={() => void addRule("field")}>+ Field</button>
               <button onClick={() => void addRule("object")}>+ Object</button>
@@ -616,7 +646,7 @@ export function App() {
               <button onClick={() => void deleteRule()}>Delete</button>
             </div>
           )}
-          {tree ? (
+          {tree && view === "rules" ? (
             <div className="grid">
             <AgGridReact<Row>
               rowData={rows}
@@ -645,7 +675,7 @@ export function App() {
               }}
             />
             </div>
-          ) : (
+          ) : tree ? null : (
             <div className="empty">{project ? "Pick a mapping" : "Open a project to begin"}</div>
           )}
         </main>

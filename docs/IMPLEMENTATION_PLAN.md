@@ -415,7 +415,10 @@ Sliced; each slice is usable on its own:
       container, else after the selected rule, else at the end; it gets a free name
       (`NewField`, `NewField2`, …) and is incomplete on purpose: the check flags the empty
       expression / loop source, and Save refuses it until filled. Deleting a container asks
-      first. Not yet: reorder (drag), lookup rules (next).
+      first. Not yet: reorder (drag).
+- [x] **Lookups view** (`Rules` / `Lookups` tabs): list of `@label` lookups, key/value table,
+      add / delete lookup and entry. A number / `true` / `false` / `null` keeps its type,
+      anything else is a string (quote it to force one). Lookups are hidden from the rule grid.
 - [x] **M6.1b — check on edit** (`transpiler/check.py`; `mapper fn check FILE`; `check` op of
       `mapper serve`, run by the grid 150 ms after each edit). Per rule, so one bad rule
       hides no other: the loader's checks, expression syntax and anchors, duplicate

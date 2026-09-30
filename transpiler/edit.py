@@ -26,6 +26,7 @@ from transpiler.model import (
     FieldRule,
     FnYamlError,
     FunctionalFile,
+    LookupRule,
     LoopRule,
     ObjectRule,
     Rule,
@@ -139,6 +140,13 @@ def retarget(file: FunctionalFile, path: str, text: str) -> FunctionalFile:
     return file
 
 
+def _walk(rules: list[Rule]):
+    for rule in rules:
+        yield rule
+        if isinstance(rule, ObjectRule | LoopRule):
+            yield from _walk(rule.rules)
+
+
 def _fresh_name(children: list[Rule], base: str) -> str:
     n = 1
     name = base
@@ -151,7 +159,7 @@ def _fresh_name(children: list[Rule], base: str) -> str:
 def add_rule(
     file: FunctionalFile, parent: str | None, index: int | None, kind: str
 ) -> FunctionalFile:
-    """Insert a new rule of `kind` (field / object / loop) into the container at `parent`
+    """Insert a new rule of `kind` (field / object / loop / lookup) into the container at `parent`
     (None = the document root), at `index` (None = last). It gets a free default name
     (`NewField`, `NewField2`, ...) and is incomplete on purpose: the check flags what is
     still missing (a field's expression, a loop's source)."""
@@ -172,6 +180,14 @@ def add_rule(
         rule = ObjectRule(id=None, output=f"{prefix}{_fresh_name(children, 'NewObject')}")
     elif kind == "loop":
         rule = LoopRule(id=None, source="", output=f"{prefix}{_fresh_name(children, 'NewList')}[*]")
+    elif kind == "lookup":
+        # labels share one namespace (`@label` in expressions), so a free one is file-wide
+        taken = {r.label for r in _walk(file.rules) if isinstance(r, LookupRule)}
+        label, n = "NewLookup", 1
+        while label in taken:
+            n += 1
+            label = f"NewLookup{n}"
+        rule = LookupRule(id=None, label=label, entries={"key": "value"})
     else:
         raise FnYamlError(f"cannot add a rule of kind {kind!r}")
     children.insert(len(children) if index is None else index, rule)

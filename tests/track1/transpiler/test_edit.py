@@ -205,7 +205,17 @@ def test_add_rejects_a_field_as_parent_and_an_unknown_kind() -> None:
     with pytest.raises(FnYamlError):
         add_rule(tree(), "rules[0]", None, "field")
     with pytest.raises(FnYamlError):
-        add_rule(tree(), None, None, "lookup")
+        add_rule(tree(), None, None, "flow")
+
+
+def test_add_lookup_gets_a_file_wide_free_label() -> None:
+    from transpiler.model import LookupRule
+
+    once = add_rule(tree(), None, None, "lookup")
+    twice = add_rule(once, "rules[2]", None, "lookup")
+    labels = [r.label for r in (once.rules[-1], twice.rules[2].rules[-1])]  # type: ignore[union-attr]
+    assert labels == ["NewLookup", "NewLookup2"]
+    assert isinstance(once.rules[-1], LookupRule) and once.rules[-1].entries == {"key": "value"}
 
 
 def test_delete_removes_a_rule_with_its_children() -> None:
