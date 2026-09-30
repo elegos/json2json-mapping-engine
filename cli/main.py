@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
+import contextlib
+import functools
+import io
 import json
+import re
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import typer
 
@@ -32,6 +38,76 @@ from transpiler.serialize import apply_decay_tree, write_functional
 from transpiler.stages import STAGES, artifact, parse_stage
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
+
+_DIAGNOSTIC = re.compile(
+    r"^(?P<file>\S+\.(?:fn\.yaml|map\.py)): (?:(?P<rule>rules\[[^:]*\]): )?(?P<message>.*)$", re.S
+)
+
+
+def _diagnostic(severity: str, text: str) -> dict[str, str | None]:
+    """One output line as a diagnostic: `file` and `rule` (the `rules[i].rules[j]` path
+    the loader reports) when the message starts with them, else just the text."""
+    m = _DIAGNOSTIC.match(text)
+    if m is None:
+        return {"severity": severity, "file": None, "rule": None, "message": text}
+    return {
+        "severity": severity,
+        "file": m["file"],
+        "rule": m["rule"],
+        "message": m["message"],
+    }
+
+
+def _as_json(run: Callable[[], None]) -> None:
+    """Run a command with its output captured and print a single JSON document
+    instead: `{"ok", "messages", "diagnostics"}`. Exit code is the command's own."""
+    out, err = io.StringIO(), io.StringIO()
+    code = 0
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        try:
+            run()
+        except typer.Exit as exc:
+            code = exc.exit_code
+    diagnostics: list[dict[str, str | None]] = []
+    messages: list[str] = []
+    for line in err.getvalue().splitlines():
+        if line.startswith("error: "):
+            line = line.removeprefix("error: ")
+        elif line.startswith("error compiling "):
+            line = line.removeprefix("error compiling ")
+        diagnostics.append(_diagnostic("error", line))
+    for line in out.getvalue().splitlines():
+        if line.strip().startswith("warning: "):
+            diagnostics.append(_diagnostic("warning", line.strip().removeprefix("warning: ")))
+        else:
+            messages.append(line)
+    typer.echo(
+        json.dumps(
+            {"ok": code == 0, "messages": messages, "diagnostics": diagnostics},
+            ensure_ascii=False,
+        )
+    )
+    if code:
+        raise typer.Exit(code=code)
+
+
+def json_capable(command: Callable[..., None]) -> Callable[..., None]:
+    """Give a command the `--json` mode: the command declares a `json_output`
+    parameter (`JSON_OPTION`); when set, the run goes through `_as_json`."""
+
+    @functools.wraps(command)
+    def wrapper(*args: Any, **kwargs: Any) -> None:
+        if kwargs.get("json_output"):
+            _as_json(lambda: command(*args, **kwargs))
+        else:
+            command(*args, **kwargs)
+
+    return wrapper
+
+
+JSON_OPTION = typer.Option(
+    False, "--json", help="Print one JSON document (ok, messages, diagnostics) instead of text"
+)
 
 
 @app.command()
@@ -122,6 +198,7 @@ def _compile_and_package(config, file: str | None, force: bool = False) -> None:
 
 
 @app.command()
+@json_capable
 def transpile(
     file: str | None = typer.Argument(None, help="Single .fn.yaml file to transpile"),
     stage: str | None = typer.Option(
@@ -138,6 +215,7 @@ def transpile(
         "--cached",
         help="With --stage: start from the previous stage's artifact when it exists",
     ),
+    json_output: bool = JSON_OPTION,
 ) -> None:
     """Transpile .fn.yaml -> build/transpiled/*.map.py (driven mode only)."""
     if cached and stage is None:
@@ -189,17 +267,21 @@ def transpile(
 
 
 @app.command(name="compile")
+@json_capable
 def compile_cmd(
     file: str | None = typer.Argument(None, help="Report only this mapping (all are packaged)"),
     force: bool = typer.Option(False, "--force", help="Ignore the build cache"),
+    json_output: bool = JSON_OPTION,
 ) -> None:
     """Compile .map.py -> build/compiled/<package>.sql (bootstrap mode)."""
     _compile_and_package(_load_config_or_exit(), file, force)
 
 
 @app.command()
+@json_capable
 def build(
     file: str | None = typer.Argument(None, help="Report only this mapping (all are packaged)"),
+    json_output: bool = JSON_OPTION,
 ) -> None:
     """Full build: (transpile if driven +) compile -> build/."""
     config = _load_config_or_exit()
@@ -282,7 +364,8 @@ def test(
 
 
 @app.command()
-def check() -> None:
+@json_capable
+def check(json_output: bool = JSON_OPTION) -> None:
     """Verify build/compiled/ is in sync with current sources. Never
     modifies sources or committed files; always recompiles fresh (does not
     trust the build cache, which only tracks source hashes — not whether

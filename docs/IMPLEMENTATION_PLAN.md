@@ -389,10 +389,14 @@ Sliced; each slice is usable on its own:
 - [ ] **M6.1 — shell, grid, save.** Open a project; list `mappings/functional/*.fn.yaml`;
       editable rule grid; save; Build / Check / Test buttons showing `mapper` output.
       No git, no LLM.
-      - [ ] `mapper` gains a `--json` output mode (diagnostics with rule id/path, warnings,
-            per-file status) — needed so the grid can flag rows.
-      - [ ] A CLI entry that reads/writes a `.fn.yaml` as JSON through the `transpiler.model`
-            loader (so the grid never parses YAML itself); `apply_decay` on save.
+      - [x] `--json` on `transpile` / `compile` / `build` / `check`: one document
+            `{ok, messages, diagnostics[{severity, file, rule, message}]}`, where `rule` is
+            the `rules[i].rules[j]` path the loader reports. (`test` streams pytest output;
+            not JSON yet.)
+      - [x] `mapper fn read` / `mapper fn write` move a `.fn.yaml` as JSON through the
+            `transpiler.model` loader (`transpiler/serialize.py` writes it back); `write`
+            applies `apply_decay` per rule id and refuses a tree the loader rejects. YAML
+            comments and hand-edited key order are not preserved.
       - [ ] Python resolution order (bundled → `python3.XX` → `python3` → `python`);
             read-only mode when none is found.
 - [ ] **M6.2 — validation UX.** validated / needs_review states, manual-override split

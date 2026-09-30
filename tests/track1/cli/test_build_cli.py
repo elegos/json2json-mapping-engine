@@ -247,3 +247,33 @@ def test_build_single_file_still_packages_every_mapping(project: Path):
     assert "order_event.map.py" not in result.output
     assert (project / COMPILED / "map_ping.sql").is_file()
     assert (project / COMPILED / "map_order_event.sql").is_file()
+
+
+def test_json_output_of_a_build(project: Path) -> None:
+    (project / "mappings" / "ping.map.py").write_text(PING_MAPPING)
+    result = runner.invoke(app, ["build", "--json"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is True and payload["diagnostics"] == []
+    assert any(line.startswith("compiled: ") for line in payload["messages"])
+
+
+def test_json_output_of_a_failed_build(project: Path) -> None:
+    (project / "mappings" / "ping.map.py").write_text("import os\n")
+    result = runner.invoke(app, ["build", "--json"])
+    assert result.exit_code == 1
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is False
+    assert payload["diagnostics"] and payload["diagnostics"][0]["severity"] == "error"
+
+
+def test_json_diagnostic_carries_the_rule_path() -> None:
+    from cli.main import _diagnostic
+
+    d = _diagnostic("error", "mappings/functional/x.fn.yaml: rules[0].rules[2]: bad type")
+    assert d == {
+        "severity": "error",
+        "file": "mappings/functional/x.fn.yaml",
+        "rule": "rules[0].rules[2]",
+        "message": "bad type",
+    }
