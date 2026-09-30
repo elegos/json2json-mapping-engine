@@ -379,9 +379,28 @@ Independent of M6/M7; pick up in any order.
 
 ## ⬜ M6 — Tauri desktop tool
 
-Not started (Rust shell, AG Grid frontend, Gitoxide VCS, embedded LLM).
-Depends on M5 existing first (the tool edits `.fn.yaml`, which needs the
-transpiler to do anything with).
+Rust shell (Tauri), TypeScript + React + AG Grid frontend, in `desktop/`
+(`desktop/src-tauri`, `desktop/ui`). Rust owns the shell (file I/O, subprocesses, later VCS);
+Python owns the pipeline semantics: the tool talks to the `mapper` CLI as a subprocess
+and never re-implements build logic.
+
+Sliced; each slice is usable on its own:
+
+- [ ] **M6.1 — shell, grid, save.** Open a project; list `mappings/functional/*.fn.yaml`;
+      editable rule grid; save; Build / Check / Test buttons showing `mapper` output.
+      No git, no LLM.
+      - [ ] `mapper` gains a `--json` output mode (diagnostics with rule id/path, warnings,
+            per-file status) — needed so the grid can flag rows.
+      - [ ] A CLI entry that reads/writes a `.fn.yaml` as JSON through the `transpiler.model`
+            loader (so the grid never parses YAML itself); `apply_decay` on save.
+      - [ ] Python resolution order (bundled → `python3.XX` → `python3` → `python`);
+            read-only mode when none is found.
+- [ ] **M6.2 — validation UX.** validated / needs_review states, manual-override split
+      pane, function-changed warnings.
+- [ ] **M6.3 — VCS.** Gitoxide save-as-commit, pull --rebase, semantic rule-level merge.
+- [ ] **M6.4 — LLM assist.** Validation suggestions, expression builder (Ollama / API).
+
+Prerequisites on the dev machine: `webkit2gtk-4.1` dev packages, `tauri-cli`.
 
 ---
 
