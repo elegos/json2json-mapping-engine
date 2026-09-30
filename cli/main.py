@@ -215,7 +215,8 @@ def test(
     """Run the offline tests (pytest, no runtime; track 1) and/or the
     integration tests (golden-record tests against an ephemeral Oracle
     container; track 2). Without a selector both run; the integration tests
-    are skipped with a note when no container runtime is available."""
+    are skipped with a note when no container runtime is available or there
+    are no cases; with --integration / --track 2 either one is a failure."""
     if offline:
         track = 1
     if integration:
@@ -250,7 +251,10 @@ def test(
                 typer.echo(f"error: {exc}", err=True)
                 raise typer.Exit(code=1) from exc
             if not results:
-                typer.echo("no cases under tests/golden/<mapping>/*.input.json — skipped")
+                where = f"tests/golden/{mapping}" if mapping else "tests/golden/<mapping>"
+                typer.echo(f"no cases under {where}/*.input.json — skipped")
+                # asked for explicitly (as with a missing runtime): nothing ran, not a pass
+                failed = failed or track == 2
             for r in results:
                 label = f"{r.case.mapping}/{r.case.name}"
                 if r.passed is None:

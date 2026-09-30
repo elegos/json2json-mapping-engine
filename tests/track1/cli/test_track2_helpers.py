@@ -82,6 +82,22 @@ def test_test_command_track2_unavailable(tmp_path: Path, monkeypatch: pytest.Mon
     assert runner.invoke(app, ["test", "--track", "3"]).exit_code == 2
 
 
+def test_test_command_without_cases(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "mapper.toml").write_text(
+        '[project]\nmode = "bootstrap"\ntarget = "plsql"\n'
+        '[target.plsql]\nschema = "S"\npackage = "P"\nerror_code = -20000\n'
+    )
+    runner = CliRunner()
+    monkeypatch.setattr("cli.main.detect_runtime", lambda: "docker")
+    monkeypatch.setattr("cli.main.run_track1", lambda: 0)
+    monkeypatch.setattr("cli.main.run_track2", lambda *_a, **_k: [])
+    assert runner.invoke(app, ["test"]).exit_code == 0
+    strict = runner.invoke(app, ["test", "--integration"])
+    assert strict.exit_code == 1
+    assert "no cases" in strict.output
+
+
 def test_run_track2_without_cases_needs_no_runtime(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     from cli.config import parse_config
 
