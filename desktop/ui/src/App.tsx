@@ -31,6 +31,26 @@ import {
 const fieldOnly = (p: { data?: Row }) =>
   p.data?.rule.kind === "field" ? undefined : { component: () => null };
 
+/** A boolean setting remembered across runs (per-viewer convenience only). */
+function usePersisted(key: string): [boolean, (value: boolean) => void] {
+  const [value, setValue] = useState(() => {
+    try {
+      return localStorage.getItem(key) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const set = (next: boolean) => {
+    setValue(next);
+    try {
+      localStorage.setItem(key, next ? "1" : "0");
+    } catch {
+      /* not persisted */
+    }
+  };
+  return [value, set];
+}
+
 const COMMANDS = ["transpile", "build", "check"] as const;
 
 export function App() {
@@ -43,6 +63,8 @@ export function App() {
   const [report, setReport] = useState<CommandReport | null>(null);
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
+  const [showIds, setShowIds] = usePersisted("showRuleIds");
+  const [developerMode, setDeveloperMode] = usePersisted("developerMode");
 
   useEffect(() => {
     pythonStatus().then(setPython, (e) => setStatus(String(e)));
@@ -166,11 +188,9 @@ export function App() {
     const editableFor = (kinds: string[]) => (p: { data?: Row }) =>
       p.data !== undefined && kinds.includes(p.data.rule.kind);
     return [
-      { headerName: "Rule", valueGetter: (p) => p.data?.path, width: 150, pinned: "left" },
-      { headerName: "Id", valueGetter: (p) => p.data?.rule.id ?? "", width: 90 },
-      { headerName: "Kind", valueGetter: (p) => p.data?.rule.kind, width: 80 },
+      { headerName: "Id", colId: "id", hide: !showIds, valueGetter: (p) => p.data?.rule.id ?? "", width: 100 },
       {
-        headerName: "Name",
+        headerName: "Target",
         width: 200,
         editable: true,
         valueGetter: (p) => (p.data ? nameOf(p.data.rule) : ""),
@@ -180,6 +200,7 @@ export function App() {
         },
         cellStyle: (p: CellClassParams<Row>) => ({ paddingLeft: `${8 + (p.data?.depth ?? 0) * 18}px` }),
       },
+      { headerName: "Kind", valueGetter: (p) => p.data?.rule.kind, width: 80 },
       {
         headerName: "Type",
         width: 90,
@@ -230,11 +251,6 @@ export function App() {
         },
       },
       {
-        headerName: "Status",
-        width: 80,
-        valueGetter: (p) => (p.data?.rule.kind === "field" ? p.data.rule.transform.status : ""),
-      },
-      {
         headerName: "Description",
         width: 260,
         editable: true,
@@ -245,6 +261,12 @@ export function App() {
           });
           return true;
         },
+      },
+      {
+        headerName: "Status",
+        hide: !developerMode,
+        width: 80,
+        valueGetter: (p) => (p.data?.rule.kind === "field" ? p.data.rule.transform.status : ""),
       },
       {
         headerName: "Validated",
@@ -289,7 +311,7 @@ export function App() {
         },
       },
     ];
-  }, [edit]);
+  }, [edit, showIds, developerMode]);
 
   return (
     <div className="app">
@@ -313,6 +335,13 @@ export function App() {
       )}
       <div className="body">
         <nav>
+          <button
+            className="project-properties"
+            disabled={!project}
+            onClick={() => setStatus("Project properties (mapper.toml) are not editable here yet")}
+          >
+            Project properties…
+          </button>
           {files.map((f) => (
             <div
               key={f}
@@ -344,6 +373,20 @@ export function App() {
             <div className="empty">{project ? "Pick a mapping" : "Open a project to begin"}</div>
           )}
         </main>
+      </div>
+      <div className="switches">
+        <label>
+          <input type="checkbox" checked={showIds} onChange={(e) => setShowIds(e.target.checked)} />
+          Show rule ids
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={developerMode}
+            onChange={(e) => setDeveloperMode(e.target.checked)}
+          />
+          Developer mode
+        </label>
       </div>
       <footer>
         <div className="status">{status}</div>

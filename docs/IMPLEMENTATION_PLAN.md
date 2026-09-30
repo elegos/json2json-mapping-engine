@@ -404,6 +404,11 @@ Sliced; each slice is usable on its own:
             `desktop/fixtures/orders-project`; `cargo test` drives the real `mapper`.
       - [ ] Run it by hand (`cargo tauri dev`) and fix what the GUI shows — not yet done:
             nothing here could open a window.
+- [ ] **M6.1b — check on edit.** Every rule, when modified, is checked for form (the loader
+      and the expression parser) and for validity against the input / output JSON Schema
+      when present; findings flag the row. Needs a per-rule check entry in the CLI.
+- [ ] **Project properties** (GUI for `mapper.toml`): the button exists in the sidebar, the
+      form does not.
 - [ ] **M6.2 — validation UX.** validated / needs_review states, manual-override split
       pane, function-changed warnings.
 - [ ] **M6.3 — VCS.** Gitoxide save-as-commit, pull --rebase, semantic rule-level merge.
