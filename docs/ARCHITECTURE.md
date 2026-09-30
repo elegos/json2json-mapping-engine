@@ -181,7 +181,7 @@ flowchart TB
     end
 
     subgraph integ["Integration tests — mapper test --integration"]
-        C["tests/golden/&lt;mapping&gt;/*.input.json<br/>(+ optional *.expected.json)"] --> H["harness"]
+        C["tests/golden/&lt;mapping&gt;/*.input.json<br/>(+ optional *.expected.json, *.expected_errors.json)"] --> H["harness"]
         H --> ENV[("backend test environment<br/>PL/SQL: ephemeral Oracle container<br/>via podman / docker")]
         ENV --> H
         H --> CHK["per case:<br/>safe entry point → diff vs expected<br/>raising entry point → consistent with safe<br/>output vs allowed constraints → warnings"]
@@ -1133,9 +1133,15 @@ Every function takes `root`, then the element of each enclosing loop outermost f
 ending with its own (`src2, src1, src`), then the positions it uses (`index2, index1,
 index`). A child is emitted before its parent (`def` order is call order).
 
-One consequence: the unit of failure is the top-level element. If anything inside an
-`Orders[]` element fails, that element is reported under the top-level rule and omitted;
-the compiler does not isolate nested members from each other.
+**Error isolation.** A call to another rule function (a dataclass field value, `name =
+rule_fn(...)`, or `list.append(rule_fn(...))`) is a *member*: if it fails, only that
+member is left out (as if it had returned bare), the failure is reported under the id of
+the failing rule (first failure of a rule wins), and the enclosing element is still
+emitted. The raising entry point still raises at the end. The element is therefore
+partial: a `required` field can be missing from it, which is reported through the rule
+errors, not validated against the schema. Anything else failing inside a rule function
+(a field expression, a builtin) still fails the whole function, and so the nearest
+enclosing member or, at the top, the top-level element.
 
 The Type Checker compares nested dataclasses with the output schema *structurally*
 (class names need not match): each dataclass field must be declared on the target schema

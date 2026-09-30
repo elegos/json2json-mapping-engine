@@ -299,6 +299,50 @@ class _RuleSignature:
     return_expected: str
     return_plsql_type: str
     nullable: bool
+    # the function calls other rule functions, so it takes the `p__errors` sink where a
+    # failed nested member is recorded (the member is left out, the function goes on)
+    records_errors: bool = False
+
+
+# Error sink shared by the rule functions of one entry-point call (§Nested output: error
+# isolation). `JSON_OBJECT_T` of `rule id -> cause`; the entry point merges it into `v_errors`.
+_ERRORS_PARAM = "p__errors"
+_ERRORS_LOCAL = "v_rule_errors"
+
+
+def _calls_rule_function(fn_def: ast.FunctionDef, rule_names: set[str]) -> bool:
+    return any(
+        isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in rule_names
+        for n in ast.walk(fn_def)
+    )
+
+
+def _call_args(sig: _RuleSignature, args: list[str], errors_var: str, omitted_var: str) -> str:
+    """Argument list of a rule-function call: values, the error sink when the callee
+    takes one, then the `omitted` flag."""
+    return ", ".join([*args, *([errors_var] if sig.records_errors else []), omitted_var])
+
+
+def _record_error(rule_id: str, errors_var: str) -> list[str]:
+    """First failure of a rule wins, like the entry point's own `v_errors`."""
+    return [
+        f"IF NOT {errors_var}.has({_quote(rule_id)}) THEN",
+        f"    {errors_var}.put({_quote(rule_id)}, SQLERRM);",
+        "END IF;",
+    ]
+
+
+def _isolated_call(rule_id: str, call: str, target: str, omitted: str) -> list[str]:
+    """`target := call`, where a failure records the error and marks the member omitted."""
+    return [
+        "BEGIN",
+        f"    {target} := {call};",
+        "EXCEPTION",
+        "    WHEN OTHERS THEN",
+        *_indent(_record_error(rule_id, _ERRORS_PARAM), 2),
+        f"        {omitted} := TRUE;",
+        "END;",
+    ]
 
 
 def _resolve_signature(fn_def: ast.FunctionDef) -> _RuleSignature:
@@ -686,8 +730,13 @@ def _emit_value(
         ctx.declare(f"{res} {_decl_type(sig.return_expected)};")
         ctx.declare(f"{om} BOOLEAN;")
         args = [translator.translate(a, sig.param_expected[i]) for i, a in enumerate(value.args)]
-        call = f"{translator.fn_name(rule)}(" + ", ".join([*args, om]) + ")"
-        return [f"{res} := {call};", f"IF NOT {om} THEN", f"    {sink(res)}", "END IF;"]
+        call = f"{translator.fn_name(rule)}({_call_args(sig, args, _ERRORS_PARAM, om)})"
+        return [
+            *_isolated_call(rule, call, res, om),
+            f"IF NOT {om} THEN",
+            f"    {sink(res)}",
+            "END IF;",
+        ]
     if _is_dataclass_construction(value, translator.dataclasses):
         assert isinstance(value, ast.Call)
         n = next(ctx.counter)
@@ -908,8 +957,8 @@ def _translate_fn_body(
                 args = [
                     translator.translate(a, sig.param_expected[i]) for i, a in enumerate(value.args)
                 ]
-                call = f"{translator.fn_name(value.func.id)}(" + ", ".join([*args, om]) + ")"
-                out.append(f"{mangled} := {call};")
+                call = f"{translator.fn_name(value.func.id)}({_call_args(sig, args, _ERRORS_PARAM, om)})"
+                out.extend(_isolated_call(value.func.id, call, mangled, om))
             else:
                 inferred = infer_type(value, ctx)
                 rhs = translator.translate(value, inferred)
@@ -1100,6 +1149,8 @@ class PlsqlCodeGenerator:
             flow_stmts.append(stmt)
 
         rule_signatures = {name: _resolve_signature(fn_def) for name, fn_def in rule_defs.items()}
+        for name, fn_def in rule_defs.items():
+            rule_signatures[name].records_errors = _calls_rule_function(fn_def, set(rule_defs))
 
         function_texts = [
             self._compile_rule_function(name, fn_def, rule_signatures, dataclasses)
@@ -1115,7 +1166,12 @@ class PlsqlCodeGenerator:
             list_accumulators=list_accumulators,
         )
 
-        entry_points = self._render(mapping_id, body_lines, list_accumulators)
+        entry_points = self._render(
+            mapping_id,
+            body_lines,
+            list_accumulators,
+            uses_rule_errors=any(sig.records_errors for sig in rule_signatures.values()),
+        )
         parallel = {
             name: degree
             for name, fn_def in rule_defs.items()
@@ -1179,6 +1235,8 @@ class PlsqlCodeGenerator:
             f"p_{pname} IN {ptype}"
             for pname, ptype in zip(sig.param_names, sig.param_plsql_types, strict=True)
         ]
+        if sig.records_errors:
+            params.append(f"{_ERRORS_PARAM} IN OUT NOCOPY JSON_OBJECT_T")
         params.append("p_omitted OUT BOOLEAN")
         decls = "\n    ".join(ctx.declarations)
 
@@ -1334,7 +1392,10 @@ class PlsqlCodeGenerator:
             ]
             result_var = f"v_result_{rule_id}"
             omitted_var = f"v_omitted_{rule_id}"
-            call_expr = f"{self._fn_name(rule_id)}(" + ", ".join([*arg_exprs, omitted_var]) + ")"
+            call_expr = (
+                f"{self._fn_name(rule_id)}("
+                f"{_call_args(sig, arg_exprs, _ERRORS_LOCAL, omitted_var)})"
+            )
             return self._guarded(
                 rule_id,
                 declare=[
@@ -1486,6 +1547,7 @@ class PlsqlCodeGenerator:
         mapping_id: str,
         body_lines: list[str],
         list_accumulators: dict[str, _ListAccumulator],
+        uses_rule_errors: bool = False,
     ) -> list[PlsqlSubprogram]:
         accumulator_decl_lines = [
             f"{acc.var_name} JSON_ARRAY_T := JSON_ARRAY_T();" for acc in list_accumulators.values()
@@ -1501,6 +1563,11 @@ class PlsqlCodeGenerator:
                 "v_out_obj  JSON_OBJECT_T := JSON_OBJECT_T();",
                 "TYPE t_error_map IS TABLE OF VARCHAR2(4000) INDEX BY VARCHAR2(200);",
                 "v_errors   t_error_map;",
+                *(
+                    [f"{_ERRORS_LOCAL} JSON_OBJECT_T := JSON_OBJECT_T();"]
+                    if uses_rule_errors
+                    else []
+                ),
                 *accumulator_decl_lines,
             ]
         )
@@ -1518,7 +1585,26 @@ class PlsqlCodeGenerator:
         # the next entry would push it past `_ERROR_PAYLOAD_BYTE_BUDGET`.
         # Callers must read the message via `DBMS_UTILITY.FORMAT_ERROR_STACK`,
         # not bare `SQLERRM`, or they will still see it cut off at 512 bytes.
+        # Failures of nested members were recorded by the rule functions (not raised):
+        # fold them into `v_errors` so both entry points report them like any other.
+        merge_rule_errors_lines = (
+            [
+                "DECLARE",
+                f"    v_rule_keys JSON_KEY_LIST := {_ERRORS_LOCAL}.get_keys;",
+                "BEGIN",
+                "    FOR v_k IN 1 .. v_rule_keys.COUNT LOOP",
+                "        IF NOT v_errors.EXISTS(v_rule_keys(v_k)) THEN",
+                f"            v_errors(v_rule_keys(v_k)) := {_ERRORS_LOCAL}.get_String(v_rule_keys(v_k));",
+                "        END IF;",
+                "    END LOOP;",
+                "END;",
+            ]
+            if uses_rule_errors
+            else []
+        )
+
         raising_tail_lines = [
+            *merge_rule_errors_lines,
             "IF v_errors.COUNT > 0 THEN",
             "    DECLARE",
             "        v_err_arr   JSON_ARRAY_T := JSON_ARRAY_T();",
@@ -1560,6 +1646,7 @@ class PlsqlCodeGenerator:
         ]
 
         safe_tail_lines = [
+            *merge_rule_errors_lines,
             "DECLARE",
             "    v_err_arr JSON_ARRAY_T := JSON_ARRAY_T();",
             "    v_err_obj JSON_OBJECT_T;",

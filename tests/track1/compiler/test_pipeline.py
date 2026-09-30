@@ -83,3 +83,20 @@ def test_nested_output_matches_golden_sql():
     assert "JSON_ARRAY_T()" in sql
     assert "fn_nested_output_line_rule(p_root, p_o, v_order_rule_l," in sql
     assert "IF NOT v_order_rule__ro" in sql
+
+
+def test_nested_rule_call_isolates_the_member():
+    sql = compile_file(FIXTURES / "nested_output.map.py")
+    # the caller takes the error sink; a failing nested call records itself and is left out
+    assert "p__errors IN OUT NOCOPY JSON_OBJECT_T, p_omitted OUT BOOLEAN" in sql
+    assert "p__errors.put('tax_rule', SQLERRM);" in sql
+    assert "p__errors.put('line_rule', SQLERRM);" in sql
+    # the entry points hand it down and fold it into their own error map
+    assert "v_rule_errors JSON_OBJECT_T := JSON_OBJECT_T();" in sql
+    assert sql.count("v_errors(v_rule_keys(v_k)) := v_rule_errors.get_String") == 2
+
+
+def test_leaf_rule_functions_take_no_error_sink():
+    sql = compile_file(FIXTURES / "lines_array.map.py")
+    assert "p__errors" not in sql
+    assert "v_rule_errors" not in sql

@@ -12,6 +12,9 @@ Case layout (per mapping, by basename of `mappings/<name>.map.py`):
 
     tests/golden/<name>/<case>.input.json      required
     tests/golden/<name>/<case>.expected.json   optional — omitted = display only
+    tests/golden/<name>/<case>.expected_errors.json
+                                               optional — the rule ids `_safe` must report
+                                               (a JSON list); without it any rule error fails
 
 The project's single generated package (`build/compiled/<package>.sql`) is
 deployed once; each case calls `<package>.map_<id>_safe`. Rule functions are
@@ -62,6 +65,7 @@ class TestCase:
     name: str
     input_path: Path
     expected_path: Path | None
+    expected_errors: list[str] | None = None
 
 
 def discover_cases(golden_dir: Path = GOLDEN_DIR, mapping: str | None = None) -> list[TestCase]:
@@ -74,7 +78,16 @@ def discover_cases(golden_dir: Path = GOLDEN_DIR, mapping: str | None = None) ->
         for inp in sorted(mdir.glob("*.input.json")):
             name = inp.name.removesuffix(".input.json")
             expected = mdir / f"{name}.expected.json"
-            cases.append(TestCase(mdir.name, name, inp, expected if expected.is_file() else None))
+            errors = mdir / f"{name}.expected_errors.json"
+            cases.append(
+                TestCase(
+                    mdir.name,
+                    name,
+                    inp,
+                    expected if expected.is_file() else None,
+                    json.loads(errors.read_text()) if errors.is_file() else None,
+                )
+            )
     return cases
 
 
@@ -388,8 +401,14 @@ def run_case(
         return CaseResult(case, None, actual, rule_errors, warnings=warnings)
     expected = json.loads(case.expected_path.read_text())
     diff = json_diff(expected, actual)
-    ok = not diff and not rule_errors and not twin
-    msg = twin or ("rule errors reported" if rule_errors and not diff else "")
+    if case.expected_errors is None:
+        errors_ok, errors_msg = not rule_errors, "rule errors reported"
+    else:
+        reported = sorted(e["rule"] for e in rule_errors)
+        errors_ok = reported == sorted(case.expected_errors)
+        errors_msg = f"rule errors {reported}, expected {sorted(case.expected_errors)}"
+    ok = not diff and errors_ok and not twin
+    msg = twin or (errors_msg if not errors_ok and not diff else "")
     return CaseResult(case, ok, actual, rule_errors, diff, msg, warnings)
 
 

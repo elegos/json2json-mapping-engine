@@ -351,8 +351,12 @@ Independent of M6/M7; pick up in any order.
       on the loop's element function; `@parallel(N)` is an alias of `degree=N` in the DSL.
       PL/SQL backend: `map_<id>_fn ... PARALLEL_ENABLE` SQL-callable wrapper (checked on Oracle
       by the `orders` golden cases).
-- [ ] **Error isolation between nested members** (today the top-level element is the
-      unit of failure).
+- [x] **Error isolation between nested members.** A failing nested rule call leaves out
+      only its member and is reported under its own rule id; the parent is emitted
+      (partial, `required` not enforced). PL/SQL: rule functions that call other rule
+      functions take `p__errors IN OUT NOCOPY JSON_OBJECT_T`, the entry points fold it
+      into their error map. Integration case: `orders/failed_member`
+      (`<case>.expected_errors.json` declares the rule ids a case must report).
 - [ ] **Multi-package grouping key** for PL/SQL (optional, like `export_rule_functions`).
 - [x] **Backend dispatch on `[project] target`.** Coarse `Backend` ABC
       (`compiler/backends/base.py`), self-discovering registry, `PlsqlBackend`; pipeline,

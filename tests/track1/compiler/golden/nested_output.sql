@@ -38,7 +38,7 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_RULES AS
         END IF;
     END fn_nested_output_tax_rule;
 
-    FUNCTION fn_nested_output_order_rule(p_root IN JSON_OBJECT_T, p_o IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN JSON_OBJECT_T IS
+    FUNCTION fn_nested_output_order_rule(p_root IN JSON_OBJECT_T, p_o IN JSON_OBJECT_T, p__errors IN OUT NOCOPY JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN JSON_OBJECT_T IS
         v_order_rule_lines JSON_ARRAY_T;
         v_forarr_0 JSON_ARRAY_T;
         v_order_rule_l JSON_OBJECT_T;
@@ -75,7 +75,15 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_RULES AS
             IF (v_order_rule_l.get_Boolean('active') = TRUE) THEN
                 v_order_rule_j := v_order_rule_cnt0;
                 v_order_rule_cnt0 := v_order_rule_cnt0 + 1;
-                v_order_rule__rc1 := fn_nested_output_line_rule(p_root, p_o, v_order_rule_l, v_order_rule_j, v_order_rule__ro1);
+                BEGIN
+                    v_order_rule__rc1 := fn_nested_output_line_rule(p_root, p_o, v_order_rule_l, v_order_rule_j, v_order_rule__ro1);
+                EXCEPTION
+                    WHEN OTHERS THEN
+                        IF NOT p__errors.has('line_rule') THEN
+                            p__errors.put('line_rule', SQLERRM);
+                        END IF;
+                        v_order_rule__ro1 := TRUE;
+                END;
                 IF NOT v_order_rule__ro1 THEN
                     v_order_rule_lines.append(v_order_rule__rc1);
                 END IF;
@@ -83,7 +91,15 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_RULES AS
         END LOOP;
         v_order_rule__dc := JSON_OBJECT_T();
         v_order_rule__dc.put('OrderId', p_o.get_String('id'));
-        v_order_rule__rc2 := fn_nested_output_tax_rule(p_root, p_o, v_order_rule__ro2);
+        BEGIN
+            v_order_rule__rc2 := fn_nested_output_tax_rule(p_root, p_o, v_order_rule__ro2);
+        EXCEPTION
+            WHEN OTHERS THEN
+                IF NOT p__errors.has('tax_rule') THEN
+                    p__errors.put('tax_rule', SQLERRM);
+                END IF;
+                v_order_rule__ro2 := TRUE;
+        END;
         IF NOT v_order_rule__ro2 THEN
             v_order_rule__dc.put('Tax', v_order_rule__rc2);
         END IF;
@@ -99,6 +115,7 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_RULES AS
         v_out_obj  JSON_OBJECT_T := JSON_OBJECT_T();
         TYPE t_error_map IS TABLE OF VARCHAR2(4000) INDEX BY VARCHAR2(200);
         v_errors   t_error_map;
+        v_rule_errors JSON_OBJECT_T := JSON_OBJECT_T();
         v_arr_Orders JSON_ARRAY_T := JSON_ARRAY_T();
     BEGIN
         DECLARE
@@ -112,7 +129,7 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_RULES AS
                         v_result_order_rule JSON_OBJECT_T;
                         v_omitted_order_rule BOOLEAN;
                     BEGIN
-                        v_result_order_rule := fn_nested_output_order_rule(v_srcroot, v_o, v_omitted_order_rule);
+                        v_result_order_rule := fn_nested_output_order_rule(v_srcroot, v_o, v_rule_errors, v_omitted_order_rule);
                         IF NOT v_omitted_order_rule THEN
                             v_arr_Orders.append(v_result_order_rule);
                         END IF;
@@ -126,6 +143,15 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_RULES AS
             END LOOP;
         END;
 
+        DECLARE
+            v_rule_keys JSON_KEY_LIST := v_rule_errors.get_keys;
+        BEGIN
+            FOR v_k IN 1 .. v_rule_keys.COUNT LOOP
+                IF NOT v_errors.EXISTS(v_rule_keys(v_k)) THEN
+                    v_errors(v_rule_keys(v_k)) := v_rule_errors.get_String(v_rule_keys(v_k));
+                END IF;
+            END LOOP;
+        END;
         IF v_errors.COUNT > 0 THEN
             DECLARE
                 v_err_arr   JSON_ARRAY_T := JSON_ARRAY_T();
@@ -174,6 +200,7 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_RULES AS
         v_out_obj  JSON_OBJECT_T := JSON_OBJECT_T();
         TYPE t_error_map IS TABLE OF VARCHAR2(4000) INDEX BY VARCHAR2(200);
         v_errors   t_error_map;
+        v_rule_errors JSON_OBJECT_T := JSON_OBJECT_T();
         v_arr_Orders JSON_ARRAY_T := JSON_ARRAY_T();
     BEGIN
         DECLARE
@@ -187,7 +214,7 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_RULES AS
                         v_result_order_rule JSON_OBJECT_T;
                         v_omitted_order_rule BOOLEAN;
                     BEGIN
-                        v_result_order_rule := fn_nested_output_order_rule(v_srcroot, v_o, v_omitted_order_rule);
+                        v_result_order_rule := fn_nested_output_order_rule(v_srcroot, v_o, v_rule_errors, v_omitted_order_rule);
                         IF NOT v_omitted_order_rule THEN
                             v_arr_Orders.append(v_result_order_rule);
                         END IF;
@@ -201,6 +228,15 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_RULES AS
             END LOOP;
         END;
 
+        DECLARE
+            v_rule_keys JSON_KEY_LIST := v_rule_errors.get_keys;
+        BEGIN
+            FOR v_k IN 1 .. v_rule_keys.COUNT LOOP
+                IF NOT v_errors.EXISTS(v_rule_keys(v_k)) THEN
+                    v_errors(v_rule_keys(v_k)) := v_rule_errors.get_String(v_rule_keys(v_k));
+                END IF;
+            END LOOP;
+        END;
         DECLARE
             v_err_arr JSON_ARRAY_T := JSON_ARRAY_T();
             v_err_obj JSON_OBJECT_T;

@@ -53,6 +53,17 @@ def test_discover_cases(tmp_path: Path):
     assert discover_cases(tmp_path / "missing") == []
 
 
+def test_discover_cases_reads_expected_errors(tmp_path: Path):
+    d = tmp_path / "golden" / "order"
+    d.mkdir(parents=True)
+    (d / "a.input.json").write_text("{}")
+    (d / "a.expected_errors.json").write_text('["unit_price"]')
+    (d / "b.input.json").write_text("{}")
+    a, b = discover_cases(tmp_path / "golden")
+    assert a.expected_errors == ["unit_price"]
+    assert b.expected_errors is None
+
+
 def test_test_command_track2_unavailable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     from tests.track1.cli.test_build_cli import MAPPER_TOML
 

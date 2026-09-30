@@ -104,6 +104,13 @@ PL/SQL-specific:
   limit, with `total_errors` / `shown` telling the caller what was left out. Read it with
   `DBMS_UTILITY.FORMAT_ERROR_STACK`, not `SQLERRM` (capped at 512 bytes).
 - `map_<id>_safe` returns the same entries, uncapped, as a JSON array in `p_err`.
+- Nested members are isolated (ARCHITECTURE.md, §Nested output). A rule function that
+  calls other rule functions takes `p__errors IN OUT NOCOPY JSON_OBJECT_T` (before
+  `p_omitted`); each such call is wrapped in `BEGIN … EXCEPTION WHEN OTHERS`, which puts
+  `SQLERRM` under the callee's rule id (first wins) and marks the member omitted. The
+  entry points create the object (`v_rule_errors`), pass it to the functions that take
+  it and fold its entries into `v_errors` before reporting. Leaf rule functions keep
+  the plain signature.
 
 ### Built-in functions
 
@@ -170,7 +177,7 @@ PL/SQL, without a SQL `ORDER BY`.
 
 ## Known gaps
 
-- Only one mapping (`orders`) has golden cases; prefix/suffix are covered by offline tests only.
+- Only one mapping (`orders`) has golden cases (incl. `failed_member`, the isolated nested member); prefix/suffix are covered by offline tests only.
 - No `maxLength`-driven sizing of `VARCHAR2` locals.
 - One package per project; a grouping key for several packages is a backlog item.
 - A mapping whose root output is an array is not supported (the output accumulator is

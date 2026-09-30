@@ -9,7 +9,8 @@
         "type": "object",
         "properties": {
           "Sku": {"type": "string"},
-          "Qty": {"type": "integer"}
+          "Qty": {"type": "integer"},
+          "Unit": {"type": ["number", "null"]}
         },
         "required": ["Sku", "Qty"]
       }

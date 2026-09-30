@@ -9,9 +9,10 @@
         "type": "object",
         "properties": {
           "sku": {"type": "string"},
-          "qty": {"type": "integer"}
+          "qty": {"type": "integer"},
+          "total": {"type": "number"}
         },
-        "required": ["sku", "qty"]
+        "required": ["sku", "qty", "total"]
       }
     }
   },
