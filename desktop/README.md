@@ -10,8 +10,8 @@ dependencies (`uv sync` at the repository root).
 
 ```sh
 cd desktop/ui && npm install
-cd ../src-tauri && cargo tauri dev     # runs the UI dev server and the app
-cargo test                             # drives the real `mapper` on fixtures/orders-project
+cd .. && cargo tauri dev              # from desktop/ or desktop/src-tauri; runs the UI dev server and the app
+(cd src-tauri && cargo test)                           # drives the real `mapper` on fixtures/orders-project
 cd ../ui && npm test                   # grid model tests
 ```
 

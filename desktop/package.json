@@ -1,0 +1,10 @@
+{
+  "name": "j2jme-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Marks desktop/ as the app directory for `cargo tauri`, whichever directory it runs from; the UI is in ui/.",
+  "scripts": {
+    "dev": "npm --prefix ui run dev",
+    "build": "npm --prefix ui run build"
+  }
+}
