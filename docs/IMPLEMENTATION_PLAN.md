@@ -427,14 +427,12 @@ Sliced; each slice is usable on its own:
 - [ ] **M6.3 — VCS.** Gitoxide save-as-commit, pull --rebase, semantic rule-level merge.
 - [ ] **M6.4 — LLM assist.** Validation suggestions, expression builder (Ollama / API).
 
-**Extra mile (after M6.4, not scheduled).** *Try a mapping in the tool*: import an input JSON
-for the open mapping and run it, with Python as the transformation language, showing the
-output next to the input (and the per-rule errors, as `_safe` reports them). Things to settle
-first: ARCHITECTURE.md says the `.map` files are "never executed as Python" (§Python as
-syntax, not runtime), so this needs a sandboxed evaluator over the built-ins' Python
-reference implementations (§Function library) rather than a plain `exec`; the result is a
-preview and can differ from Oracle, so the golden cases stay the authority; the same
-runner could feed `tests/golden/<mapping>/*.input.json` cases from the tool.
+**Extra mile (needs the Python backend below).** *Try a mapping in the tool*: import an input
+JSON for the open mapping, run it and show the output next to the input, with the per-rule
+errors highlighted on the grid rows (as `_safe` reports them). It runs the mapping compiled by
+the Python backend, not the `.map.py` executed as Python (ARCHITECTURE.md: the `.map` files are
+never executed as Python). The same runner could feed `tests/golden/<mapping>/*.input.json`
+cases from the tool.
 
 Prerequisites on the dev machine: `webkit2gtk-4.1` dev packages, `tauri-cli`.
 
@@ -445,3 +443,29 @@ Prerequisites on the dev machine: `webkit2gtk-4.1` dev packages, `tauri-cli`.
 Not started (Excel/PDF import, reverse-import from `.map.py`,
 bootstrap→driven archival). Lowest priority per the original plan — nothing
 else in the system depends on it.
+
+---
+
+## ⬜ Python backend (queued, after M6)
+
+A backend of its own (`compiler/backends/python/`, `[project] target = "python"`), lightweight:
+it compiles a mapping to a Python module (rule functions, `map_<id>` / `map_<id>_safe`
+twins, the same error report) and needs no database or container. It is what makes the
+desktop tool's preview and error highlighting possible, and it is a second implementation that
+tests the first.
+
+**The rule that governs it: results are backend-independent.** The same input must give the
+same output, and the same rule errors, whichever backend compiled the mapping. Consequences to
+build in:
+
+- [ ] The golden cases (`tests/golden/<mapping>/*.input.json`, `.expected.json`,
+      `.expected_errors.json`) are the shared contract: every backend runs all of them. Track 2
+      stays per target (Oracle image for PL/SQL, none for Python), the cases do not.
+- [ ] Built-ins: the Python reference implementations in `builtins.py` become the Python
+      backend's implementations; where PL/SQL and Python could differ (rounding, null and empty
+      string, date parsing, `split_nth` beyond the end, division by zero), the difference is
+      settled once, written down, and both backends follow it.
+- [ ] A conformance run in CI: the same cases on both backends, comparing outputs.
+- [ ] Error isolation and `required` semantics (§Runtime error semantics) implemented
+      identically; `@parallel` is accepted and ignored (no SQL-callable wrapper).
+- [ ] Then the desktop preview (Extra mile in M6).

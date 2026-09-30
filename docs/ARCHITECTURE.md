@@ -634,6 +634,12 @@ A backend contributes:
 | Configuration | Required keys and defaults of its `[target.<name>]` section |
 | Integration tests | Its own golden-case tests and test environment (image or runner), §Testing |
 
+**Backends are interchangeable.** For the same mapping and input, every backend must
+produce the same output and report the same rule errors; the golden cases are the shared
+contract and every backend runs all of them. A behaviour that differs between targets
+(rounding, null vs. empty string, date parsing, division by zero) is a bug in one of the
+backends or an undecided semantic, to be settled in the language, not per target.
+
 **Discovery.** The registry (`compiler/backends/registry.py`) is self-maintaining: it
 imports every module under `compiler.backends` and registers each concrete `Backend`
 subclass under its `target` attribute. Adding a target means adding a subpackage
