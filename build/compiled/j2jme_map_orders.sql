@@ -52,6 +52,18 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAP_ORDERS AS
         RETURN v_line__dc;
     END fn_orders_line;
 
+    FUNCTION fn_orders_currency(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+    BEGIN
+        p_omitted := FALSE;
+        RETURN MAPPING_OWNER.J2JME_FUNCTIONS.lookup(p_root.get_String('country'), p_root.get_Object('currencies'), 'N/A');
+    END fn_orders_currency;
+
+    FUNCTION fn_orders_warehouse(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+    BEGIN
+        p_omitted := FALSE;
+        RETURN MAPPING_OWNER.J2JME_FUNCTIONS.split_nth(p_root.get_String('ref'), ',', 2);
+    END fn_orders_warehouse;
+
     PROCEDURE map_orders (
         p_src IN  CLOB,
         p_out OUT CLOB
@@ -75,6 +87,34 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAP_ORDERS AS
             WHEN OTHERS THEN
                 IF NOT v_errors.EXISTS('order_id') THEN
                     v_errors('order_id') := SQLERRM;
+                END IF;
+        END;
+        DECLARE
+            v_result_currency VARCHAR2(4000 CHAR);
+            v_omitted_currency BOOLEAN;
+        BEGIN
+            v_result_currency := fn_orders_currency(v_srcroot, v_omitted_currency);
+            IF NOT v_omitted_currency THEN
+                v_out_obj.put('Currency', v_result_currency);
+            END IF;
+        EXCEPTION
+            WHEN OTHERS THEN
+                IF NOT v_errors.EXISTS('currency') THEN
+                    v_errors('currency') := SQLERRM;
+                END IF;
+        END;
+        DECLARE
+            v_result_warehouse VARCHAR2(4000 CHAR);
+            v_omitted_warehouse BOOLEAN;
+        BEGIN
+            v_result_warehouse := fn_orders_warehouse(v_srcroot, v_omitted_warehouse);
+            IF NOT v_omitted_warehouse THEN
+                v_out_obj.put('Warehouse', v_result_warehouse);
+            END IF;
+        EXCEPTION
+            WHEN OTHERS THEN
+                IF NOT v_errors.EXISTS('warehouse') THEN
+                    v_errors('warehouse') := SQLERRM;
                 END IF;
         END;
         DECLARE
@@ -174,6 +214,34 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAP_ORDERS AS
             WHEN OTHERS THEN
                 IF NOT v_errors.EXISTS('order_id') THEN
                     v_errors('order_id') := SQLERRM;
+                END IF;
+        END;
+        DECLARE
+            v_result_currency VARCHAR2(4000 CHAR);
+            v_omitted_currency BOOLEAN;
+        BEGIN
+            v_result_currency := fn_orders_currency(v_srcroot, v_omitted_currency);
+            IF NOT v_omitted_currency THEN
+                v_out_obj.put('Currency', v_result_currency);
+            END IF;
+        EXCEPTION
+            WHEN OTHERS THEN
+                IF NOT v_errors.EXISTS('currency') THEN
+                    v_errors('currency') := SQLERRM;
+                END IF;
+        END;
+        DECLARE
+            v_result_warehouse VARCHAR2(4000 CHAR);
+            v_omitted_warehouse BOOLEAN;
+        BEGIN
+            v_result_warehouse := fn_orders_warehouse(v_srcroot, v_omitted_warehouse);
+            IF NOT v_omitted_warehouse THEN
+                v_out_obj.put('Warehouse', v_result_warehouse);
+            END IF;
+        EXCEPTION
+            WHEN OTHERS THEN
+                IF NOT v_errors.EXISTS('warehouse') THEN
+                    v_errors('warehouse') := SQLERRM;
                 END IF;
         END;
         DECLARE

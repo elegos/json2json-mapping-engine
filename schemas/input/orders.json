@@ -3,6 +3,9 @@
   "type": "object",
   "properties": {
     "id": {"type": "string"},
+    "country": {"type": "string"},
+    "ref": {"type": "string"},
+    "currencies": {"type": "object", "additionalProperties": {"type": "string"}},
     "items": {
       "type": "array",
       "items": {
@@ -16,5 +19,5 @@
       }
     }
   },
-  "required": ["id", "items"]
+  "required": ["id", "items", "country", "currencies", "ref"]
 }

@@ -1,1 +1,1 @@
-{"OrderId": "A2", "Lines": [{"Sku": "X-1", "Qty": 2, "Family": "X", "Unit": 5}, {"Sku": "Z-0", "Qty": 0, "Family": "Z"}]}
+{"OrderId": "A2", "Lines": [{"Sku": "X-1", "Qty": 2, "Family": "X", "Unit": 5}, {"Sku": "Z-0", "Qty": 0, "Family": "Z"}], "Currency": "N/A", "Warehouse": "DE"}

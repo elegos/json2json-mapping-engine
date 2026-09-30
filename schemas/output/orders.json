@@ -3,6 +3,8 @@
   "type": "object",
   "properties": {
     "OrderId": {"type": "string"},
+    "Currency": {"type": ["string", "null"]},
+    "Warehouse": {"type": ["string", "null"]},
     "Lines": {
       "type": "array",
       "items": {

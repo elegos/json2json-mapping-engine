@@ -367,7 +367,7 @@ Independent of M6/M7; pick up in any order.
 - [x] **`J2JME_FUNCTIONS` package** (`functions_package`, overridable) for the built-ins that
       are not 1:1 with a PL/SQL function (`split_first`, `split_nth`, `lookup`); generated
       only when used, deployed first. `if_else` stays inline (lazy branches). Checked on Oracle
-      by `orders` (`split_first`). Project functions join it when the `fn/` loader exists.
+      by `orders` (all three). Project functions join it when the `fn/` loader exists.
 - [x] **Backend dispatch on `[project] target`.** Coarse `Backend` ABC
       (`compiler/backends/base.py`), self-discovering registry, `PlsqlBackend`; pipeline,
       Function Linker (built-ins now come from the backend) and `cli/build.py` only use the

@@ -13,3 +13,5 @@ class OrdersLine:
 class OrdersOut:
     OrderId: str
     Lines: list[OrdersLine]
+    Currency: str | None = None
+    Warehouse: str | None = None

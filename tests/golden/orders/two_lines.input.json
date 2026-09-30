@@ -1,1 +1,1 @@
-{"id": "A1", "items": [{"sku": "X-1", "qty": 2, "total": 10}, {"sku": "Y-9", "qty": 5, "total": 20}]}
+{"id": "A1", "items": [{"sku": "X-1", "qty": 2, "total": 10}, {"sku": "Y-9", "qty": 5, "total": 20}], "country": "US", "ref": "EU,IT,MI", "currencies": {"IT": "EUR", "US": "USD"}}
