@@ -419,6 +419,8 @@ Sliced; each slice is usable on its own:
 - [x] **Lookups view** (`Rules` / `Lookups` tabs): list of `@label` lookups, key/value table,
       add / delete lookup and entry. A number / `true` / `false` / `null` keeps its type,
       anything else is a string (quote it to force one). Lookups are hidden from the rule grid.
+      A lookup declares its value `type` (optional; `str int number bool date datetime`): the
+      loader enforces it, expressions are typed by it, the table parses typed text by it.
 - [x] **M6.1b — check on edit** (`transpiler/check.py`; `mapper fn check FILE`; `check` op of
       `mapper serve`, run by the grid 150 ms after each edit). Per rule, so one bad rule
       hides no other: the loader's checks, expression syntax and anchors, duplicate

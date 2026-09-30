@@ -5,7 +5,7 @@ import {
   type FunctionalFile,
   type LookupRule,
   lookups,
-  parseValue,
+  parseTyped,
   renameEntry,
   showValue,
 } from "./model";
@@ -59,6 +59,20 @@ export function Lookups({ tree, diagnostics, onEdit, onAdd, onDelete }: Props) {
                 onChange={(e) => onEdit(current.path, (r) => (r.label = e.target.value))}
               />
             </label>
+            <label>
+              Type
+              <select
+                value={current.rule.type ?? ""}
+                onChange={(e) => onEdit(current.path, (r) => (r.type = e.target.value || null))}
+              >
+                <option value="">(not declared)</option>
+                {["str", "int", "number", "bool", "date", "datetime"].map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </label>
             <label className="grow">
               Description
               <input
@@ -99,10 +113,14 @@ export function Lookups({ tree, diagnostics, onEdit, onAdd, onDelete }: Props) {
                     <input
                       key={showValue(value)}
                       defaultValue={showValue(value)}
-                      title='Numbers, true, false and null keep their type; quote ("1") to force a string'
+                      title={
+                        current.rule.type
+                          ? `Every value is a ${current.rule.type}`
+                          : 'No type declared: numbers, true, false and null keep their type; quote ("1") to force a string'
+                      }
                       onBlur={(e) =>
                         onEdit(current.path, (r) => {
-                          r.entries = { ...r.entries, [key]: parseValue(e.target.value) };
+                          r.entries = { ...r.entries, [key]: parseTyped(e.target.value, current.rule.type) };
                         })
                       }
                     />

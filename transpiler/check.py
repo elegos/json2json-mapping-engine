@@ -175,6 +175,41 @@ class _Schemas:
         return out
 
 
+class _TableName(str):
+    """Prints as its own name: the anchor resolver `repr`s a lookup into the expression."""
+
+    def __repr__(self) -> str:
+        return str(self)
+
+
+_JSON_TYPE = {
+    "str": "string",
+    "date": "string",
+    "datetime": "string",
+    "int": "integer",
+    "number": "number",
+    "bool": "boolean",
+}
+
+
+def _lookup_node(rule: LookupRule) -> Schema:
+    """A schema for a lookup's entries: an object whose values have the declared type, or,
+    when none is declared, the type they all share (nothing stated if they differ)."""
+    declared = _JSON_TYPE.get(rule.type or "")
+    if declared is None:
+        kinds = {
+            "boolean" if isinstance(v, bool)
+            else "integer" if isinstance(v, int)
+            else "number" if isinstance(v, float)
+            else "string" if isinstance(v, str)
+            else "?"
+            for v in rule.entries.values()
+        }  # fmt: skip
+        declared = kinds.pop() if len(kinds) == 1 and "?" not in kinds else None
+    values: Schema = {"type": declared} if declared else {}
+    return {"type": "object", "additionalProperties": values}
+
+
 _REF = re.compile(r"^(\$|@(?:\d+|[A-Za-z_]\w*)?)((?:\.[A-Za-z_]\w*|\[\*\])+)$")
 
 
@@ -222,9 +257,9 @@ class _Checker:
         self.has_in = input_schema is not None
         self.has_out = output_schema is not None
         self.issues: list[Issue] = []
-        self.lookups = {
-            r.label: dict(r.entries) for r in self._all(file.rules) if isinstance(r, LookupRule)
-        }
+        found = [r for r in self._all(file.rules) if isinstance(r, LookupRule)]
+        self.lookups = {r.label: dict(r.entries) for r in found}
+        self.lookup_nodes = {r.label: _lookup_node(r) for r in found}
 
     def _all(self, rules: list[Rule]):
         for r in rules:
@@ -295,11 +330,14 @@ class _Checker:
     ) -> None:
         """What the expression yields against what the field is (`transpiler.exprtypes`)."""
         loops = tuple(LoopRef(lbl, f"_L{i}", f"_I{i}") for i, lbl in enumerate(labels, 1))
+        # a lookup is typed by its declared type: it stands for a name whose schema says so
+        tables = {label: _TableName(f"_LK_{label}") for label in self.lookups}
         try:
-            resolved = resolve_anchors(text, AnchorScope(loops, self.lookups), "expression").text
+            resolved = resolve_anchors(text, AnchorScope(loops, tables), "expression").text  # type: ignore[arg-type]
         except FnYamlError:
             return  # reported by `block`
         env: dict[str, Any] = {"root": root}
+        env.update({f"_LK_{label}": node for label, node in self.lookup_nodes.items()})
         env.update({f"_L{i}": node for i, node in enumerate(items, 1)})
         typer = ExprTyper(self.inp, env, lambda message: self.add(path, "expression", message))
         wanted = _TYPES.get(rule.type)

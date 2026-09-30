@@ -225,3 +225,51 @@ def test_every_builtin_is_typed_or_knowingly_left_out() -> None:
     from transpiler.exprtypes import HANDLED, SIGNATURES
 
     assert set(BUILTIN_FUNCTIONS) <= set(SIGNATURES) | HANDLED
+
+
+def _named_lookup_issues(lookup_type: str | None, entries: dict, field_type: str, expression: str):
+    lookup: dict = {"kind": "lookup", "label": "tab", "entries": entries}
+    file = parse_functional(
+        {
+            "id": "t",
+            "rules": [
+                lookup,
+                {
+                    "kind": "field",
+                    "field": "X",
+                    "type": field_type,
+                    "transform": {"expression": expression},
+                },
+            ],
+        },
+        default_id="t",
+    )
+    file.rules[0].type = lookup_type  # type: ignore[union-attr]  # set after loading: some tests want it invalid
+    return [i.message for i in check_functional(file) if i.severity == "error"]
+
+
+def test_a_lookup_rule_is_typed_by_its_declared_type() -> None:
+    call = "lookup($.c, @tab, {})"
+    assert _named_lookup_issues("int", {"a": 1}, "int", call.format("0")) == []
+    [message] = _named_lookup_issues("int", {"a": 1}, "str", call.format("0"))
+    assert "the expression is integer" in message
+    # declared number: an `int` field cannot take it although the entries look like ints
+    [message] = _named_lookup_issues("number", {"a": 1}, "int", call.format("0"))
+    assert "the expression is number" in message
+    assert _named_lookup_issues("str", {"a": "x"}, "str", call.format('"-"')) == []
+
+
+def test_a_lookup_without_a_declared_type_is_typed_by_its_entries() -> None:
+    call = 'lookup($.c, @tab, "-")'
+    [message] = _named_lookup_issues(None, {"a": 1}, "str", "lookup($.c, @tab, 0)")
+    assert "the expression is integer" in message
+    assert _named_lookup_issues(None, {"a": 1, "b": "x"}, "str", call) == []  # mixed: not typed
+
+
+def test_lookup_values_must_have_the_declared_type() -> None:
+    [message] = _named_lookup_issues("int", {"a": 1, "b": "x"}, "int", "lookup($.c, @tab, 0)")
+    assert "'b'" in message and "not a int" in message
+    [message] = _named_lookup_issues("int", {"a": True}, "int", "lookup($.c, @tab, 0)")
+    assert "'a'" in message
+    [message] = _named_lookup_issues("bogus", {"a": 1}, "int", "0")
+    assert "'type' must be one of" in message

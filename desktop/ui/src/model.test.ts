@@ -5,6 +5,7 @@ import {
   addEntry,
   insertionPoint,
   lookups,
+  parseTyped,
   parseValue,
   renameEntry,
   showValue,
@@ -166,6 +167,15 @@ describe("lookup entries", () => {
     expect(parseValue('"12"')).toBe("12");
     expect(parseValue('"broken')).toBe('"broken');
   });
+  it("parses by the declared type and leaves what does not fit as text", () => {
+    expect(parseTyped("12", "str")).toBe("12");
+    expect(parseTyped("12", "int")).toBe(12);
+    expect(parseTyped("1.5", "int")).toBe("1.5");
+    expect(parseTyped("1.5", "number")).toBe(1.5);
+    expect(parseTyped("true", "bool")).toBe(true);
+    expect(parseTyped("yes", "bool")).toBe("yes");
+    expect(parseTyped("12", null)).toBe(12);
+  });
   it("shows strings bare and the rest as JSON", () => {
     expect(showValue("EUR")).toBe("EUR");
     expect(showValue(12)).toBe("12");
@@ -181,7 +191,7 @@ describe("lookup entries", () => {
     expect(Object.keys(addEntry(addEntry({})))).toEqual(["key", "key2"]);
   });
   it("finds lookups at any depth with their path", () => {
-    const lookup = { kind: "lookup", id: null, description: null, label: "L", entries: { a: 1 } } as const;
+    const lookup = { kind: "lookup", id: null, description: null, label: "L", entries: { a: 1 }, type: null } as const;
     const found = lookups([
       lookup,
       { kind: "object", id: null, description: null, output: "$.X", guard: null, rules: [lookup] },

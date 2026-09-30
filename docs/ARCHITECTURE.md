@@ -1585,6 +1585,7 @@ expressions via `@label`.
 - id: lut_country_currency
   kind: lookup
   label: countryCurrency            # referenced as @countryCurrency in expressions
+  type: str                         # optional: primitive type of every value (str, int, number, bool, date, datetime)
   description: "Maps ISO country code to currency code."
   entries:
     A: EUR
@@ -1611,6 +1612,11 @@ The built-in `lookup` function in each target language receives the serialised J
 and uses the target's own JSON helpers to query it (e.g. PL/SQL `JSON_OBJECT_T`).
 There is no special-casing in the compiler: `lookup` is a regular function call with
 two typed parameters.
+
+`type` is optional. When declared, every value must have it (a build error otherwise) and
+expressions are checked against it: `lookup(@.code, @rates)` feeds an `int` field only if
+`@rates` is `type: int`, and an explicit default must have that type too. Without it the
+type is taken from the entries when they all share one, and is unknown otherwise.
 
 On no match, `lookup` returns `None` by default (field omitted). An explicit default
 can be provided: `lookup(@.code, @countryCurrency, default="EUR")`.

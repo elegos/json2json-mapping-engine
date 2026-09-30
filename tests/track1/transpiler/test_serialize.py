@@ -16,8 +16,9 @@ from transpiler.model import (
     ObjectRule,
     functional_to_dict,
     load_functional_file,
+    parse_functional,
 )
-from transpiler.serialize import apply_decay_tree, functional_to_yaml
+from transpiler.serialize import apply_decay_tree, functional_to_raw, functional_to_yaml
 
 FIXTURES = Path(__file__).parent / "fixtures"
 runner = CliRunner()
@@ -100,3 +101,15 @@ def test_fn_write_refuses_an_invalid_tree(tmp_path: Path) -> None:
     result = runner.invoke(app, ["fn", "write", str(target)], input=json.dumps({"file": tree}))
     assert result.exit_code == 1 and json.loads(result.stdout)["ok"] is False
     assert not target.exists()
+
+
+def test_a_lookup_keeps_its_declared_type() -> None:
+    raw = {
+        "id": "t",
+        "rules": [
+            {"kind": "lookup", "label": "tab", "type": "int", "entries": {"a": 1}},
+            {"kind": "field", "field": "X", "type": "int", "transform": {"expression": "1"}},
+        ],
+    }
+    again = parse_functional(functional_to_raw(parse_functional(raw, default_id="t")), "t")
+    assert again.rules[0].type == "int"  # type: ignore[union-attr]

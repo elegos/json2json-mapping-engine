@@ -187,7 +187,7 @@ def add_rule(
         while label in taken:
             n += 1
             label = f"NewLookup{n}"
-        rule = LookupRule(id=None, label=label, entries={"key": "value"})
+        rule = LookupRule(id=None, label=label, entries={"key": "value"}, type="str")
     else:
         raise FnYamlError(f"cannot add a rule of kind {kind!r}")
     children.insert(len(children) if index is None else index, rule)

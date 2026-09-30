@@ -79,6 +79,7 @@ def _rule_to_raw(rule: Rule) -> dict[str, Any]:
     _put(raw, "id", rule.id)
     if isinstance(rule, LookupRule):
         raw["label"] = rule.label
+        _put(raw, "type", rule.type)
         raw["entries"] = dict(rule.entries)
         _put(raw, "description", rule.description)
         return raw

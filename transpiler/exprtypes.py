@@ -252,5 +252,7 @@ class ExprTyper:
                     if listed and all(typed):
                         values = frozenset().union(*typed)
         if len(args) == 3:
-            self._arg("lookup", 2, args[2], values if values is not None else None)
+            # a default of a number table may be a whole number
+            accepts = values | {"integer"} if values and "number" in values else values
+            self._arg("lookup", 2, args[2], accepts)
         return values

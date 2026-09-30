@@ -110,6 +110,8 @@ class LookupRule:
     label: str
     entries: dict[str, Any]
     description: str | None = None
+    # primitive type every value must have; None = not declared (values are not checked)
+    type: str | None = None
     kind: Literal["lookup"] = "lookup"
 
 
@@ -125,6 +127,18 @@ class FunctionalFile:
 
 
 # -- loading -----------------------------------------------------------------
+
+
+def value_has_type(value: Any, type_: str) -> bool:
+    """Whether a YAML / JSON scalar is a valid value of the field type `type_` (a date
+    or datetime travels as a string)."""
+    if type_ == "bool":
+        return isinstance(value, bool)
+    if type_ == "int":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if type_ == "number":
+        return isinstance(value, int | float) and not isinstance(value, bool)
+    return isinstance(value, str)
 
 
 def _err(where: str, msg: str) -> FnYamlError:
@@ -191,7 +205,7 @@ _LOOP_KEYS = _COMMON | {
     "parallel",
     "rules",
 }
-_LOOKUP_KEYS = _COMMON | {"label", "entries"}
+_LOOKUP_KEYS = _COMMON | {"label", "entries", "type"}
 
 
 def _load_choices(where: str, raw: dict[str, Any]) -> Choices:
@@ -357,11 +371,18 @@ def _load_rule(where: str, raw: Any) -> Rule:
         entries = raw.get("entries")
         if not isinstance(entries, dict) or not entries:
             raise _err(where, "'entries' must be a non-empty mapping")
+        type_ = _get_str(where, raw, "type")
+        if type_ is not None and type_ not in FIELD_TYPES:
+            raise _err(where, f"'type' must be one of {', '.join(FIELD_TYPES)} — got {type_!r}")
+        for key, value in entries.items():
+            if type_ is not None and not value_has_type(value, type_):
+                raise _err(where, f"entries: the value of {str(key)!r} is not a {type_}: {value!r}")
         return LookupRule(
             id=_load_rule_id(where, raw),
             label=label,
             entries={str(k): v for k, v in entries.items()},
             description=_get_str(where, raw, "description"),
+            type=type_,
         )
     raise _err(where, f"'kind' must be one of field, object, loop, lookup — got {kind!r}")
 

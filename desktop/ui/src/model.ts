@@ -51,6 +51,8 @@ export interface LookupRule extends Base {
   kind: "lookup";
   label: string;
   entries: Record<string, unknown>;
+  /** Primitive type every value must have; null = not declared. */
+  type: string | null;
 }
 
 export type Rule = FieldRule | ObjectRule | LoopRule | LookupRule;
@@ -280,7 +282,18 @@ export function showValue(value: unknown): string {
   return typeof value === "string" ? value : JSON.stringify(value);
 }
 
-/** Typed text back to a value: a JSON number / true / false / null keeps that type,
+/** Typed text back to a value of the declared type. Text that does not read as that type
+ * stays a string, so the check reports it instead of the table silently changing it. */
+export function parseTyped(text: string, type: string | null): unknown {
+  if (type === null || type === "") return parseValue(text);
+  const trimmed = text.trim();
+  if (type === "int") return /^-?\d+$/.test(trimmed) ? Number(trimmed) : text;
+  if (type === "number") return /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(trimmed) ? Number(trimmed) : text;
+  if (type === "bool") return trimmed === "true" ? true : trimmed === "false" ? false : text;
+  return text;
+}
+
+/** Typed text back to a value when no type is declared: a JSON number / true / false / null keeps that type,
  * anything else is a string. Quote it (`"1"`) to force a string that looks like one. */
 export function parseValue(text: string): unknown {
   const trimmed = text.trim();
