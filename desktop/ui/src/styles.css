@@ -49,3 +49,9 @@ button:disabled { opacity: 0.45; cursor: default; }
 .split button { border-radius: 0; }
 .split .split-main { border-radius: 4px 0 0 4px; }
 .split .split-caret { border-radius: 0 4px 4px 0; }
+.modal-backdrop { position: fixed; inset: 0; background: #0006; display: flex; align-items: center; justify-content: center; z-index: 100; }
+.modal { background: Canvas; color: CanvasText; border: 1px solid #8886; border-radius: 8px; padding: 18px 22px; max-width: 460px; box-shadow: 0 8px 28px #0008; }
+.modal p { margin: 0 0 16px; line-height: 1.4; }
+.modal-buttons { display: flex; gap: 8px; justify-content: flex-end; }
+button.primary { background: #2a5a9f; border-color: #2a5a9f; color: white; }
+button.primary:hover:not(:disabled) { background: #3468b3; }

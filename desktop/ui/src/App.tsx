@@ -1,5 +1,7 @@
 import type { ColDef, ICellRendererParams, ValueSetterParams } from "ag-grid-community";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AgGridReact } from "ag-grid-react";
+import { type Choice, Confirm } from "./Confirm";
 import { ProjectButton } from "./ProjectButton";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -82,6 +84,13 @@ export function App() {
   const [live, setLive] = useState<Diagnostic[]>([]);
   const [recent, setRecent] = useState<string[]>(loadRecent);
   const grid = useRef<AgGridReact<Row>>(null);
+  const [question, setQuestion] = useState<{
+    message: string;
+    choices: Choice[];
+    resolve: (id: string) => void;
+  } | null>(null);
+  const dirtyRef = useRef(false);
+  const saveRef = useRef<() => Promise<boolean>>(async () => true);
   const folding = useRef(false);
   const treeRef = useRef<FunctionalFile | null>(null);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
@@ -94,6 +103,47 @@ export function App() {
 
   treeRef.current = tree;
   const dirty = tree !== null && JSON.stringify(tree) !== saved;
+  dirtyRef.current = dirty;
+
+  const ask = useCallback(
+    (message: string, choices: Choice[]) =>
+      new Promise<string>((resolve) => setQuestion({ message, choices, resolve })),
+    [],
+  );
+
+  /** True when it is fine to go on: nothing unsaved, or the user saved / chose to discard. */
+  const guardUnsaved = useCallback(
+    async (message: string, discardLabel: string): Promise<boolean> => {
+      if (!dirtyRef.current) return true;
+      const choice = await ask(message, [
+        { id: "save", label: "Save", primary: true },
+        { id: "discard", label: discardLabel },
+        { id: "cancel", label: "Cancel" },
+      ]);
+      if (choice === "save") return saveRef.current();
+      return choice === "discard";
+    },
+    [ask],
+  );
+  const guardRef = useRef(guardUnsaved);
+  guardRef.current = guardUnsaved;
+
+  // closing the window with unsaved changes
+  useEffect(() => {
+    const window = getCurrentWindow();
+    const unlisten = window.onCloseRequested(async (event) => {
+      if (!dirtyRef.current) return;
+      event.preventDefault();
+      const ok = await guardRef.current(
+        "Save the document? If you close without saving you will lose your changes.",
+        "Close without saving",
+      );
+      if (ok) await window.destroy();
+    });
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, []);
   const canBuild = python?.available === true && project !== null && !busy;
 
   const load = useCallback(
@@ -142,10 +192,16 @@ export function App() {
     }
   }, []);
 
+  const switchGuard = useCallback(
+    () => guardRef.current("Save the current file before switching? Your unsaved changes will be lost otherwise.", "Discard changes"),
+    [],
+  );
+
   const openProject = useCallback(async () => {
+    if (!(await switchGuard())) return;
     const dir = await chooseProject(recent[0]);
     if (dir) await openDir(dir);
-  }, [openDir, recent]);
+  }, [openDir, recent, switchGuard]);
 
   useEffect(() => {
     initialProject().then(
@@ -156,8 +212,8 @@ export function App() {
     );
   }, [openDir]);
 
-  const save = useCallback(async () => {
-    if (!project || !current || !tree) return;
+  const save = useCallback(async (): Promise<boolean> => {
+    if (!project || !current || !tree) return true;
     setBusy(true);
     try {
       const decayed = await writeFn(project, current, tree);
@@ -167,16 +223,21 @@ export function App() {
           ? `saved; validation reset on: ${decayed.join(", ")}`
           : "saved",
       );
+      return true;
     } catch (e) {
       setStatus(String(e instanceof Error ? e.message : e));
+      return false;
     } finally {
       setBusy(false);
     }
   }, [project, current, tree, load]);
+  saveRef.current = save;
 
   const run = useCallback(
     async (command: string) => {
       if (!project) return;
+      // the commands read the files on disk, not what is in the grid
+      if (!(await guardRef.current("Save before continuing?", "Continue without saving"))) return;
       setBusy(true);
       try {
         setReport(await runMapper(project, command));
@@ -465,10 +526,12 @@ export function App() {
   return (
     <div className="app">
       <header>
-        <ProjectButton recent={recent} onOpen={openProject} onPick={(d) => void openDir(d)} />
+        <ProjectButton recent={recent} onOpen={openProject} onPick={async (d) => {
+            if (await switchGuard()) await openDir(d);
+          }} />
         <span className="project">{project ?? "no project"}</span>
         <span className="spacer" />
-        <button disabled={!dirty || busy} onClick={save}>
+        <button disabled={!dirty || busy} onClick={() => void save()}>
           Save{dirty ? " ●" : ""}
         </button>
         {COMMANDS.map((c) => (
@@ -495,7 +558,9 @@ export function App() {
             <div
               key={f}
               className={f === current ? "file current" : "file"}
-              onClick={() => void load(f)}
+              onClick={async () => {
+                if (f !== current && (await switchGuard())) await load(f);
+              }}
             >
               {f.replace("mappings/functional/", "")}
             </div>
@@ -547,6 +612,16 @@ export function App() {
           Developer mode
         </label>
       </div>
+      {question && (
+        <Confirm
+          message={question.message}
+          choices={question.choices}
+          onChoose={(id) => {
+            question.resolve(id);
+            setQuestion(null);
+          }}
+        />
+      )}
       <footer>
         <div className="status">{status}</div>
         {(diagnostics.get("") ?? []).map((d, i) => (

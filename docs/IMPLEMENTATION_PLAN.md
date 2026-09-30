@@ -417,6 +417,9 @@ Sliced; each slice is usable on its own:
       container kind and required fields, Source and every `$.` / `@.` reference of an
       expression against the input schema. Schema constructs it cannot follow count as
       unknown. Not yet: type of an expression's result, `format` / `enum` / ranges.
+- [x] **Unsaved changes.** Save is explicit (no autosave). Build / Check / Transpile ask
+      "Save before continuing?" (they read the files on disk); switching file or project
+      and closing the window ask too (Save / discard / Cancel).
 - [ ] **Project properties** (GUI for `mapper.toml`): the button exists in the sidebar, the
       form does not.
 - [ ] **M6.2 — validation UX.** validated / needs_review states, manual-override split
