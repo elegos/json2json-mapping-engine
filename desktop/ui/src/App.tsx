@@ -38,6 +38,7 @@ import {
   insertionPoint,
   diagnosticsByRule,
   expressionOf,
+  filterRows,
   flatten,
   type Diagnostic,
   type FunctionalFile,
@@ -113,6 +114,7 @@ export function App() {
   const folding = useRef(false);
   const treeRef = useRef<FunctionalFile | null>(null);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  const [filterText, setFilterText] = useState("");
   const [view, setView] = useState<"rules" | "lookups" | "paths" | "project">("rules");
   // mapper.toml: the form's descriptors, the file's values, the draft being edited
   const [configSchema, setConfigSchema] = useState<ConfigSchema | null>(null);
@@ -479,9 +481,13 @@ export function App() {
 
   const rows = useMemo(
     // lookups have their own view
-    () =>
-      tree ? visibleRows(flatten(tree.rules), collapsed).filter((r) => r.rule.kind !== "lookup") : [],
-    [tree, collapsed],
+    () => {
+      if (!tree) return [];
+      const all = flatten(tree.rules).filter((r) => r.rule.kind !== "lookup");
+      // a filter shows what it finds, folded or not
+      return filterText.trim() ? filterRows(all, filterText) : visibleRows(all, collapsed);
+    },
+    [tree, collapsed, filterText],
   );
   const toggleFold = useCallback((path: string) => {
     setCollapsed((old) => {
@@ -879,6 +885,14 @@ export function App() {
               <button onClick={() => void addRule("object")}>+ Object</button>
               <button onClick={() => void addRule("loop")}>+ Loop</button>
               <button onClick={() => void deleteRule()}>Delete</button>
+              <input
+                className="rule-filter"
+                type="search"
+                placeholder="Filter by rule id or target"
+                value={filterText}
+                onChange={(e) => setFilterText(e.target.value)}
+                onKeyDown={(e) => e.key === "Escape" && setFilterText("")}
+              />
             </div>
           )}
           {tree && view === "rules" ? (
@@ -891,6 +905,7 @@ export function App() {
               tooltipShowDelay={200}
               context={gridContext}
               defaultColDef={{
+                sortable: false,
                 cellClassRules: {
                   "cell-invalid": (p) => {
                     const cols = invalidColumns(p.data?.path ?? "");

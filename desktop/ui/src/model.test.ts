@@ -3,6 +3,7 @@ import { type ConfigOption, issuesAt, setAt, shownValue, tableAt } from "./proje
 import {
   columnOfMessage,
   addEntry,
+  filterRows,
   changedColumns,
   savedIndex,
   insertionPoint,
@@ -280,5 +281,20 @@ describe("an object that selects an element", () => {
     } as Rule;
     expect(sourceOf(rule)).toBe("$.list[@.d == 'x']");
     expect(sourceOf({ ...rule, source: null } as Rule)).toBe("");
+  });
+});
+
+describe("filterRows", () => {
+  const rows = flatten(file.rules);
+  it("shows everything without a filter", () => {
+    expect(filterRows(rows, "  ")).toBe(rows);
+  });
+  it("matches the rule id or the Target, ignoring case", () => {
+    expect(filterRows(rows, "A").map((r) => r.path)).toEqual(["rules[0]"]);
+    expect(filterRows(rows, "b").map((r) => r.path)).toEqual(["rules[1]", "rules[1].rules[0]"]);
+  });
+  it("keeps the containers a match is in, and the rules of a matching container", () => {
+    expect(filterRows(rows, "lines").map((r) => r.path)).toEqual(["rules[1]", "rules[1].rules[0]"]);
+    expect(filterRows(rows, "zzz")).toEqual([]);
   });
 });

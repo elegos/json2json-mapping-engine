@@ -115,6 +115,32 @@ export function flatten(
   return rows;
 }
 
+/**
+ * The rows whose rule id or Target contains `text` (case-insensitive), with the containers
+ * they sit in (to keep the tree readable) and, for a matching container, its rules.
+ */
+export function filterRows(rows: Row[], text: string): Row[] {
+  const needle = text.trim().toLowerCase();
+  if (!needle) return rows;
+  const matches = (row: Row) =>
+    (row.rule.id ?? "").toLowerCase().includes(needle) ||
+    nameOf(row.rule).toLowerCase().includes(needle);
+  const keep = new Set<string>();
+  for (const row of rows) {
+    if (!matches(row)) continue;
+    keep.add(row.path);
+    // the containers it is in: `rules[2].rules[0]` is inside `rules[2]`
+    let parent = row.path;
+    while (parent.includes(".rules[")) {
+      parent = parent.slice(0, parent.lastIndexOf(".rules["));
+      keep.add(parent);
+    }
+    // and what a matching container holds
+    for (const other of rows) if (other.path.startsWith(`${row.path}.rules[`)) keep.add(other.path);
+  }
+  return rows.filter((row) => keep.has(row.path));
+}
+
 /** The rows that are visible when the rules at `collapsed` paths are folded. */
 export function visibleRows(rows: Row[], collapsed: ReadonlySet<string>): Row[] {
   return rows.filter((row) => {
