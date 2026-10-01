@@ -536,28 +536,23 @@ class _ExprTranslator:
             return f"v_{self.ctx.local_prefix}_{name}"
         raise CodeGenError(f"unresolved name '{name}'")
 
-    def _t_Attribute(self, node: ast.Attribute, expected: str | None) -> str:
-        segments: list[str] = []
-        cur: ast.expr = node
-        while isinstance(cur, ast.Attribute):
-            segments.append(cur.attr)
-            cur = cur.value
-        if not isinstance(cur, ast.Name):
+    def _t_Attribute(self, node: ast.expr, expected: str | None) -> str:
+        base, segments = _access_chain(node)
+        if not isinstance(base, ast.Name):
             raise CodeGenError("unsupported attribute chain base")
-        segments.reverse()
-        code = self.translate(cur, None)
+        code = self.translate(base, None)
+        # each step reads an object (next is a field) or an array (next is a position)
+        for seg, following in zip(segments, segments[1:], strict=False):
+            kind = "Array" if isinstance(following, int) else "Object"
+            code = f"{code}.get_{kind}({_segment(seg)})"
+        last = _segment(segments[-1])
         if expected == "OBJECT":
-            for seg in segments:
-                code = f"{code}.get_Object({_quote(seg)})"
-            return code
+            return f"{code}.get_Object({last})"
         if expected == "ARRAY":
-            for seg in segments[:-1]:
-                code = f"{code}.get_Object({_quote(seg)})"
-            return f"{code}.get_Array({_quote(segments[-1])})"
-        for seg in segments[:-1]:
-            code = f"{code}.get_Object({_quote(seg)})"
-        getter = _GETTER.get(expected or "", "get_String")
-        return f"{code}.{getter}({_quote(segments[-1])})"
+            return f"{code}.get_Array({last})"
+        return f"{code}.{_GETTER.get(expected or '', 'get_String')}({last})"
+
+    _t_Subscript = _t_Attribute
 
     def _t_BinOp(self, node: ast.BinOp, expected: str | None) -> str:
         op_type = type(node.op)
@@ -616,7 +611,7 @@ class _ExprTranslator:
             return self.translate(node, "BOOLEAN")
         if isinstance(node, ast.Constant):
             return "TRUE" if node.value else "FALSE"
-        if isinstance(node, ast.Attribute):
+        if isinstance(node, ast.Attribute | ast.Subscript):
             return self._truthy_of_document_value(node)
         if isinstance(node, ast.IfExp):
             body, orelse = self.condition(node.body), self.condition(node.orelse)
@@ -631,19 +626,15 @@ class _ExprTranslator:
             return f"({value} IS NOT NULL AND {value}.get_size > 0)"
         return f"({value} IS NOT NULL)"  # text ('' is NULL in Oracle), dates
 
-    def _truthy_of_document_value(self, node: ast.Attribute) -> str:
+    def _truthy_of_document_value(self, node: ast.expr) -> str:
         """`root.a.b` tested without knowing its JSON type: the element goes to the shared
         `truthy` function, which looks at what it is."""
-        segments: list[str] = []
-        cur: ast.expr = node
-        while isinstance(cur, ast.Attribute):
-            segments.append(cur.attr)
-            cur = cur.value
-        segments.reverse()
-        code = self.translate(cur, None)
-        for seg in segments[:-1]:
-            code = f"{code}.get_Object({_quote(seg)})"
-        element = f"{code}.get({_quote(segments[-1])})"
+        base, segments = _access_chain(node)
+        code = self.translate(base, None)
+        for seg, following in zip(segments, segments[1:], strict=False):
+            kind = "Array" if isinstance(following, int) else "Object"
+            code = f"{code}.get_{kind}({_segment(seg)})"
+        element = f"{code}.get({_segment(segments[-1])})"
         library = self.library_name("truthy") if self.library_name else None
         if library is None:
             raise CodeGenError("the shared functions package is not available for `truthy`")
@@ -898,6 +889,33 @@ def _materialize_aggregate(
     else:
         lines.append(f"{tmp_var} := {acc_var};")
     return lines
+
+
+def _access_chain(node: ast.expr) -> tuple[ast.expr, list[str | int]]:
+    """`root.a.list[0].b` -> (`root`, ["a", "list", 0, "b"]): fields by name, array
+    elements by a constant position."""
+    segments: list[str | int] = []
+    cur = node
+    while True:
+        if isinstance(cur, ast.Attribute):
+            segments.append(cur.attr)
+            cur = cur.value
+        elif isinstance(cur, ast.Subscript):
+            index = cur.slice
+            if not (
+                isinstance(index, ast.Constant) and type(index.value) is int and index.value >= 0
+            ):
+                raise CodeGenError("an array element is read by a constant position: x[0]")
+            segments.append(index.value)
+            cur = cur.value
+        else:
+            break
+    segments.reverse()
+    return cur, segments
+
+
+def _segment(seg: str | int) -> str:
+    return str(seg) if isinstance(seg, int) else _quote(seg)
 
 
 def infer_type(node: ast.expr, ctx: _FnCtx) -> str:

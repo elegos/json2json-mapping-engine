@@ -130,3 +130,16 @@ def test_transpile_applies_the_override() -> None:
     rule.transform.expression = "lookup(@metadata.kind, @kinds, $.id)"
     text = transpile_file_model(file)
     assert "lookup(root.payload.metadata.kind, {'a': 'A'}, root.payload.id)" in text
+
+
+def test_check_reports_bad_names_and_paths_of_an_edited_section() -> None:
+    file = parse_functional(raw(), "t")
+    file.paths = PathsSection(
+        root="payload", aliases={"kinds": "$.a", "root": "$.b", "ok": "$.c", "bad name": "$.d"}
+    )
+    messages = [i.message for i in check_functional(file) if i.rule == ""]
+    assert any("root must be a path" in m for m in messages)
+    assert any("'kinds' is also the name of a lookup" in m for m in messages)
+    assert any("'root' is reserved" in m for m in messages)
+    assert any("'bad name' is not a valid name" in m for m in messages)
+    assert not any("'ok'" in m for m in messages)

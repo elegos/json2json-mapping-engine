@@ -77,7 +77,7 @@ def _pascal(name: str) -> str:
 
 
 _OUT_PATH = re.compile(r"^[$@]\.(?P<name>[A-Za-z_]\w*)(?:\[\*?\])?$")
-_ATTR_CHAIN = re.compile(r"^[A-Za-z_]\w*(\.[A-Za-z_]\w*)*$")
+_ATTR_CHAIN = re.compile(r"^[A-Za-z_]\w*(\.[A-Za-z_]\w*(\[\d+\])*)*$")
 _INDEX_NAME = re.compile(r"^index(\d*)$")
 
 

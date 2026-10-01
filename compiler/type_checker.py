@@ -295,6 +295,8 @@ class _ExprTypeChecker:
         if isinstance(node, ast.Attribute):
             base_type = self.type_of(node.value, scope)
             return self._attr_type(base_type, node.attr)
+        if isinstance(node, ast.Subscript):
+            return self._element_type(self.type_of(node.value, scope))
         return ANY
 
     def type_of_in_function(self, node: ast.expr, param_types: dict[str, str]) -> str:
@@ -308,7 +310,18 @@ class _ExprTypeChecker:
         if isinstance(node, ast.Attribute):
             base_type = self.type_of_in_function(node.value, param_types)
             return self._attr_type(base_type, node.attr)
+        if isinstance(node, ast.Subscript):
+            return self._element_type(self.type_of_in_function(node.value, param_types))
         return ANY
+
+    def _element_type(self, base_type: str) -> str:
+        """The type of `x[0]`: the element type of a `list[X]`."""
+        if base_type == ANY or self.input_schema is None:
+            return ANY
+        candidates, _nullable = _strip_none(base_type)
+        if len(candidates) != 1 or not candidates[0].startswith("list["):
+            raise TypeCheckError(f"cannot index '{base_type}': it is not a list")
+        return candidates[0][len("list[") : -1]
 
     def _attr_type(self, base_type: str, attr: str) -> str:
         if base_type == ANY or self.input_schema is None:
@@ -567,13 +580,13 @@ def _check_def_reads(fn_def: ast.FunctionDef, checker: _ExprTypeChecker) -> None
 
     for body_stmt in fn_def.body:
         for node in ast.walk(body_stmt):
-            if isinstance(node, ast.Attribute):
+            if isinstance(node, ast.Attribute | ast.Subscript):
                 checker.type_of_in_function(node, param_types)
 
 
 def _check_reads_in_expr(node: ast.expr, checker: _ExprTypeChecker, scope: Scope) -> None:
     for sub in ast.walk(node):
-        if isinstance(sub, ast.Attribute):
+        if isinstance(sub, ast.Attribute | ast.Subscript):
             checker.type_of(sub, scope)
 
 

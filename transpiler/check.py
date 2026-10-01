@@ -32,6 +32,7 @@ from transpiler.anchors import (
 from transpiler.expr import parse_block
 from transpiler.exprtypes import ExprTyper
 from transpiler.model import (
+    RESERVED_ALIASES,
     FieldRule,
     FnYamlError,
     FunctionalFile,
@@ -71,6 +72,8 @@ class _Unknown:
 UNKNOWN = _Unknown()
 Node = Schema | _Unknown | None  # None = does not exist
 
+_IDENT = re.compile(r"^[A-Za-z_]\w*$")
+_PATH_FROM_ROOT = re.compile(r"^\$(\.[A-Za-z_]\w*(\[\d+\])*)+$")
 _SEGMENT = re.compile(r"\.?([A-Za-z_]\w*)|(\[(?:\*|\d+)\])")
 _TYPES = {
     "str": {"string"},
@@ -532,21 +535,40 @@ class _Checker:
         )
 
     def paths(self, original: FunctionalFile) -> None:
-        """The `paths:` section against the input schema (the root and every alias must exist)."""
-        if not self.has_in or self.inp.root is None:
-            return
+        """The `paths:` section: names and syntax always, existence when there is an input schema."""
         section = original.paths
         named = [("root", section.root)] if section.root else []
         named += [(f"alias '{n}'", p) for n, p in section.aliases.items()]
+        loops = {r.label for r in self._all(original.rules) if isinstance(r, LoopRule) and r.label}
+        for name in section.aliases:
+            problem = None
+            if not _IDENT.match(name):
+                problem = "is not a valid name"
+            elif name in RESERVED_ALIASES:
+                problem = f"is reserved (@{name})"
+            elif name in self.lookups:
+                problem = "is also the name of a lookup table"
+            elif name in loops:
+                problem = "is also the label of a loop"
+            if problem:
+                self.add("", "paths", f"paths: alias '{name}' {problem}")
         for what, text in named:
             assert text is not None
-            node, missing = self.inp.resolve(self.inp.root, text.removeprefix("$"))
-            if node is None:
+            if not _PATH_FROM_ROOT.match(text):
                 self.add(
                     "",
                     "paths",
-                    f"paths: the {what} {text} — '{missing}' is not in the input schema",
+                    f"paths: the {what} must be a path from the root like $.a.b[0] — got {text!r}",
                 )
+                continue
+            if self.has_in and self.inp.root is not None:
+                node, missing = self.inp.resolve(self.inp.root, text.removeprefix("$"))
+                if node is None:
+                    self.add(
+                        "",
+                        "paths",
+                        f"paths: the {what} {text} — '{missing}' is not in the input schema",
+                    )
 
     def run(self) -> list[Issue]:
         root_in: Node = self.inp.root if self.inp.root is not None else UNKNOWN
