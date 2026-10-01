@@ -799,7 +799,6 @@ export function App() {
   return (
     <div className="app">
       <header>
-        <img className="logo" src="/icon.svg" alt="" width={24} height={24} />
         <ProjectButton recent={recent} onOpen={openProject} onPick={async (d) => {
             if (await switchGuard()) await openDir(d);
           }} />
