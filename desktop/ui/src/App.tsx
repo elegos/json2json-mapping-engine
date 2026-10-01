@@ -897,9 +897,11 @@ export function App() {
               <button className={view === "paths" ? "tab active" : "tab"} onClick={() => setView("paths")}>
                 Paths
               </button>
-              {config && (
-                <button className={view === "project" ? "tab active" : "tab"} onClick={() => setView("project")}>
-                  mapper.toml{configDirty ? " ●" : ""}
+              {/* the properties are a page of their own: a tab while they are open, gone when the user
+                  goes elsewhere (the draft stays, and Save still writes it) */}
+              {config && view === "project" && (
+                <button className="tab active" onClick={() => setView("project")}>
+                  Project properties{configDirty ? " ●" : ""}
                 </button>
               )}
             </div>
