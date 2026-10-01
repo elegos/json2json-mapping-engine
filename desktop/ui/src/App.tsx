@@ -60,6 +60,7 @@ import {
   setExpression,
   sourceOf,
   STATE_FILTERS,
+  targetPath,
   type StateFilter,
 } from "./model";
 import { MiddleEllipsis } from "./MiddleEllipsis";
@@ -1013,6 +1014,7 @@ export function App() {
                 tree={tree}
                 path={selectedPath}
                 rule={selectedRule as FieldRule}
+                target={targetPath(tree, selectedPath)}
                 flag={flags.get(selectedPath)}
                 onResolve={(op) => void reviewOp(op, selectedPath)}
                 completer={(text, cursor) => gridContext.complete?.(selectedPath, "code", text, cursor) ?? Promise.resolve({ from: cursor, items: [] })}

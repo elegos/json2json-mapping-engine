@@ -7,6 +7,8 @@ interface Props {
   tree: FunctionalFile;
   path: string;
   rule: FieldRule;
+  /** The rule's target with its containers (`Customer.Name`). */
+  target: string;
   flag?: ReviewFlag;
   /** `take_over`, `accept_proposal`, `keep_override`: done by the worker, the tree is replaced. */
   onResolve: (op: "take_over" | "accept_proposal" | "keep_override") => void;
@@ -22,7 +24,7 @@ interface Props {
  * right. A rule still on auto offers to take the code over; a manual one whose auto code moved
  * offers the new proposal or keeping the override.
  */
-export function OverridePane({ tree, path, rule, flag, onResolve, completer, onCode, onClose }: Props) {
+export function OverridePane({ tree, path, rule, target, flag, onResolve, completer, onCode, onClose }: Props) {
   const [proposal, setProposal] = useState<Proposal | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const manual = rule.transform.status === "manual";
@@ -54,7 +56,7 @@ export function OverridePane({ tree, path, rule, flag, onResolve, completer, onC
   return (
     <section className="override-pane">
       <header>
-        <strong>{rule.field}</strong>
+        <strong>{target}</strong>
         <span className="muted">{manual ? "manual override" : "auto"}</span>
         {flag?.stale_override && <span className="stale">the auto code changed since the override was taken</span>}
         <span className="grow" />

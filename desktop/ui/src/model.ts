@@ -239,6 +239,18 @@ export function nameOf(rule: Rule): string {
   }
 }
 
+/** A rule's target with the containers it sits in: `Customer.Name`, `Lines[*].Sku`. */
+export function targetPath(file: FunctionalFile, path: string): string {
+  const names: string[] = [];
+  let at = "";
+  for (const step of path.match(/rules\[\d+\]/g) ?? []) {
+    at = at ? `${at}.${step}` : step;
+    const rule = ruleAt(file, at);
+    if (rule) names.push(nameOf(rule));
+  }
+  return names.join(".");
+}
+
 /** Source column: a field's `source.path`, a loop's `source`. */
 export function sourceOf(rule: Rule): string {
   if (rule.kind === "field") {
@@ -290,6 +302,11 @@ export function changedColumns(rule: Rule, before: Rule | undefined): Set<string
   differ("description", rule.description ?? "", before.description ?? "");
   if (rule.kind === "field" && before.kind === "field") {
     differ("type", rule.type, before.type);
+    differ(
+      "status",
+      `${rule.transform.status}\n${rule.transform.code_override ?? ""}`,
+      `${before.transform.status}\n${before.transform.code_override ?? ""}`,
+    );
     differ("req", rule.required, before.required);
     differ("validated", rule.validation.validated, before.validation.validated);
     differ("review", rule.validation.needs_review, before.validation.needs_review);

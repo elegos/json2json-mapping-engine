@@ -27,6 +27,8 @@ import {
   ruleAt,
   setExpression,
   filterByState,
+  type FieldRule,
+  targetPath,
   type ReviewFlag,
 } from "./model";
 import { fitMiddle } from "./MiddleEllipsis";
@@ -133,6 +135,14 @@ describe("model", () => {
     expect(rowIssues(rule, [])).toEqual(["Not validated"]);
     const d = { severity: "error" as const, file: null, rule: null, message: "'type' is bad" };
     expect(rowIssues(rule, [d])[0]).toBe("Invalid Type: 'type' is bad");
+  });
+
+  it("names a rule with its containers and marks a taken-over rule as changed", () => {
+    expect(targetPath(file, "rules[1].rules[0]")).toBe("Lines[*].B");
+    const rule = structuredClone(ruleAt(file, "rules[0]")!) as FieldRule;
+    rule.transform.status = "manual";
+    rule.transform.code_override = "root.a";
+    expect(changedColumns(rule, ruleAt(file, "rules[0]"))).toEqual(new Set(["status"]));
   });
 
   it("reports the review flags of a row", () => {
