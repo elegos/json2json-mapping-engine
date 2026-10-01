@@ -22,6 +22,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, ClassVar, Literal
 
+from compiler.backends.integration import CaseResult, IntegrationContext
 from compiler.scope_resolver import ScopeResolution
 
 
@@ -69,6 +70,26 @@ def check_options(
     return problems
 
 
+def check_target_options(
+    cls: type[Backend], section: dict[str, Any], *, missing: bool = True
+) -> list[tuple[str, str]]:
+    """`check_options` for a whole `[target.<name>]` section: its own keys, and the keys of its
+    `test` sub-table (`[target.<name>.test]`, what the backend's integration tests need) under the
+    name `test.<key>`. A backend that declares neither is not checked."""
+    own = {k: v for k, v in section.items() if k != "test" or not cls.test_options}
+    problems = check_options(cls.options, own, missing=missing) if cls.options else []
+    if cls.test_options and "test" in section:
+        test = section["test"]
+        if not isinstance(test, dict):
+            problems.append(("test", "must be a table"))
+        else:
+            problems += [
+                (f"test.{key}", message)
+                for key, message in check_options(cls.test_options, test, missing=False)
+            ]
+    return problems
+
+
 def _wrong_kind(option: Option, value: Any) -> str | None:
     if option.kind == "bool":
         return None if isinstance(value, bool) else "must be true or false"
@@ -109,6 +130,11 @@ class Backend(ABC):
     # checked against it (unknown keys, value kinds) and the desktop tool draws its
     # form from it. A backend that leaves it empty is not checked, and has no form.
     options: ClassVar[tuple[Option, ...]] = ()
+    # Every key of `[target.<name>.test]`, what this backend's integration tests need (an image
+    # for a database that runs in a container, say). Empty when it needs nothing.
+    test_options: ClassVar[tuple[Option, ...]] = ()
+    # Whether the backend can run the golden cases (track 2) at all.
+    has_integration: ClassVar[bool] = False
 
     def __init__(self, config: dict[str, Any]):
         self.config = config
@@ -134,6 +160,16 @@ class Backend(ABC):
         """All units of the project -> the deployable artifact files, as
         file name -> text (written under `build/compiled/`). Raises
         `CodeGenError` (e.g. duplicate mapping ids)."""
+
+    def integration_unavailable(self) -> str | None:
+        """Why the integration tests cannot run here (no container runtime, say), or None when
+        they can. Only asked of a backend with `has_integration`."""
+        return None
+
+    def run_integration(self, context: IntegrationContext) -> list[CaseResult]:
+        """Run every case of `context` in the target environment. Raises `IntegrationError` when
+        the environment is unusable. Only called on a backend with `has_integration`."""
+        raise NotImplementedError(f"the {self.target} backend has no integration tests")
 
     def deploy_order(self, file_names: list[str]) -> list[str]:
         """The artifact files in the order the target environment needs them."""

@@ -21,6 +21,8 @@ export interface ConfigSchema {
   engine: ConfigSection[];
   /** Options of each backend that declares them, by target name. */
   targets: Record<string, ConfigOption[]>;
+  /** What each backend's integration tests need, the keys of `[target.<name>.test]`. */
+  target_tests?: Record<string, ConfigOption[]>;
 }
 
 export type ConfigValues = Record<string, unknown>;

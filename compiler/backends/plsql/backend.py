@@ -13,6 +13,8 @@ import ast
 from typing import Any, ClassVar
 
 from compiler.backends.base import Backend, CodeGenError, Option
+from compiler.backends.integration import CaseResult, IntegrationContext
+from compiler.backends.plsql import integration
 from compiler.backends.plsql.builtins import BUILTIN_FUNCTIONS
 from compiler.backends.plsql.codegen import PlsqlCodeGenerator, PlsqlUnit
 from compiler.backends.plsql.naming import PlsqlNaming
@@ -74,6 +76,19 @@ class PlsqlBackend(Backend):
         Option("fn_prefix", "string", "Prefix of generated procedure / function names", default=""),
         Option("fn_suffix", "string", "Suffix of generated procedure / function names", default=""),
     )
+
+    # `[target.plsql.test]`: the database the integration tests start (a container)
+    test_options: ClassVar[tuple[Option, ...]] = (
+        Option("container_image", "string", "Database container image for `mapper test`"),
+        Option("container_tag", "string", "Image tag"),
+    )
+    has_integration: ClassVar[bool] = True
+
+    def integration_unavailable(self) -> str | None:
+        return integration.integration_unavailable()
+
+    def run_integration(self, context: IntegrationContext) -> list[CaseResult]:
+        return integration.run_integration(self.config, context)
 
     @classmethod
     def validate_config(cls, section: dict[str, Any]) -> None:

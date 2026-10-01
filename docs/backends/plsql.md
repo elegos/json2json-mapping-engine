@@ -220,5 +220,6 @@ PL/SQL, without a SQL `ORDER BY`.
 - A mapping whose root output is an array is not supported (the output accumulator is
   always a `JSON_OBJECT_T`).
 - `@parallel` scaffolding is document-level only.
-- The integration harness (`cli/track2.py`, `[test]` settings) is the PL/SQL one; when
-  more backends exist, integration tests will be per target.
+- The integration tests (`compiler/backends/plsql/integration.py`, settings under
+  `[target.plsql.test]`) are the PL/SQL ones; every backend brings its own
+  (`Backend.run_integration`).

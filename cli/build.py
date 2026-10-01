@@ -269,11 +269,16 @@ def write_package(units: list[CompiledUnit], config: MapperConfig) -> list[Path]
     return [BUILD_COMPILED_DIR / name for name in files]
 
 
-def compiled_sql(config: MapperConfig) -> str:
-    """The artifact files on disk, concatenated in deploy order (what the
+def compiled_files(config: MapperConfig) -> dict[str, str]:
+    """The artifact files on disk, in the order the target environment needs them (what the
     integration tests deploy). Raises `BuildError` when there are none."""
     on_disk = {p.name: p for p in BUILD_COMPILED_DIR.glob("*.sql")}
     if not on_disk:
         raise BuildError(f"no .sql files in {BUILD_COMPILED_DIR} (run `mapper build`)")
     order = backend_for(config).deploy_order(list(on_disk))
-    return "\n".join(on_disk[name].read_text() for name in order)
+    return {name: on_disk[name].read_text() for name in order}
+
+
+def compiled_sql(config: MapperConfig) -> str:
+    """The artifact files concatenated in deploy order."""
+    return "\n".join(compiled_files(config).values())

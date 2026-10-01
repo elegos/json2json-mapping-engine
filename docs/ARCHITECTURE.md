@@ -682,10 +682,14 @@ config naming an unknown target, are errors that list what is available. The bui
 pipeline only talk to the `Backend` interface, selected by `[project] target`.
 
 **Integration tests are per target.** Each backend brings its own integration tests and
-test environment (PL/SQL: golden cases against an ephemeral Oracle container). The
-current harness (`cli/track2.py`) and the `[test]` container settings are the PL/SQL
-ones; once there are several backends, integration tests will cover each target —
-PL/SQL included — rather than being PL/SQL-only.
+test environment (PL/SQL: golden cases against an ephemeral Oracle container). The part
+every target shares (finding the golden cases, judging the output, the `allowed` warnings) is
+`cli/track2.py` and `compiler/backends/integration.py`; how a case is *run* is the backend's
+(`Backend.integration_unavailable` / `run_integration`; PL/SQL:
+`compiler/backends/plsql/integration.py`). What the tests need is the backend's too, in
+`[target.<name>.test]`, declared by `Backend.test_options` (PL/SQL: `container_image`,
+`container_tag`): a target that runs in-process has none and needs no container. The old global
+`[test]` table is refused, with a message pointing to the new one.
 
 ## Generated artifact (PL/SQL)
 
@@ -907,7 +911,7 @@ export_rule_functions = false  # true = list every fn_<rule_id> in the package s
 format     = "round"         # round | truncate (default: round) — `format` decimals
 multipleOf = "round"         # round | truncate (default: round) — `allowed.multipleOf` snapping
 
-[test]
+[target.plsql.test]            # what this target's integration tests need (PL/SQL: a container)
 container_image = "container-registry.example.com/oracle-db"
 container_tag   = "19.3.0-ee"
 ```

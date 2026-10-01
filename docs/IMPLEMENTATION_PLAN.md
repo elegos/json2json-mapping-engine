@@ -211,7 +211,9 @@ any failure.
 - **Track 1** (`cli/track1.py`): runs the project's `tests/track1/` through
   pytest. Skipped with a note if the project has no such directory.
 - **Track 2** (`cli/track2.py`): detects Podman (preferred) or Docker, starts
-  an ephemeral `--rm` container from `[test] container_image:container_tag`
+  an ephemeral `--rm` container from `[target.plsql.test] container_image:container_tag`
+  (moved from the global `[test]`: the test environment is the target's; the PL/SQL part lives in
+  `compiler/backends/plsql/integration.py`, `cli/track2.py` is the shared orchestration)
   on a random loopback port, waits for the DB (thin-mode `python-oracledb`,
   new dependency — no Oracle client needed), deploys
   `build/compiled/<mapping>.sql`, runs `map_<id>_safe` per case, removes the

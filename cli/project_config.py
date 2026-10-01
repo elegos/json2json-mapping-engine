@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from cli.config import CONFIG_FILENAME, MapperConfigError, parse_config
-from compiler.backends.base import Option, check_options
+from compiler.backends.base import Option, check_options, check_target_options
 from compiler.backends.registry import backends
 
 
@@ -76,14 +76,6 @@ ENGINE_SECTIONS: tuple[Section, ...] = (
             ),
         ),
     ),
-    Section(
-        ("test",),
-        "Integration tests",
-        (
-            Option("container_image", "string", "Database container image for `mapper test`"),
-            Option("container_tag", "string", "Image tag"),
-        ),
-    ),
 )
 
 
@@ -121,6 +113,12 @@ def describe() -> dict[str, Any]:
             for name, cls in sorted(backends().items())
             if cls.options
         },
+        # what a backend's integration tests need: `[target.<name>.test]`
+        "target_tests": {
+            name: [_option_json(o) for o in cls.test_options]
+            for name, cls in sorted(backends().items())
+            if cls.test_options
+        },
     }
 
 
@@ -150,12 +148,10 @@ def check(values: dict[str, Any]) -> list[dict[str, str]]:
         for key, message in check_options(
             section.options, _at(values, section.path), missing=False
         ):
-            if section.path == ("test",) and message.startswith("unknown key"):
-                continue  # the [test] table is the harness's; keys the form does not list are kept
             issues.append({"path": ".".join((*section.path, key)), "message": message})
     for name, cls in backends().items():
-        if cls.options and name in _at(values, ("target",)):
-            for key, message in check_options(cls.options, _at(values, ("target", name))):
+        if (cls.options or cls.test_options) and name in _at(values, ("target",)):
+            for key, message in check_target_options(cls, _at(values, ("target", name))):
                 issues.append({"path": f"target.{name}.{key}", "message": message})
     if not issues:
         try:

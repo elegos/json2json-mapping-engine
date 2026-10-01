@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-from compiler.backends.base import CodeGenError, check_options
+from compiler.backends.base import CodeGenError, check_target_options
 from compiler.backends.registry import backend_class
 
 CONFIG_FILENAME = "mapper.toml"
@@ -49,17 +49,10 @@ class CompilerConfig:
 
 
 @dataclass(frozen=True)
-class TestConfig:
-    container_image: str | None = None
-    container_tag: str | None = None
-
-
-@dataclass(frozen=True)
 class MapperConfig:
     project: ProjectConfig
     optimizer: OptimizerConfig
     compiler: CompilerConfig
-    test: TestConfig
     targets: dict[str, dict[str, Any]] = field(default_factory=dict)
     # Full parsed TOML, verbatim. §Build folder and incremental compilation:
     # the build cache key is source hash + the hash of this *entire* raw dict,
@@ -120,8 +113,8 @@ def _validate_target_section(target: str, section: dict[str, Any]) -> dict[str, 
         cls = backend_class(target)
     except CodeGenError as exc:
         raise MapperConfigError(f"[target.{target}]: {exc}") from exc
-    if cls.options:
-        problems = check_options(cls.options, section, missing=False)
+    if cls.options or cls.test_options:
+        problems = check_target_options(cls, section, missing=False)
         if problems:
             listed = "; ".join(f"{key}: {message}" for key, message in problems)
             raise MapperConfigError(f"[target.{target}] {listed}")
@@ -157,11 +150,11 @@ def parse_config(raw: dict[str, Any]) -> MapperConfig:
         default_choices=_parse_default_choices(compiler_raw.get("default_choices", {})),
     )
 
-    test_raw = raw.get("test", {})
-    test = TestConfig(
-        container_image=test_raw.get("container_image"),
-        container_tag=test_raw.get("container_tag"),
-    )
+    if "test" in raw:
+        raise MapperConfigError(
+            "[test] is gone: what the integration tests need depends on the target, so it is "
+            f"[target.{project.target}.test] now (container_image, container_tag for plsql)"
+        )
 
     target_section = raw.get("target", {})
     targets = {
@@ -180,7 +173,6 @@ def parse_config(raw: dict[str, Any]) -> MapperConfig:
         project=project,
         optimizer=optimizer,
         compiler=compiler,
-        test=test,
         targets=targets,
         raw=raw,
     )

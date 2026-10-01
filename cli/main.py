@@ -27,7 +27,7 @@ from cli.build import (
 from cli.config import MapperConfigError, load_config
 from cli.stubs import generate_stubs
 from cli.track1 import run_track1
-from cli.track2 import Track2Error, detect_runtime, run_track2, runtime_diagnostic
+from cli.track2 import Track2Error, integration_state, run_track2
 from compiler.function_registry import all_functions
 from transpiler.check import check_functional, schemas_for
 from transpiler.model import (
@@ -304,10 +304,11 @@ def test(
     mapping: str | None = typer.Argument(None, help="Integration tests: only this mapping's cases"),
 ) -> None:
     """Run the offline tests (pytest, no runtime; track 1) and/or the
-    integration tests (golden-record tests against an ephemeral Oracle
-    container; track 2). Without a selector both run; the integration tests
-    are skipped with a note when no container runtime is available or there
-    are no cases; with --integration / --track 2 either one is a failure."""
+    integration tests (golden-record tests in the target's own environment,
+    an ephemeral Oracle container for PL/SQL; track 2). Without a selector both
+    run; the integration tests are skipped with a note when the target's
+    environment is not available, the target has none, or there are no cases;
+    with --integration / --track 2 any of them is a failure."""
     if offline:
         track = 1
     if integration:
@@ -331,9 +332,9 @@ def test(
 
     if track in (None, 2):
         typer.echo("== Integration tests ==")
-        if detect_runtime() is None:
-            typer.echo("no podman/docker available — integration tests unavailable")
-            typer.echo(f"  {runtime_diagnostic()}")
+        unavailable = integration_state(config)
+        if unavailable is not None:
+            typer.echo(f"integration tests unavailable: {unavailable}")
             failed = failed or track == 2
         else:
             try:

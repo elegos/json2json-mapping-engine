@@ -60,12 +60,24 @@ def test_unknown_key_in_a_target_section_is_a_config_error(project: Path) -> Non
 def test_read_describes_engine_sections_and_the_backends_options(project: Path) -> None:
     result = project_config.read(project)
     titles = [s["title"] for s in result["schema"]["engine"]]
-    assert titles == ["Project", "Optimizer", "Default choices", "Integration tests"]
+    assert titles == ["Project", "Optimizer", "Default choices"]
     target = next(o for o in result["schema"]["engine"][0]["options"] if o["key"] == "target")
     assert "plsql" in target["choices"]
     keys = {o["key"] for o in result["schema"]["targets"]["plsql"]}
     assert {"schema", "error_code", "mapping_packages", "export_rule_functions"} <= keys
     assert result["values"]["target"]["plsql"]["schema"] == "MAPPING_OWNER"
+    # what the integration tests need belongs to the target: `[target.plsql.test]`
+    tests = {o["key"] for o in result["schema"]["target_tests"]["plsql"]}
+    assert tests == {"container_image", "container_tag"}
+    assert result["values"]["target"]["plsql"]["test"]["container_tag"] == "latest-23ai"
+
+
+def test_the_test_table_of_a_target_is_checked(project: Path) -> None:
+    values = project_config.read(project)["values"]
+    values["target"]["plsql"]["test"]["container_tag"] = 3
+    values["target"]["plsql"]["test"]["nope"] = "x"
+    paths = {i["path"] for i in project_config.check(values)}
+    assert {"target.plsql.test.container_tag", "target.plsql.test.nope"} <= paths
 
 
 def test_a_cross_key_error_comes_from_the_backend(project: Path) -> None:

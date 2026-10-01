@@ -146,6 +146,7 @@ function Group(props: {
 export function ProjectProperties({ schema, values, issues, onChange }: Props) {
   const target = String(tableAt(values, ["project"]).target ?? "");
   const options = schema.targets[target];
+  const testOptions = schema.target_tests?.[target];
   const general = issues.filter((i) => i.path === "");
   return (
     <div className="config">
@@ -183,6 +184,16 @@ export function ProjectProperties({ schema, values, issues, onChange }: Props) {
             [target.{target}] section of mapper.toml by hand.
           </div>
         </fieldset>
+      )}
+      {testOptions && (
+        <Group
+          title={`Integration tests: ${target}`}
+          path={["target", target, "test"]}
+          options={testOptions}
+          values={values}
+          issues={issues}
+          onChange={onChange}
+        />
       )}
     </div>
   );

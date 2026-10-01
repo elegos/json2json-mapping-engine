@@ -2,7 +2,7 @@ import subprocess
 
 import pytest
 
-from cli import track2
+from compiler.backends.plsql import integration as track2
 
 
 def _fake_run(returncode: int, stdout: str):

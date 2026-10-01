@@ -36,7 +36,8 @@ jobs:
       - name: pytest (offline tests — no runtime dependency)
         run: uv run pytest tests/track1
 
-  # Integration tests (`mapper test --integration`, harness in cli/track2.py) start an
+  # Integration tests (`mapper test --integration`, harness in cli/track2.py, PL/SQL part in
+  # compiler/backends/plsql/integration.py) start an
   # ephemeral Oracle container (container-registry.oracle.com/database/adb-free)
   # and connects to its published port, so the job needs a docker daemon reachable
   # from the job. Runners with the `docker-dind` label create the job container on

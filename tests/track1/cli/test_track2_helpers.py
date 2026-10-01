@@ -5,12 +5,9 @@ from typer.testing import CliRunner
 
 from cli import track2
 from cli.main import app
-from cli.track2 import (
-    discover_cases,
-    generate_password,
-    json_diff,
-    split_sql_script,
-)
+from cli.track2 import discover_cases, json_diff
+from compiler.backends.plsql import integration as oracle
+from compiler.backends.plsql.integration import generate_password, split_sql_script
 
 
 def test_split_sql_script_on_slash_lines():
@@ -69,7 +66,7 @@ def test_test_command_track2_unavailable(tmp_path: Path, monkeypatch: pytest.Mon
 
     monkeypatch.chdir(tmp_path)
     (tmp_path / "mapper.toml").write_text(MAPPER_TOML)
-    monkeypatch.setattr("cli.main.detect_runtime", lambda: None)
+    monkeypatch.setattr(oracle, "detect_runtime", lambda: None)
     runner = CliRunner()
     both = runner.invoke(app, ["test"])
     assert both.exit_code == 0
@@ -89,7 +86,7 @@ def test_test_command_without_cases(tmp_path: Path, monkeypatch: pytest.MonkeyPa
         '[target.plsql]\nschema = "S"\nmapping_package_prefix = "P_"\nerror_code = -20000\n'
     )
     runner = CliRunner()
-    monkeypatch.setattr("cli.main.detect_runtime", lambda: "docker")
+    monkeypatch.setattr("cli.main.integration_state", lambda _config: None)
     monkeypatch.setattr("cli.main.run_track1", lambda: 0)
     monkeypatch.setattr("cli.main.run_track2", lambda *_a, **_k: [])
     assert runner.invoke(app, ["test"]).exit_code == 0
@@ -102,7 +99,7 @@ def test_run_track2_without_cases_needs_no_runtime(tmp_path: Path, monkeypatch: 
     from cli.config import parse_config
 
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(track2, "detect_runtime", lambda: pytest.fail("must not probe"))
+    monkeypatch.setattr(oracle, "detect_runtime", lambda: pytest.fail("must not probe"))
     cfg = parse_config(
         {
             "project": {"mode": "bootstrap"},
@@ -115,9 +112,9 @@ def test_run_track2_without_cases_needs_no_runtime(tmp_path: Path, monkeypatch: 
 
 
 def test_remote_daemon_host():
-    assert track2.remote_daemon_host({"DOCKER_HOST": "tcp://docker:2375"}) == "docker"
-    assert track2.remote_daemon_host({"DOCKER_HOST": "unix:///var/run/docker.sock"}) is None
-    assert track2.remote_daemon_host({}) is None
+    assert oracle.remote_daemon_host({"DOCKER_HOST": "tcp://docker:2375"}) == "docker"
+    assert oracle.remote_daemon_host({"DOCKER_HOST": "unix:///var/run/docker.sock"}) is None
+    assert oracle.remote_daemon_host({}) is None
 
 
 class _FakeVar:
@@ -154,22 +151,22 @@ class _FakeConn:
         return text
 
 
-def _case(tmp_path: Path) -> track2.TestCase:
+def _case(tmp_path: Path) -> oracle.TestCase:
     p = tmp_path / "a.input.json"
     p.write_text("{}")
-    return track2.TestCase("m", "a", p, None)
+    return oracle.TestCase("m", "a", p, None)
 
 
 def test_check_raising_agrees_on_success(tmp_path: Path):
     conn = _FakeConn(out='{"a": 1}')
-    assert track2.check_raising(conn, "P.map_m", _case(tmp_path), {"a": 1}, [], -20000) == ""
-    msg = track2.check_raising(conn, "P.map_m", _case(tmp_path), {"a": 2}, [], -20000)
+    assert oracle.check_raising(conn, "P.map_m", _case(tmp_path), {"a": 1}, [], -20000) == ""
+    msg = oracle.check_raising(conn, "P.map_m", _case(tmp_path), {"a": 2}, [], -20000)
     assert "differs from _safe" in msg
 
 
 def test_check_raising_flags_missing_raise(tmp_path: Path):
     conn = _FakeConn()
-    msg = track2.check_raising(conn, "P.map_m", _case(tmp_path), {}, [{"rule": "r"}], -20000)
+    msg = oracle.check_raising(conn, "P.map_m", _case(tmp_path), {}, [{"rule": "r"}], -20000)
     assert "did not raise" in msg
 
 
@@ -182,23 +179,23 @@ def test_check_raising_validates_error_payload(tmp_path: Path):
 
     exc = oracledb.DatabaseError(_Err())
     case = _case(tmp_path)
-    ok = track2.check_raising(_FakeConn(exc), "P.map_m", case, {}, [{"rule": "r"}], -20000)
+    ok = oracle.check_raising(_FakeConn(exc), "P.map_m", case, {}, [{"rule": "r"}], -20000)
     assert ok == ""
-    bad = track2.check_raising(_FakeConn(exc), "P.map_m", case, {}, [{}, {}], -20000)
+    bad = oracle.check_raising(_FakeConn(exc), "P.map_m", case, {}, [{}, {}], -20000)
     assert "total_errors=1" in bad
     stacked = type("E", (), {"code": 20000, "message": _Err.message + "\nORA-06512: at line 1"})
     with_stack = oracledb.DatabaseError(stacked())
-    ok_stack = track2.check_raising(_FakeConn(with_stack), "P.map_m", case, {}, [{}], -20000)
+    ok_stack = oracle.check_raising(_FakeConn(with_stack), "P.map_m", case, {}, [{}], -20000)
     assert ok_stack == ""
-    unexpected = track2.check_raising(_FakeConn(exc), "P.map_m", case, {}, [], -20000)
+    unexpected = oracle.check_raising(_FakeConn(exc), "P.map_m", case, {}, [], -20000)
     assert "raised but _safe reported no rule errors" in unexpected
 
 
 def test_check_parallel_wrapper_compares_with_safe(tmp_path: Path):
     conn = _FakeConn(out='{"a": 1}')
     case = _case(tmp_path)
-    assert track2.check_parallel_wrapper(conn, "P.map_m_fn", case, {"a": 1}) == ""
-    assert "differs from _safe" in track2.check_parallel_wrapper(conn, "P.map_m_fn", case, {"a": 2})
+    assert oracle.check_parallel_wrapper(conn, "P.map_m_fn", case, {"a": 1}) == ""
+    assert "differs from _safe" in oracle.check_parallel_wrapper(conn, "P.map_m_fn", case, {"a": 2})
 
 
 def test_check_parallel_wrapper_reports_sql_failure(tmp_path: Path):
@@ -209,5 +206,5 @@ def test_check_parallel_wrapper_reports_sql_failure(tmp_path: Path):
         message = "ORA-00904: invalid identifier"
 
     conn = _FakeConn(oracledb.DatabaseError(_Err()))
-    msg = track2.check_parallel_wrapper(conn, "P.map_m_fn", _case(tmp_path), {})
+    msg = oracle.check_parallel_wrapper(conn, "P.map_m_fn", _case(tmp_path), {})
     assert "failed from SQL" in msg
