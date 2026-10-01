@@ -16,6 +16,7 @@ reported. Only single-expression rules are typed; blocks with statements are lef
 from __future__ import annotations
 
 import ast
+import textwrap
 from collections.abc import Callable, Mapping
 from typing import Any
 
@@ -104,6 +105,7 @@ class ExprTyper:
         self.special = (
             {n for n, f in functions.items() if f.special} if functions is not None else HANDLED
         )
+        self.registry = functions if functions is not None else _BUILTINS
         self.schemas = schemas
         self.env = env
         self.report = report
@@ -119,6 +121,42 @@ class ExprTyper:
         actual = self.infer(node, want)
         if not compatible(actual, want):
             self.report(f"the expression is {describe(actual)}, but {what}")
+
+    def check_block(self, text: str) -> None:
+        """The calls of a block of statements (a developer's override): each is checked for its
+        arguments, but the block is not compared with a type: its result is not one expression."""
+        try:
+            tree = ast.parse(textwrap.dedent(text).strip("\n"))
+        except SyntaxError:
+            return  # reported by the form check
+        for stmt in ast.walk(tree):
+            for field in ("value", "test"):
+                expr = getattr(stmt, field, None)
+                if isinstance(expr, ast.expr) and isinstance(
+                    stmt, ast.Assign | ast.Return | ast.Expr | ast.If
+                ):
+                    self.infer(expr)
+
+    def _arity(self, node: ast.Call, name: str) -> None:
+        """A call of a registered function must fit its parameters."""
+        info = self.registry.get(name)
+        if info is None or any(k.arg is None for k in node.keywords):
+            return
+        if any(isinstance(a, ast.Starred) for a in node.args):
+            return
+        given = len(node.args) + len(node.keywords)
+        required = sum(1 for p in info.params if p.default is None and not p.variadic)
+        variadic = any(p.variadic for p in info.params)
+        most = None if variadic else len(info.params)
+        if given < required or (most is not None and given > most):
+            takes = (
+                f"{required}"
+                if most == required
+                else f"{required} to {most}"
+                if most is not None
+                else f"at least {required}"
+            )
+            self.report(f"{name}() takes {takes} argument(s), {given} given: {info.signature()}")
 
     # -- references ------------------------------------------------------------
 
@@ -247,6 +285,7 @@ class ExprTyper:
             for arg in args:
                 self.infer(arg)
             return _CASTS[name]
+        self._arity(node, name)
         if name == "lookup" and name in self.special:
             return self._lookup(args, want)
         if name == "if_else" and name in self.special and len(args) == 3:

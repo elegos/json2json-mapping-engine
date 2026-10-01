@@ -561,6 +561,28 @@ export function App() {
         (found) => {
           // same findings: keep the array, or the grid redraws (and closes an open editor)
           if (stale) return;
+          // a validated rule that no longer checks is no longer validated: back to review
+          const errors = diagnosticsByRule(found.diagnostics, current);
+          const broken = flatten(tree.rules).filter(
+            (r) =>
+              reviewState(r.rule) === "validated" &&
+              (errors.get(r.path) ?? []).some((d) => d.severity === "error"),
+          );
+          if (broken.length > 0) {
+            remember(tree, "auto-review");
+            setTree((old) => {
+              if (old !== tree) return old;
+              const copy = structuredClone(old);
+              for (const { path } of broken) {
+                const rule = ruleAt(copy, path);
+                if (rule) setReviewState(rule, "review");
+              }
+              return copy;
+            });
+            setStatus(
+              `${broken.length} rule(s) with errors went back to "To review": fix them, then validate again.`,
+            );
+          }
           setLive((old) => (JSON.stringify(old) === JSON.stringify(found.diagnostics) ? old : found.diagnostics));
           setFlags((old) => {
             const next = new Map(found.review.map((f) => [f.rule, f] as const));
@@ -574,7 +596,7 @@ export function App() {
       stale = true;
       clearTimeout(timer);
     };
-  }, [tree, project, current, python]);
+  }, [tree, project, current, python, remember]);
 
   // what differs from the saved file, per row path ("*" = a new rule)
   const changes = useMemo(() => {
@@ -812,6 +834,10 @@ export function App() {
           const state = (Object.keys(VALIDATION_LABELS) as ReviewState[]).find(
             (k) => VALIDATION_LABELS[k] === p.newValue,
           );
+          if (state === "validated" && invalidColumns(p.data.path).size > 0) {
+            setStatus("A rule with errors cannot be validated: fix them first.");
+            return false;
+          }
           if (state) edit(p.data.path, (r) => setReviewState(r, state));
           return true;
         },
@@ -830,7 +856,7 @@ export function App() {
         },
       },
     ];
-  }, [edit, remoteEdit, showIds, developerMode, diagnostics, flags, collapsed, toggleFold]);
+  }, [edit, remoteEdit, showIds, developerMode, diagnostics, flags, invalidColumns, collapsed, toggleFold]);
 
   return (
     <div className="app">

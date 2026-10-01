@@ -406,6 +406,15 @@ class _Checker:
         )
         typer.check(resolved, want, what)
 
+    def devcheck(self, path: str, text: str, root: Node, items: list[Node]) -> None:
+        """The calls of a code override (developer dialect: `root`, `src`, `src1`...): arguments
+        and their types, against the registry."""
+        env: dict[str, Any] = {"root": root}
+        env.update({("src" if o == 0 else f"src{o}"): n for o, n in enumerate(reversed(items))})
+        ExprTyper(
+            self.inp, env, lambda message: self.add(path, "expression", message), self.functions
+        ).check_block(text)
+
     def _anchor(self, anchor: str, root: Node, items: list[Node], labels: list[str | None]) -> Node:
         if anchor == "$":
             return root
@@ -473,6 +482,8 @@ class _Checker:
                 value = node
         if text:
             self.block(path, text, scope, "expression", dev=t.status == "manual")
+            if t.status == "manual":
+                self.devcheck(path, text, in_root, items)
             if t.status != "manual":
                 self.refs(path, text, "expression", in_root, items, labels)
                 if uses_value(text) and not has_source:

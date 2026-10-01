@@ -195,10 +195,10 @@ STR_TABLE = {"type": "object", "additionalProperties": {"type": "string"}}
 
 def test_a_lookup_inside_a_function_is_checked_both_ways() -> None:
     # the values must suit the function's parameter, and its result the field
-    assert _lookup_issues(INT_TABLE, "number", "round(lookup($.c, $.t, 0))") == []
-    [message] = _lookup_issues(INT_TABLE, "int", "round(lookup($.c, $.t, 0))")
+    assert _lookup_issues(INT_TABLE, "number", "round(lookup($.c, $.t, 0), 2)") == []
+    [message] = _lookup_issues(INT_TABLE, "int", "round(lookup($.c, $.t, 0), 2)")
     assert "the expression is number" in message and "'int'" in message
-    [message] = _lookup_issues(STR_TABLE, "number", 'round(lookup($.c, $.t, "0"))')
+    [message] = _lookup_issues(STR_TABLE, "number", 'round(lookup($.c, $.t, "0"), 2)')
     assert "argument 1 of round() is string" in message
     [message] = _lookup_issues(INT_TABLE, "str", 'split_first(lookup($.c, $.t, 0), "-")')
     assert "argument 1 of split_first() is integer" in message
@@ -389,3 +389,39 @@ def test_value_without_a_source_is_reported() -> None:
     assert [i.message for i in check_functional(file)] == [
         "`value` is used but the rule has no Source"
     ]
+
+
+def _call_issues(expression: str, status: str = "auto") -> list[str]:
+    key = "code_override" if status == "manual" else "expression"
+    raw = {
+        "id": "t",
+        "rules": [
+            {
+                "kind": "field",
+                "id": "a",
+                "field": "A",
+                "type": "str",
+                "source": {"path": "$.name"},
+                "transform": {"status": status, key: expression},
+            }
+        ],
+    }
+    schema = {"type": "object", "properties": {"name": {"type": "string"}}}
+    file = parse_functional(raw, "t")
+    return [i.message for i in check_functional(file, schema, None) if i.severity == "error"]
+
+
+def test_a_call_with_the_wrong_number_of_arguments_is_an_error() -> None:
+    assert _call_issues("split_first(value)")[0].startswith(
+        "split_first() takes 2 argument(s), 1 given"
+    )
+    assert _call_issues("split_first(value, ',')") == []
+    assert _call_issues("concat(value, 'a', 'b')") == []  # variadic
+    assert _call_issues("round(1.5)")[0].startswith("round() takes 2")
+
+
+def test_a_code_override_is_checked_too() -> None:
+    assert _call_issues("split_first(root.name)", "manual")[0].startswith("split_first() takes 2")
+    assert _call_issues("split_first(root.name, ',')", "manual") == []
+    block = "x = split_first(root.name)\nx"
+    assert _call_issues(block, "manual")[0].startswith("split_first() takes 2")

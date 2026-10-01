@@ -515,9 +515,14 @@ Sliced; each slice is usable on its own:
         tooltip), which also catches changes that are not in the expression itself.
       - **One Validation column** (Developer mode only; Not validated / To review / Validated,
         over the two flags of the file). The validation marks, edges and filter are hidden in
-        the functional view. A *function-changed* warning (hashes of the functions a validated
-        rule calls) was built and removed: the check already errors on a function that is gone
-        or called wrongly, and keeping a function compatible is its author's job.
+        the functional view.
+      - **Function signature changes** are the check's business, not a separate mark: the check
+        now counts the arguments of every call of a registered function (`ExprTyper._arity`) and
+        also checks a manual rule's `code_override` (`Checker.devcheck`: `root`, `src`, `src1`...,
+        a block too). A validated rule that gets an error goes back to *To review*
+        automatically (`App.tsx`), and a rule with errors cannot be set to *Validated*.
+        A compatible signature change raises nothing; keeping a function compatible is its
+        author's job.
       - **State filter** next to the text filter: validated, to review, not validated,
         override out of date, with errors (with counts; the validation ones in Developer mode).
       - Limits: a rule that cannot be transpiled makes the auto code of every rule unavailable

@@ -1291,7 +1291,11 @@ which config keys affect which stage.
   be re-transpiled; the build system flags each affected rule in the editor grid with a
   **function-changed warning** and resets `validated → false, needs_review → true` for
   those rows. The build proceeds but the developer must review and re-validate before
-  clearing the warnings.
+  clearing the warnings. In the tool this is the check itself: a call that no longer fits
+  the signature (wrong number of arguments, a type that does not suit a parameter) is an
+  error on the rule, in an expression and in a code override alike; a validated rule with an
+  error goes back to *To review*, and a rule with errors cannot be validated until they are
+  fixed. A change that keeps the calls valid raises nothing.
 - If only the implementation changed (PATCH): affected `.fn.yaml` files are recompiled
   (to pick up the new target implementation) but no validation flags are set — the
   functional semantics are unchanged.
