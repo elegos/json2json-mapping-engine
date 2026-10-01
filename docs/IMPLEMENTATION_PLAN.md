@@ -503,7 +503,7 @@ Sliced; each slice is usable on its own:
       Choosing another target creates its `[target.X]` section. New dependency: `tomlkit`
       (the bundled Python runtime must include it).
 - [x] **M6.2 — validation UX** (`transpiler/review.py`; ops of `mapper serve`: `proposal`,
-      `take_over`, `accept_proposal`, `keep_override`, `set_override`, `set_validated`; `check`
+      `take_over`, `accept_proposal`, `keep_override`, `set_override`; `check`
       also answers `review`):
       - **Split pane** (`OverridePane.tsx`, developer mode, below the grid for the selected
         field): the auto code on the left (what the transpiler generates from Source and
@@ -513,14 +513,15 @@ Sliced; each slice is usable on its own:
       - **Override out of date**: `transform.last_auto_version` now holds the auto *code* at
         take-over; a manual rule whose current auto code differs is flagged (red edge, ⚠️
         tooltip), which also catches changes that are not in the expression itself.
-      - **Function-changed warnings**: `validation.functions` (name → hash, new key) is recorded
-        when a rule is validated; `FunctionInfo.fingerprint` hashes each function's definition.
-      - **State filter** next to the text filter: validated, needs review, not validated,
-        override out of date, function changed, with errors (with counts).
-      - Limits: the function-changed flag exists only for rules validated after this change
-        (older files carry no hashes); a rule that cannot be transpiled makes the auto code of
-        every rule unavailable (the pane shows the reason); the pane has not been run in the
-        real window (see M6.1).
+      - **One Validation column** (Developer mode only; Not validated / To review / Validated,
+        over the two flags of the file). The validation marks, edges and filter are hidden in
+        the functional view. A *function-changed* warning (hashes of the functions a validated
+        rule calls) was built and removed: the check already errors on a function that is gone
+        or called wrongly, and keeping a function compatible is its author's job.
+      - **State filter** next to the text filter: validated, to review, not validated,
+        override out of date, with errors (with counts; the validation ones in Developer mode).
+      - Limits: a rule that cannot be transpiled makes the auto code of every rule unavailable
+        (the pane shows the reason); not yet run in the real window (see M6.1).
 - [ ] **M6.3 — VCS.** Gitoxide save-as-commit, pull --rebase, semantic rule-level merge.
 - [ ] **M6.4 — LLM assist.** Validation suggestions, expression builder (Ollama / API).
 

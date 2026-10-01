@@ -29,6 +29,8 @@ import {
   filterByState,
   type FieldRule,
   targetPath,
+  reviewState,
+  setReviewState,
   type ReviewFlag,
 } from "./model";
 import { fitMiddle } from "./MiddleEllipsis";
@@ -145,24 +147,33 @@ describe("model", () => {
     expect(changedColumns(rule, ruleAt(file, "rules[0]"))).toEqual(new Set(["status"]));
   });
 
+  it("sets the three validation states as one choice", () => {
+    const rule = structuredClone(ruleAt(file, "rules[0]")!);
+    setReviewState(rule, "review");
+    expect(reviewState(rule)).toBe("review");
+    setReviewState(rule, "validated");
+    expect([reviewState(rule), (rule as FieldRule).validation.needs_review]).toEqual(["validated", false]);
+    setReviewState(rule, "none");
+    expect(reviewState(rule)).toBe("none");
+  });
+
   it("reports the review flags of a row", () => {
     const rule = ruleAt(file, "rules[0]")!;
-    const flag: ReviewFlag = { rule: "rules[0]", stale_override: true, proposal_error: null, changed_functions: ["concat"] };
+    const flag: ReviewFlag = { rule: "rules[0]", stale_override: true, proposal_error: null };
     const issues = rowIssues(rule, [], flag);
     expect(issues[0]).toMatch(/^Override out of date/);
-    expect(issues[1]).toBe("Function changed since validation: concat");
+    expect(rowIssues(rule, [], undefined, false)).toEqual([]);
   });
 
   it("filters by state, keeping the containers of what it finds", () => {
     const rows = flatten(file.rules);
     const flags = new Map<string, ReviewFlag>([
-      ["rules[1].rules[0]", { rule: "rules[1].rules[0]", stale_override: true, proposal_error: null, changed_functions: [] }],
+      ["rules[1].rules[0]", { rule: "rules[1].rules[0]", stale_override: true, proposal_error: null }],
     ]);
     const none = new Map();
     expect(filterByState(rows, "all", flags, none)).toBe(rows);
     expect(filterByState(rows, "stale", flags, none).map((r) => r.path)).toEqual(["rules[1]", "rules[1].rules[0]"]);
     expect(filterByState(rows, "unvalidated", flags, none).map((r) => r.path)).toEqual(rows.map((r) => r.path));
-    expect(filterByState(rows, "changed", flags, none)).toEqual([]);
   });
 
   it("keeps the ten most recent projects, latest first", () => {

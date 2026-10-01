@@ -1483,7 +1483,6 @@ field-level sentinel. This is the mechanism for conditional sub-objects and cove
     validated: false                 # true once a developer has verified this rule
     needs_review: false              # true = explicitly flagged for re-review
     notes: null                      # free text: functional and/or programmatic validation details
-    functions: {}                    # function name -> hash, recorded when validated (see §Rule validation)
   version:
     source_modified: 2026-09-18T09:11:00
     transform_modified: 2026-09-18T09:11:00
@@ -1922,20 +1921,17 @@ code may no longer match the new intent and requires re-review:
 Changes to `code_override` by a developer do **not** trigger decay — the developer
 owns that code and is responsible for its correctness.
 
-**Function changes** — validating a rule (the grid's Validated cell, `set_validated` of
-`mapper serve`) records in `validation.functions` a hash of every registered function its
-expression (or `code_override`) calls: signature, decorators and body, for built-ins and for
-`fn/*.fn` alike. When a hash differs later (the function was edited, or is gone), the grid
-marks the rule with a warning ("Function changed since validation"); validating again, or
-un-validating, replaces or clears the record. The comparison needs no VCS.
-
 **Import behaviour** — all rows produced by an import (Excel, LLM-assisted, or
 reverse import) start with `validated: false, needs_review: false`. If the
 "invalidated by default" option is checked at import time, imported rows start with
 `needs_review: true` — explicitly marking them as requiring active developer attention
 rather than just "not yet done."
 
-**Grid UX** — the editor shows three distinct visual states:
+**Grid UX** — validation is a developer's concern: the grid shows it (and the amber / green
+edges, the "Not validated" mark and the state filter) only in Developer mode, as one
+*Validation* column with three choices — Not validated, To review, Validated — over the two
+flags of the file (`validated`, `needs_review`; never both). The editor shows three distinct
+visual states:
 - `validated: true` — green indicator; rule is verified.
 - `validated: false, needs_review: false` — neutral; not yet validated.
 - `validated: false, needs_review: true` — amber indicator; requires active attention.

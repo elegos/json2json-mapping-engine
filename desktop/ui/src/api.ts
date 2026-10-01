@@ -140,13 +140,12 @@ export const proposalOf = (tree: FunctionalFile, path: string) =>
 
 /** Resolving a rule's override and validating it (one implementation, in Python):
  * `take_over` (auto -> manual), `accept_proposal` (manual -> auto), `keep_override`
- * (the auto code that moved is the new baseline), `set_override` (`code`) and
- * `set_validated` (`value`, `project`: records the functions the rule calls). */
+ * (the auto code that moved is the new baseline), `set_override` (`code`) */
 export async function reviewEdit(
   tree: FunctionalFile,
-  op: "take_over" | "accept_proposal" | "keep_override" | "set_override" | "set_validated",
+  op: "take_over" | "accept_proposal" | "keep_override" | "set_override",
   path: string,
-  extra: { code?: string; value?: boolean; project?: string } = {},
+  extra: { code?: string } = {},
 ): Promise<FunctionalFile> {
   return (await reviewRequest<{ tree: FunctionalFile }>({ op, tree, path, ...extra })).tree;
 }

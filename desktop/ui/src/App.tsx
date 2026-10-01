@@ -55,6 +55,9 @@ import {
   visibleRows,
   ruleAt,
   reviewState,
+  type ReviewState,
+  setReviewState,
+  VALIDATION_LABELS,
   type ReviewFlag,
   type Row,
   setExpression,
@@ -144,6 +147,10 @@ export function App() {
   const [, setHistoryVersion] = useState(0);
   const [showIds, setShowIds] = usePersisted("showRuleIds");
   const [developerMode, setDeveloperMode] = usePersisted("developerMode");
+  useEffect(() => {
+    // validation states are a developer's matter: leaving the mode leaves their filter
+    if (!developerMode) setStateFilter((f) => (f === "all" || f === "invalid" ? f : "all"));
+  }, [developerMode]);
 
   useEffect(() => {
     pythonStatus().then(setPython, (e) => setStatus(String(e)));
@@ -435,14 +442,13 @@ export function App() {
   /** Overrides and validation: also done by the worker (it knows the generated code and the functions). */
   const reviewOp = useCallback(
     async (
-      op: "take_over" | "accept_proposal" | "keep_override" | "set_validated",
+      op: "take_over" | "accept_proposal" | "keep_override",
       path: string,
-      extra: { value?: boolean } = {},
     ) => {
       const current = treeRef.current;
       if (!current) return;
       try {
-        const next = await reviewEdit(current, op, path, { ...extra, project: project ?? undefined });
+        const next = await reviewEdit(current, op, path);
         remember(current);
         setTree(next);
         setStatus("");
@@ -450,7 +456,7 @@ export function App() {
         setStatus(String(e instanceof Error ? e.message : e));
       }
     },
-    [remember, project],
+    [remember],
   );
 
   const openProperties = useCallback(async () => {
@@ -652,7 +658,6 @@ export function App() {
   );
 
   const columns = useMemo<ColDef<Row>[]>(() => {
-    const isField = (r?: Row) => r?.rule.kind === "field";
     const editableFor = (kinds: string[]) => (p: { data?: Row }) =>
       p.data !== undefined && kinds.includes(p.data.rule.kind);
     return [
@@ -665,9 +670,9 @@ export function App() {
         resizable: false,
         cellClass: "warn-cell",
         valueGetter: (p) =>
-          p.data && rowIssues(p.data.rule, diagnostics.get(p.data.path) ?? [], flags.get(p.data.path)).length ? "⚠️" : "",
+          p.data && rowIssues(p.data.rule, diagnostics.get(p.data.path) ?? [], developerMode ? flags.get(p.data.path) : undefined, developerMode).length ? "⚠️" : "",
         tooltipValueGetter: (p) =>
-          p.data ? rowIssues(p.data.rule, diagnostics.get(p.data.path) ?? [], flags.get(p.data.path)).join("\n") : "",
+          p.data ? rowIssues(p.data.rule, diagnostics.get(p.data.path) ?? [], developerMode ? flags.get(p.data.path) : undefined, developerMode).join("\n") : "",
       },
       { headerName: "Id", colId: "id", hide: !showIds, valueGetter: (p) => p.data?.rule.id ?? "", width: 100 },
       {
@@ -795,31 +800,19 @@ export function App() {
         valueGetter: (p) => (p.data?.rule.kind === "field" ? p.data.rule.transform.status : ""),
       },
       {
-        headerName: "Validated",
-        colId: "validated",
-        width: 100,
+        headerName: "Validation",
+        colId: "validation",
+        hide: !developerMode,
+        width: 130,
         editable: editableFor(["field"]),
-        cellDataType: "boolean",
-        cellRendererSelector: fieldOnly,
-        valueGetter: (p) => (isField(p.data) && p.data?.rule.kind === "field" ? p.data.rule.validation.validated : null),
+        cellEditor: "agSelectCellEditor",
+        cellEditorParams: { values: Object.values(VALIDATION_LABELS) },
+        valueGetter: (p) => (p.data?.rule.kind === "field" ? VALIDATION_LABELS[reviewState(p.data.rule)] : ""),
         valueSetter: (p: ValueSetterParams<Row>) => {
-          // the worker records the functions the rule calls, to tell later when one changed
-          void reviewOp("set_validated", p.data.path, { value: Boolean(p.newValue) });
-          return true;
-        },
-      },
-      {
-        headerName: "Review",
-        colId: "review",
-        width: 90,
-        editable: editableFor(["field"]),
-        cellDataType: "boolean",
-        cellRendererSelector: fieldOnly,
-        valueGetter: (p) => (p.data?.rule.kind === "field" ? p.data.rule.validation.needs_review : null),
-        valueSetter: (p: ValueSetterParams<Row>) => {
-          edit(p.data.path, (r) => {
-            if (r.kind === "field") r.validation.needs_review = Boolean(p.newValue);
-          });
+          const state = (Object.keys(VALIDATION_LABELS) as ReviewState[]).find(
+            (k) => VALIDATION_LABELS[k] === p.newValue,
+          );
+          if (state) edit(p.data.path, (r) => setReviewState(r, state));
           return true;
         },
       },
@@ -837,7 +830,7 @@ export function App() {
         },
       },
     ];
-  }, [edit, remoteEdit, reviewOp, showIds, developerMode, diagnostics, flags, collapsed, toggleFold]);
+  }, [edit, remoteEdit, showIds, developerMode, diagnostics, flags, collapsed, toggleFold]);
 
   return (
     <div className="app">
@@ -954,7 +947,7 @@ export function App() {
                 onChange={(e) => setStateFilter(e.target.value as StateFilter)}
                 title="Show only the rules in a state"
               >
-                {STATE_FILTERS.map(([id, label]) => (
+                {STATE_FILTERS.filter(([id]) => developerMode || id === "all" || id === "invalid").map(([id, label]) => (
                   <option key={id} value={id}>
                     {label}
                     {id !== "all" && id !== "invalid" ? ` (${[...flatten(tree.rules)].filter((r) => matchesState(r, id, flags, diagnostics)).length})` : ""}
@@ -1003,9 +996,9 @@ export function App() {
                   (diagnostics.get(p.data?.path ?? "") ?? []).some((d: { severity: string }) => d.severity === "error"),
                 "row-warning": (p) =>
                   (diagnostics.get(p.data?.path ?? "") ?? []).some((d: { severity: string }) => d.severity === "warning"),
-                "row-stale": (p) => flags.get(p.data?.path ?? "")?.stale_override === true,
-                "row-review": (p) => (p.data ? reviewState(p.data.rule) === "review" : false),
-                "row-validated": (p) => (p.data ? reviewState(p.data.rule) === "validated" : false),
+                "row-stale": (p) => developerMode && flags.get(p.data?.path ?? "")?.stale_override === true,
+                "row-review": (p) => developerMode && (p.data ? reviewState(p.data.rule) === "review" : false),
+                "row-validated": (p) => developerMode && (p.data ? reviewState(p.data.rule) === "validated" : false),
               }}
             />
             </div>

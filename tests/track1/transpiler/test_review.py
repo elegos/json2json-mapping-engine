@@ -1,4 +1,4 @@
-"""Review state: manual overrides under a moved proposal, validated rules under changed functions."""
+"""Review state: manual overrides under a moved proposal, and resolving them."""
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-from compiler.function_registry import all_functions
 from transpiler.model import FnYamlError, parse_functional
 from transpiler.review import (
     accept_proposal,
@@ -16,9 +15,7 @@ from transpiler.review import (
     review,
     set_override,
     take_over,
-    validate,
 )
-from transpiler.serialize import functional_to_raw
 
 RAW = {
     "id": "t",
@@ -48,7 +45,6 @@ RAW = {
         },
     ],
 }
-FUNCS = all_functions(None)
 
 
 def make():
@@ -69,9 +65,9 @@ def test_take_over_a_nested_rule():
 
 def test_stale_override_after_the_expression_changes():
     file = take_over(make(), "rules[0]")
-    assert review(file, FUNCS) == []
+    assert review(file) == []
     file.rules[0].transform.expression = "coalesce(value, '?')"
-    [item] = review(file, FUNCS)
+    [item] = review(file)
     assert (item.path, item.stale_override) == ("rules[0]", True)
     view = proposal_view(file, "rules[0]")
     assert (
@@ -83,7 +79,7 @@ def test_keep_override_moves_the_baseline():
     file = take_over(make(), "rules[0]")
     file.rules[0].transform.expression = "coalesce(value, '?')"
     file = keep_override(file, "rules[0]")
-    assert review(file, FUNCS) == []
+    assert review(file) == []
     assert file.rules[0].transform.code_override == "concat(root.name, '!')"
 
 
@@ -106,32 +102,6 @@ def test_set_override_needs_manual_and_code():
     assert set_override(file, "rules[0]", "root.name")
 
 
-def test_changed_function_flags_a_validated_rule():
-    file = validate(make(), "rules[0]", True, FUNCS)
-    assert file.rules[0].validation.functions == {"concat": FUNCS["concat"].fingerprint}
-    assert review(file, FUNCS) == []
-    file.rules[0].validation.functions["concat"] = "0000000000"
-    [item] = review(file, FUNCS)
-    assert item.changed_functions == ["concat"]
-    unvalidated = validate(file, "rules[0]", False, FUNCS)
-    assert unvalidated.rules[0].validation.functions == {} and review(unvalidated, FUNCS) == []
-
-
-def test_project_function_edit_changes_the_fingerprint(tmp_path: Path):
-    (tmp_path / "fn").mkdir()
-    fn = tmp_path / "fn" / "x.fn"
-    fn.write_text("def shout(s: str) -> str:\n    return s + '!'\n")
-    before = all_functions(tmp_path)
-    fn.write_text("def shout(s: str) -> str:\n    return s + '!!'\n")
-    assert all_functions(tmp_path)["shout"].fingerprint != before["shout"].fingerprint
-
-
-def test_the_functions_survive_a_save_and_load():
-    file = validate(make(), "rules[0]", True, FUNCS)
-    again = parse_functional(functional_to_raw(file), "t")
-    assert again.rules[0].validation.functions == file.rules[0].validation.functions
-
-
 def test_serve_review_ops(tmp_path: Path):
     import io
     import json
@@ -142,20 +112,12 @@ def test_serve_review_ops(tmp_path: Path):
     tree = functional_to_dict(make())
     steps = [
         {"op": "take_over", "tree": tree, "path": "rules[0]"},
-        {
-            "op": "set_validated",
-            "tree": tree,
-            "path": "rules[0]",
-            "value": True,
-            "project": str(tmp_path),
-        },
         {"op": "proposal", "tree": tree, "path": "rules[0]"},
         {"op": "check", "tree": tree, "project": str(tmp_path), "stem": "t"},
     ]
     out = io.StringIO()
     serve(io.StringIO("".join(json.dumps({"id": i, **r}) + "\n" for i, r in enumerate(steps))), out)
-    taken, validated, view, checked = (json.loads(line) for line in out.getvalue().splitlines())
+    taken, view, checked = (json.loads(line) for line in out.getvalue().splitlines())
     assert taken["tree"]["rules"][0]["transform"]["status"] == "manual"
-    assert validated["tree"]["rules"][0]["validation"]["functions"].keys() == {"concat"}
     assert view["auto"] == "concat(root.name, '!')" and view["override"] is None
     assert checked["ok"] and checked["review"] == []

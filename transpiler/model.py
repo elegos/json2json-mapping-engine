@@ -34,8 +34,6 @@ class Validation:
     validated: bool = False
     needs_review: bool = False
     notes: str | None = None
-    # fingerprints of the functions the rule used when it was validated (name -> hash)
-    functions: dict[str, str] = dc_field(default_factory=dict)
 
 
 @dataclass
@@ -291,17 +289,11 @@ def _load_field(where: str, raw: dict[str, Any]) -> FieldRule:
         raise _err(where, "transform.status is 'manual' but code_override is empty")
 
     v_raw = _get_dict(where, raw, "validation")
-    _check_keys(f"{where}.validation", v_raw, {"validated", "needs_review", "notes", "functions"})
-    fns = v_raw.get("functions", {})
-    if not isinstance(fns, dict) or not all(
-        isinstance(k, str) and isinstance(v, str) for k, v in fns.items()
-    ):
-        raise _err(where, "validation.functions must map function names to hash strings")
+    _check_keys(f"{where}.validation", v_raw, {"validated", "needs_review", "notes"})
     validation = Validation(
         validated=bool(v_raw.get("validated", False)),
         needs_review=bool(v_raw.get("needs_review", False)),
         notes=v_raw.get("notes"),
-        functions=dict(fns),
     )
     s_raw = _get_dict(where, raw, "source")
     _check_keys(f"{where}.source", s_raw, {"path", "constant"})

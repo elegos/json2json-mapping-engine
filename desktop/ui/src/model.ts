@@ -5,8 +5,6 @@ export interface Validation {
   validated: boolean;
   needs_review: boolean;
   notes: string | null;
-  /** Fingerprints of the functions the rule called when it was validated. */
-  functions?: Record<string, string>;
 }
 
 export interface Transform {
@@ -308,8 +306,7 @@ export function changedColumns(rule: Rule, before: Rule | undefined): Set<string
       `${before.transform.status}\n${before.transform.code_override ?? ""}`,
     );
     differ("req", rule.required, before.required);
-    differ("validated", rule.validation.validated, before.validation.validated);
-    differ("review", rule.validation.needs_review, before.validation.needs_review);
+    differ("validation", reviewState(rule), reviewState(before));
     differ("notes", rule.validation.notes ?? "", before.validation.notes ?? "");
   }
   return changed;
@@ -348,18 +345,16 @@ export interface ReviewFlag {
   rule: string;
   stale_override: boolean;
   proposal_error: string | null;
-  changed_functions: string[];
 }
 
-export type StateFilter = "all" | "validated" | "review" | "unvalidated" | "stale" | "changed" | "invalid";
+export type StateFilter = "all" | "validated" | "review" | "unvalidated" | "stale" | "invalid";
 
 export const STATE_FILTERS: [StateFilter, string][] = [
   ["all", "All rules"],
   ["validated", "Validated"],
-  ["review", "Needs review"],
+  ["review", "To review"],
   ["unvalidated", "Not validated"],
   ["stale", "Override out of date"],
-  ["changed", "Function changed"],
   ["invalid", "With errors"],
 ];
 
@@ -384,8 +379,6 @@ export function matchesState(
       return state === "none";
     case "stale":
       return flag?.stale_override === true;
-    case "changed":
-      return (flag?.changed_functions.length ?? 0) > 0;
   }
 }
 
@@ -410,6 +403,19 @@ export function filterByState(
   return rows.filter((r) => keep.has(r.path));
 }
 
+/** The three states of a rule's validation, as one choice (the file keeps two flags). */
+export const VALIDATION_LABELS: Record<ReviewState, string> = {
+  none: "Not validated",
+  review: "To review",
+  validated: "Validated",
+};
+
+export function setReviewState(rule: Rule, state: ReviewState): void {
+  if (rule.kind !== "field") return;
+  rule.validation.validated = state === "validated";
+  rule.validation.needs_review = state === "review";
+}
+
 export type ReviewState = "validated" | "review" | "none";
 
 export function reviewState(rule: Rule): ReviewState {
@@ -428,7 +434,7 @@ export function columnOfMessage(message: string): string | null {
     [/\bsource\b/, "source"],
     [/\b(expression|transform|code_override|filter|guard|sort|parallel)\b/, "expression"],
     [/\bdescription\b/, "description"],
-    [/\bvalidation\b/, "validated"],
+    [/\bvalidation\b/, "validation"],
   ];
   const named = /'([A-Za-z_.]+)'|\b(transform\.\w+)/.exec(message)?.[0] ?? "";
   for (const [pattern, column] of keys) if (pattern.test(named)) return column;
@@ -442,11 +448,17 @@ const COLUMN_LABELS: Record<string, string> = {
   source: "Source",
   expression: "Expression / filter / guard",
   description: "Description",
-  validated: "Validated",
+  validation: "Validation",
 };
 
 /** What makes a row worth a warning sign, one line per issue (the sign's tooltip). */
-export function rowIssues(rule: Rule, diagnostics: Diagnostic[], flag?: ReviewFlag): string[] {
+/** `withValidation`: the validation state is a developer's matter, hidden from the functional view. */
+export function rowIssues(
+  rule: Rule,
+  diagnostics: Diagnostic[],
+  flag?: ReviewFlag,
+  withValidation = true,
+): string[] {
   const issues: string[] = [];
   for (const d of diagnostics) {
     const column = columnOf(d);
@@ -459,10 +471,7 @@ export function rowIssues(rule: Rule, diagnostics: Diagnostic[], flag?: ReviewFl
   if (flag?.stale_override) {
     issues.push("Override out of date: the auto code changed since the override was taken");
   }
-  if (flag?.changed_functions.length) {
-    issues.push(`Function changed since validation: ${flag.changed_functions.join(", ")}`);
-  }
-  if (rule.kind === "field") {
+  if (withValidation && rule.kind === "field") {
     if (rule.validation.needs_review) issues.push("Review flag");
     else if (!rule.validation.validated) issues.push("Not validated");
   }
