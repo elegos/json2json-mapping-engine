@@ -41,6 +41,7 @@ from transpiler.model import (
     Rule,
     load_rule,
 )
+from transpiler.paths import expand_paths
 from transpiler.serialize import rule_to_raw
 
 Schema = dict[str, Any]
@@ -70,7 +71,7 @@ class _Unknown:
 UNKNOWN = _Unknown()
 Node = Schema | _Unknown | None  # None = does not exist
 
-_SEGMENT = re.compile(r"\.?([A-Za-z_]\w*)|(\[\*\])")
+_SEGMENT = re.compile(r"\.?([A-Za-z_]\w*)|(\[(?:\*|\d+)\])")
 _TYPES = {
     "str": {"string"},
     "int": {"integer"},
@@ -228,7 +229,7 @@ def _lookup_node(rule: LookupRule) -> Schema:
     return {"type": "object", "additionalProperties": values}
 
 
-_REF = re.compile(r"^(\$|@(?:\d+|[A-Za-z_]\w*)?)((?:\.[A-Za-z_]\w*|\[\*\])+)$")
+_REF = re.compile(r"^(\$|@(?:\d+|[A-Za-z_]\w*)?)((?:\.[A-Za-z_]\w*|\[(?:\*|\d+)\])+)$")
 
 
 def _lookup_calls(text: str) -> list[tuple[str, bool]]:
@@ -261,7 +262,7 @@ def _lookup_calls(text: str) -> list[tuple[str, bool]]:
 
 
 _REF = re.compile(
-    r"(\$|@(?:\d+|[A-Za-z_]\w*)?)((?:\.[A-Za-z_]\w*|\[\*\])+)(\()?",
+    r"(\$|@(?:\d+|[A-Za-z_]\w*)?)((?:\.[A-Za-z_]\w*|\[(?:\*|\d+)\])+)(\()?",
 )
 
 
@@ -530,6 +531,23 @@ class _Checker:
             rule.rules, f"{path}.rules", inner, node, in_root, [*items, item], [*labels, rule.label]
         )
 
+    def paths(self, original: FunctionalFile) -> None:
+        """The `paths:` section against the input schema (the root and every alias must exist)."""
+        if not self.has_in or self.inp.root is None:
+            return
+        section = original.paths
+        named = [("root", section.root)] if section.root else []
+        named += [(f"alias '{n}'", p) for n, p in section.aliases.items()]
+        for what, text in named:
+            assert text is not None
+            node, missing = self.inp.resolve(self.inp.root, text.removeprefix("$"))
+            if node is None:
+                self.add(
+                    "",
+                    "paths",
+                    f"paths: the {what} {text} — '{missing}' is not in the input schema",
+                )
+
     def run(self) -> list[Issue]:
         root_in: Node = self.inp.root if self.inp.root is not None else UNKNOWN
         root_out: Node = self.out.root if self.out.root is not None else UNKNOWN
@@ -561,7 +579,9 @@ def check_functional(
     input_schema: Schema | None = None,
     output_schema: Schema | None = None,
 ) -> list[Issue]:
-    return _Checker(file, input_schema, output_schema).run()
+    checker = _Checker(expand_paths(file), input_schema, output_schema)
+    checker.paths(file)
+    return checker.run()
 
 
 def schemas_for(project: Path, stem: str) -> tuple[Schema | None, Schema | None]:

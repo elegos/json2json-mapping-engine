@@ -59,6 +59,7 @@ from transpiler.model import (
     Rule,
     load_functional_file,
 )
+from transpiler.paths import expand_paths
 
 
 @dataclass(frozen=True)
@@ -684,7 +685,7 @@ def build_stage(
     `warnings`, when given, receives the non-fatal findings (unused `choices`,
     negative `multipleOf`, ...)."""
     assign_ids(file)
-    b = _Builder(file, options, input_schema)
+    b = _Builder(expand_paths(file), options, input_schema)  # aliases / root override applied
     b.build()
     if warnings is not None:
         warnings.extend(b.warnings)

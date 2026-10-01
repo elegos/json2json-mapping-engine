@@ -120,7 +120,15 @@ def rule_to_raw(rule: Rule) -> dict[str, Any]:
 
 
 def functional_to_raw(file: FunctionalFile) -> dict[str, Any]:
-    return {"name": file.name, "id": file.id, "rules": [_rule_to_raw(r) for r in file.rules]}
+    raw: dict[str, Any] = {"name": file.name, "id": file.id}
+    paths: dict[str, Any] = {}
+    _put(paths, "root", file.paths.root)
+    if file.paths.aliases:
+        paths["aliases"] = dict(file.paths.aliases)
+    if paths:
+        raw["paths"] = paths
+    raw["rules"] = [_rule_to_raw(r) for r in file.rules]
+    return raw
 
 
 def functional_to_yaml(file: FunctionalFile) -> str:

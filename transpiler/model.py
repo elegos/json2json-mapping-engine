@@ -122,11 +122,28 @@ Rule = FieldRule | ObjectRule | LoopRule | LookupRule
 
 
 @dataclass
+class PathsSection:
+    """The file's `paths:` section: what `$` stands for and the named path aliases.
+    Every path in it is written from the real document root."""
+
+    # `$` means this path instead of the document root (e.g. `$.transmissions.list[0]`)
+    root: str | None = None
+    # `@name` stands for this path (e.g. `metadata: $.transmissions.metadata`)
+    aliases: dict[str, str] = dc_field(default_factory=dict)
+
+
+@dataclass
 class FunctionalFile:
     name: str
     id: str
     rules: list[Rule]
     path: Path | None = None
+    paths: PathsSection = dc_field(default_factory=PathsSection)
+
+
+# `@root` always reaches the real document root; `@index` is the loop position
+RESERVED_ALIASES = ("root", "index")
+_ALIAS_PATH = re.compile(r"^\$(\.[A-Za-z_]\w*(\[\d+\])*)+$")
 
 
 # -- loading -----------------------------------------------------------------
@@ -414,7 +431,7 @@ def parse_functional(raw: Any, default_id: str, path: Path | None = None) -> Fun
     where = str(path) if path else "<fn.yaml>"
     if not isinstance(raw, dict):
         raise _err(where, "top level must be a mapping")
-    _check_keys(where, raw, {"name", "id", "rules"})
+    _check_keys(where, raw, {"name", "id", "rules", "paths"})
     file_id = raw.get("id", default_id)
     if not isinstance(file_id, str) or not _IDENT.match(file_id):
         raise _err(where, f"invalid file id {file_id!r}")
@@ -423,7 +440,59 @@ def parse_functional(raw: Any, default_id: str, path: Path | None = None) -> Fun
         raise _err(where, "'rules' must be a non-empty list")
     rules = [_load_rule(f"rules[{i}]", r) for i, r in enumerate(rules_raw)]
     qualify_paths(rules)
-    return FunctionalFile(name=str(raw.get("name", file_id)), id=file_id, rules=rules, path=path)
+    paths = _load_paths(where, raw.get("paths"), rules)
+    return FunctionalFile(
+        name=str(raw.get("name", file_id)), id=file_id, rules=rules, path=path, paths=paths
+    )
+
+
+def _names_of(rules: list[Rule]) -> tuple[set[str], set[str]]:
+    """(lookup labels, loop labels) of a rule tree."""
+    lookups: set[str] = set()
+    loops: set[str] = set()
+    for rule in rules:
+        if isinstance(rule, LookupRule):
+            lookups.add(rule.label)
+        elif isinstance(rule, ObjectRule | LoopRule):
+            if isinstance(rule, LoopRule) and rule.label:
+                loops.add(rule.label)
+            inner = _names_of(rule.rules)
+            lookups |= inner[0]
+            loops |= inner[1]
+    return lookups, loops
+
+
+def _load_paths(where: str, raw: Any, rules: list[Rule]) -> PathsSection:
+    if raw is None:
+        return PathsSection()
+    if not isinstance(raw, dict):
+        raise _err(where, "'paths' must be a mapping")
+    _check_keys(f"{where}.paths", raw, {"root", "aliases"})
+    root = raw.get("root")
+    if root is not None and (not isinstance(root, str) or not _ALIAS_PATH.match(root)):
+        raise _err(
+            where, f"paths.root must be a path from the document root like $.a.b[0] — got {root!r}"
+        )
+    aliases_raw = raw.get("aliases") or {}
+    if not isinstance(aliases_raw, dict):
+        raise _err(where, "paths.aliases must be a mapping of name: path")
+    lookups, loops = _names_of(rules)
+    for name, target in aliases_raw.items():
+        if not isinstance(name, str) or not _IDENT.match(name):
+            raise _err(where, f"paths.aliases: {name!r} is not a valid alias name")
+        if name in RESERVED_ALIASES:
+            raise _err(where, f"paths.aliases: '{name}' is reserved (@{name})")
+        if name in lookups:
+            raise _err(where, f"paths.aliases: '{name}' is also the name of a lookup table")
+        if name in loops:
+            raise _err(where, f"paths.aliases: '{name}' is also the label of a loop")
+        if not isinstance(target, str) or not _ALIAS_PATH.match(target):
+            raise _err(
+                where,
+                f"paths.aliases.{name} must be a path from the document root like $.a.b — "
+                f"got {target!r}",
+            )
+    return PathsSection(root=root, aliases=dict(aliases_raw))
 
 
 # -- path style --------------------------------------------------------------
@@ -500,6 +569,7 @@ def functional_from_dict(data: dict[str, Any]) -> FunctionalFile:
         id=data["id"],
         rules=[_rule_from_dict(r) for r in data["rules"]],
         path=Path(data["path"]) if data.get("path") else None,
+        paths=PathsSection(**data.get("paths", {})),
     )
 
 
