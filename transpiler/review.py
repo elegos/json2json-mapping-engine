@@ -163,13 +163,36 @@ def proposal_view(file: FunctionalFile, path: str) -> dict[str, object]:
     }
 
 
-def demote_invalid(file: FunctionalFile, error_paths: set[str]) -> tuple[FunctionalFile, list[str]]:
-    """On save: a validated rule the check finds errors in goes back to review. Returns the file
-    and the ids (or paths) of the rules demoted."""
+def demote_invalid(
+    file: FunctionalFile, error_paths: set[str], touched: set[str] | None = None
+) -> tuple[FunctionalFile, list[str]]:
+    """On save: a validated rule the check finds errors in goes back to review, unless its
+    validation was set in this edit (`touched`: rule ids). Returns the file and the ids (or
+    paths) of the rules demoted."""
     file = copy.deepcopy(file)
     demoted: list[str] = []
     for path, rule in _with_paths(file.rules):
-        if isinstance(rule, FieldRule) and rule.validation.validated and path in error_paths:
+        if (
+            isinstance(rule, FieldRule)
+            and rule.validation.validated
+            and path in error_paths
+            and rule.id not in (touched or set())
+        ):
             rule.validation.validated, rule.validation.needs_review = False, True
             demoted.append(rule.id or path)
     return file, demoted
+
+
+def validation_touched_ids(old: FunctionalFile, new: FunctionalFile) -> set[str]:
+    """Ids of the field rules whose validation state differs from the saved file (or that are new):
+    the developer chose it, so the automatic changes at save leave it alone."""
+    from transpiler.model import validation_touched
+
+    before = {r.id: r for _p, r in _with_paths(old.rules) if isinstance(r, FieldRule)}
+    return {
+        r.id
+        for _p, r in _with_paths(new.rules)
+        if isinstance(r, FieldRule)
+        and r.id
+        and (r.id not in before or validation_touched(before[r.id], r))
+    }

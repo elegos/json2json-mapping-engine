@@ -36,7 +36,7 @@ from transpiler.model import (
     functional_to_dict,
     load_functional_file,
 )
-from transpiler.review import demote_invalid
+from transpiler.review import demote_invalid, validation_touched_ids
 from transpiler.serialize import apply_decay_tree, write_functional
 from transpiler.stages import STAGES, artifact, parse_stage
 
@@ -446,13 +446,18 @@ def fn_write(file: str = typer.Argument(..., help=".fn.yaml file to write")) -> 
     try:
         new = functional_from_dict(json.load(sys.stdin)["file"])
         decayed: list[str] = []
+        touched: set[str] = set()
         if path.is_file():
-            new, decayed = apply_decay_tree(load_functional_file(path), new)
+            old = load_functional_file(path)
+            touched = validation_touched_ids(old, new)
+            new, decayed = apply_decay_tree(old, new)
         # a validated rule that no longer checks goes back to review (while editing it only
         # shows: the developer may fix it before saving)
         inp, out = schemas_for(Path.cwd(), path.name.removesuffix(".fn.yaml"))
         issues = check_functional(new, inp, out, all_functions(Path.cwd()))
-        new, demoted = demote_invalid(new, {i.rule for i in issues if i.severity == "error"})
+        new, demoted = demote_invalid(
+            new, {i.rule for i in issues if i.severity == "error"}, touched
+        )
         decayed += demoted
         write_functional(path, new)
     except (FnYamlError, OSError, ValueError, KeyError, TypeError) as exc:

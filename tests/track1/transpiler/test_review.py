@@ -161,3 +161,47 @@ def test_fn_write_demotes_a_validated_rule_that_does_not_check(tmp_path: Path, m
         False,
         True,
     )
+
+
+def test_a_validation_set_in_the_same_edit_is_not_decayed_or_demoted(tmp_path: Path, monkeypatch):
+    import json
+
+    from typer.testing import CliRunner
+
+    from cli.main import app
+    from transpiler.model import functional_to_dict
+    from transpiler.serialize import write_functional
+
+    (tmp_path / "mappings").mkdir()
+    target = tmp_path / "mappings" / "t.fn.yaml"
+    write_functional(target, make())  # on disk: not validated
+    monkeypatch.chdir(tmp_path)
+
+    def save(file):
+        out = CliRunner().invoke(
+            app, ["fn", "write", str(target)], input=json.dumps({"file": functional_to_dict(file)})
+        )
+        return json.loads(out.stdout)["decayed"], parse_functional(
+            __import__("yaml").safe_load(target.read_text()), "t"
+        )
+
+    # the expression is edited *and* the rule validated in one go: the tick stands
+    file = make()
+    file.rules[0].transform.expression = "concat(value, '?')"
+    file.rules[0].validation.validated = True
+    decayed, saved = save(file)
+    assert decayed == [] and saved.rules[0].validation.validated
+
+    # edited again, validation untouched: it decays
+    file = parse_functional(__import__("yaml").safe_load(target.read_text()), "t")
+    file.rules[0].transform.expression = "concat(value, '!')"
+    decayed, saved = save(file)
+    assert decayed == ["a"] and saved.rules[0].validation.needs_review
+
+    # validated on purpose, but it has an error: the choice stands too, the check shows it
+    file = parse_functional(__import__("yaml").safe_load(target.read_text()), "t")
+    file.rules[0].transform.expression = "split_first(value)"
+    file.rules[0].validation.validated = True
+    file.rules[0].validation.needs_review = False
+    decayed, saved = save(file)
+    assert decayed == [] and saved.rules[0].validation.validated

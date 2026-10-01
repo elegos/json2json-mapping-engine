@@ -1923,6 +1923,10 @@ code may no longer match the new intent and requires re-review:
 - For `status: manual`: developer verifies the existing `code_override` is still correct with the new functional intent.
 - For `status: auto`: developer verifies the newly generated code is correct.
 
+Decay (and the return to review of a validated rule that has errors, at save) applies only
+if the validation state was **not** changed in the same edit as compared with the saved file: a
+state the developer set is their decision and stands.
+
 Changes to `code_override` by a developer do **not** trigger decay — the developer
 owns that code and is responsible for its correctness.
 

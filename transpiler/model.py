@@ -561,18 +561,27 @@ def qualify_paths(rules: list[Rule], in_loop: bool = False, nested: bool = False
 # -- validation decay (§Rule validation) --------------------------------------
 
 
+def validation_touched(old: FieldRule, new: FieldRule) -> bool:
+    """Whether the developer changed the rule's validation state (not just left it as saved)."""
+    return (old.validation.validated, old.validation.needs_review) != (
+        new.validation.validated,
+        new.validation.needs_review,
+    )
+
+
 def apply_decay(old: FieldRule, new: FieldRule) -> FieldRule:
     """Validation decay: `validated` resets to false and `needs_review` to true
     whenever the *functional* side changed — `source.path` / `source.constant` or
     `transform.expression`. A `code_override` change alone never decays (the
-    developer owns that code)."""
+    developer owns that code). Nor does a rule whose validation the developer set in the same
+    edit: what they chose stands."""
     functional_change = (
         old.source_path != new.source_path
         or old.source_constant != new.source_constant
         or old.has_constant != new.has_constant
         or old.transform.expression != new.transform.expression
     )
-    if not functional_change:
+    if not functional_change or validation_touched(old, new):
         return new
     return replace(new, validation=replace(new.validation, validated=False, needs_review=True))
 
