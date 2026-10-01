@@ -4,7 +4,7 @@ Reads one JSON request per line on stdin, answers one JSON line on stdout. It ex
 so that per-edit operations (Target / Source normalisation) cost a message, not a
 Python start-up. Requests: `{"id", "op", ...}`; answers `{"id", "ok", ...}`.
 
-Ops: `ping`; `check` (`tree`, `project`, `stem`); `retarget` (`tree`, `path`, `value`); `set_source` (`tree`, `path`,
+Ops: `ping`; `complete` (`tree`, `project`, `stem`, `path`, `column`, `text`, `cursor`: what can be typed there, see `transpiler/complete.py`); `check` (`tree`, `project`, `stem`); `retarget` (`tree`, `path`, `value`); `set_source` (`tree`, `path`,
 `value`); `add_rule` (`tree`, `parent`, `index`, `kind`); `delete_rule` (`tree`, `path`); `config_read` (`project`), `config_check` (`values`), `config_write` (`project`, `values`): `mapper.toml`, see `cli/project_config.py`. `tree` is the file as `mapper fn read` prints it; the answer carries the new
 `tree`, or `error`.
 """
@@ -19,6 +19,7 @@ from typing import Any, TextIO
 from cli import project_config
 from cli.config import MapperConfigError
 from transpiler.check import check_functional, schemas_for
+from transpiler.complete import complete
 from transpiler.edit import add_rule, delete_rule, retarget, set_source
 from transpiler.model import FnYamlError, functional_from_dict, functional_to_dict
 
@@ -32,6 +33,13 @@ def handle(request: dict[str, Any]) -> dict[str, Any]:
         inp, out = schemas_for(Path(request["project"]), request["stem"])
         issues = check_functional(file, inp, out)
         return {"ok": True, "diagnostics": [i.to_json() for i in issues]}
+    if op == "complete":
+        file = functional_from_dict(request["tree"])
+        inp, out = schemas_for(Path(request["project"]), request["stem"])
+        found = complete(
+            file, request["path"], request["column"], request["text"], request["cursor"], inp, out
+        )
+        return {"ok": True, **found.to_json()}
     if op in ("retarget", "set_source"):
         file = functional_from_dict(request["tree"])
         change = retarget if op == "retarget" else set_source

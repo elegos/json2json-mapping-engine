@@ -143,3 +143,31 @@ export async function configCheck(values: ConfigValues): Promise<ConfigIssue[]> 
 export async function configWrite(project: string, values: ConfigValues): Promise<void> {
   await configRequest({ op: "config_write", project, values });
 }
+
+export interface CompletionItem {
+  label: string;
+  insert: string;
+  kind: "field" | "function" | "label" | "lookup" | "alias" | "keyword" | "value";
+  detail: string;
+}
+
+/** What can be typed at `cursor` in the Target / Source / Expression cell of the rule at `path`
+ * (asked of the Python worker: it knows the schemas and what `$` and `@` stand for there). */
+export async function completeAt(
+  tree: FunctionalFile,
+  project: string,
+  stem: string,
+  request: { path: string; column: string; text: string; cursor: number },
+): Promise<{ from: number; items: CompletionItem[] }> {
+  const answer = await invoke<string>("edit_request", {
+    request: JSON.stringify({ id: 1, op: "complete", tree, project, stem, ...request }),
+  });
+  const parsed = JSON.parse(answer) as {
+    ok: boolean;
+    from?: number;
+    items?: CompletionItem[];
+    error?: string;
+  };
+  if (!parsed.ok) throw new Error(parsed.error ?? "completion failed");
+  return { from: parsed.from ?? request.cursor, items: parsed.items ?? [] };
+}

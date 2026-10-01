@@ -460,6 +460,15 @@ Sliced; each slice is usable on its own:
       `transpiler/selector.py`): first matching element, omitted when none; bare names in the
       condition are fields of the element, `=` is `==`. Checked against the input schema,
       editable in the Source column, golden mapping `selection` (not yet run on Oracle).
+- [x] **Completion in the Target / Source / Expression cells** (CodeMirror 6; `complete` op of
+      `mapper serve`, `transpiler/complete.py`). `$.` / `$.a.` list the input schema's fields
+      (honouring `paths.root`), `@` the loop labels, lookups, aliases, `@root`, `@index`, `@.` /
+      `@label.` the loop element's fields, a bare name the built-ins and `value` (in a Source:
+      the current element's fields; inside `[...]` of a selecting Source: the candidate's). Target:
+      the output schema's properties not used by a sibling. ↑↓ choose, Enter / Tab accept, Esc
+      closes. `CodeEditor.tsx` is reusable: the multi-line editor of a rule's code override (M6.2)
+      will use it with a developer-dialect completer (`root.`, `src.`).
+      Not driven by hand yet (no GUI automation here).
 - [x] **Unsaved changes and undo/redo.** Cells that differ from the saved file are bold (rules
       matched by id, else by path; a rule with no saved counterpart is bold whole); the file
       name in the list gets a `*`. Undo / redo (↶ ↷, Ctrl+Z / Ctrl+Y) keep snapshots of the

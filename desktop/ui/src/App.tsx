@@ -2,6 +2,7 @@ import type { ColDef, ICellRendererParams, ValueSetterParams } from "ag-grid-com
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AgGridReact } from "ag-grid-react";
 import { type Choice, Confirm } from "./Confirm";
+import { CompletingCellEditor, type GridContext } from "./CompletingCellEditor";
 import { Lookups } from "./Lookups";
 import { Paths } from "./Paths";
 import { ProjectProperties } from "./ProjectProperties";
@@ -15,6 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   changeStructure,
   checkTree,
+  completeAt,
   configCheck,
   configRead,
   configWrite,
@@ -554,6 +556,25 @@ export function App() {
     grid.current?.api?.redrawRows();
   }, [diagnostics, changes]);
 
+  // suggestions for the cell being edited: the Python worker knows the schemas and the scope
+  const gridContext = useMemo<GridContext>(
+    () => ({
+      complete: async (path, column, text, cursor) => {
+        const now = treeRef.current;
+        if (!now || !project || !current || python?.available !== true) {
+          return { from: cursor, items: [] };
+        }
+        const stem = current.replace(/^.*\//, "").replace(/\.fn\.yaml$/, "");
+        try {
+          return await completeAt(now, project, stem, { path, column, text, cursor });
+        } catch {
+          return { from: cursor, items: [] };
+        }
+      },
+    }),
+    [project, current, python],
+  );
+
   const columns = useMemo<ColDef<Row>[]>(() => {
     const isField = (r?: Row) => r?.rule.kind === "field";
     const editableFor = (kinds: string[]) => (p: { data?: Row }) =>
@@ -578,6 +599,7 @@ export function App() {
         colId: "target",
         width: 200,
         editable: (p) => !folding.current && p.data?.rule.kind !== "lookup",
+        cellEditor: CompletingCellEditor,
         valueGetter: (p) => (p.data ? nameOf(p.data.rule) : ""),
         valueSetter: (p: ValueSetterParams<Row>) => {
           void remoteEdit("retarget", p.data.path, String(p.newValue ?? ""));
@@ -646,6 +668,7 @@ export function App() {
         colId: "source",
         width: 200,
         editable: editableFor(["field", "loop", "object"]),
+        cellEditor: CompletingCellEditor,
         valueGetter: (p) => (p.data ? sourceOf(p.data.rule) : ""),
         valueSetter: (p: ValueSetterParams<Row>) => {
           void remoteEdit("set_source", p.data.path, String(p.newValue ?? ""));
@@ -657,6 +680,7 @@ export function App() {
         colId: "expression",
         flex: 1,
         minWidth: 260,
+        cellEditor: CompletingCellEditor,
         // an object that selects an element by its Source has no guard
         editable: (p) =>
           p.data !== undefined &&
@@ -862,6 +886,7 @@ export function App() {
               getRowId={(p) => p.data.path}
               ref={grid}
               tooltipShowDelay={200}
+              context={gridContext}
               defaultColDef={{
                 cellClassRules: {
                   "cell-invalid": (p) => {
