@@ -146,11 +146,11 @@ button.primary:hover:not(:disabled) { background: #3468b3; }
 .code-editor.multi .cm-editor { height: 100%; }
 .code-editor.multi .cm-content { min-height: 100%; }
 .code-editor.multi .cm-scroller { min-height: 100%; }
-/* the state of a rule as a bar on the left edge of its row, above the cells (an inset shadow on the
-   row is painted under them) */
-.row-review::before, .row-validated::before, .row-stale::after {
+/* the state of a rule as a bar on the left edge of its row: on the pinned first cell, which stays
+   put when the grid scrolls sideways, and above the cell's own background */
+.row-review .warn-cell::before, .row-validated .warn-cell::before, .row-stale .warn-cell::after {
   content: ""; position: absolute; top: 0; bottom: 0; width: 4px; z-index: 5; pointer-events: none;
 }
-.row-review::before { left: 0; background: #e0a100; }
-.row-validated::before { left: 0; background: #2e9e4f; }
-.row-stale::after { left: 4px; background: #c0392b; }
+.row-review .warn-cell::before { left: 0; background: #e0a100; }
+.row-validated .warn-cell::before { left: 0; background: #2e9e4f; }
+.row-stale .warn-cell::after { left: 4px; background: #c0392b; }
