@@ -2,8 +2,9 @@
 html, body, #root { height: 100%; margin: 0; }
 .app { display: flex; flex-direction: column; height: 100%; }
 header { display: flex; gap: 8px; align-items: center; padding: 8px 12px; border-bottom: 1px solid #8884; }
-header .spacer { flex: 1; }
-.project { opacity: 0.7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+header > * { flex: none; white-space: nowrap; }
+.project { flex: 1 1 0; min-width: 0; opacity: 0.7; overflow: hidden; white-space: nowrap; }
+header > .project { flex: 1 1 0; }
 .banner { background: #b8860b33; padding: 6px 12px; }
 .body { display: flex; flex: 1; min-height: 0; }
 nav { width: 200px; border-right: 1px solid #8884; overflow: auto; }

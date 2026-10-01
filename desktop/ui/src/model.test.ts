@@ -29,6 +29,7 @@ import {
   filterByState,
   type ReviewFlag,
 } from "./model";
+import { fitMiddle } from "./MiddleEllipsis";
 
 const field = (id: string, name: string, expression: string) => ({
   kind: "field" as const,
@@ -394,5 +395,22 @@ describe("filterRows by pieces of the names", () => {
   it("needs the last piece to end in the rule itself", () => {
     expect(found("cuco")).toEqual(["Channel", "Customer", "Code"]);
     expect(found("unic")).toEqual([]);
+  });
+});
+
+describe("fitMiddle", () => {
+  const width = (n: number) => (s: string) => s.length <= n;
+  it("leaves a text that fits", () => {
+    expect(fitMiddle("/home/x", width(20))).toBe("/home/x");
+  });
+  it("cuts the middle with as many characters on each side", () => {
+    const out = fitMiddle("/home/gfurlan/src/orders-test", width(15));
+    const [left, right] = out.split("…");
+    expect(left.length).toBe(right.length);
+    expect(out.length).toBeLessThanOrEqual(15);
+    expect(out.length).toBeGreaterThanOrEqual(14);
+  });
+  it("shows only the ellipsis when nothing fits", () => {
+    expect(fitMiddle("abcdef", width(0))).toBe("…");
   });
 });

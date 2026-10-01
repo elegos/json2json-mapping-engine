@@ -62,6 +62,7 @@ import {
   STATE_FILTERS,
   type StateFilter,
 } from "./model";
+import { MiddleEllipsis } from "./MiddleEllipsis";
 import { OverridePane } from "./OverridePane";
 
 // Boolean columns only make sense on field rules; elsewhere the cell stays empty.
@@ -843,8 +844,7 @@ export function App() {
         <ProjectButton recent={recent} onOpen={openProject} onPick={async (d) => {
             if (await switchGuard()) await openDir(d);
           }} />
-        <span className="project">{project ?? "no project"}</span>
-        <span className="spacer" />
+        <MiddleEllipsis className="project" text={project ?? "no project"} />
         <button className="history" title="Undo (Ctrl + Z)" disabled={!canUndo || busy} onClick={undo}>
           ↶
         </button>
