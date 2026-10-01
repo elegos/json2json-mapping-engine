@@ -58,6 +58,7 @@ def _expand_rules(rules: list[Rule], paths: PathsSection) -> None:
             rule.transform.code_override = expand_text(rule.transform.code_override, paths)
         elif isinstance(rule, ObjectRule):
             rule.guard = expand_text(rule.guard, paths)
+            rule.source = expand_text(rule.source, paths)
             _expand_rules(rule.rules, paths)
         elif isinstance(rule, LoopRule):
             rule.source = expand_text(rule.source, paths) or ""

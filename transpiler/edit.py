@@ -34,6 +34,7 @@ from transpiler.model import (
     Rule,
     qualify_source,
 )
+from transpiler.selector import qualify_selector, split_selector
 
 _SEGMENT = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)(\[\*\])?$")
 
@@ -210,7 +211,7 @@ def _in_loop(file: FunctionalFile, path: str) -> bool:
     node: Any = file
     for step in re.findall(r"rules\[(\d+)\]", path)[:-1]:
         node = node.rules[int(step)]
-        if isinstance(node, LoopRule):
+        if isinstance(node, LoopRule) or (isinstance(node, ObjectRule) and node.source):
             return True
     return False
 
@@ -237,6 +238,13 @@ def set_source(file: FunctionalFile, path: str, text: str) -> FunctionalFile:
     in_loop = _in_loop(file, path)
     if isinstance(rule, LoopRule):
         rule.source = qualify_source(text, in_loop)
+    elif isinstance(rule, ObjectRule):
+        # empty = a plain object again; otherwise `list[condition]`
+        if text.strip() and split_selector(text) is None:
+            raise FnYamlError("an object's Source selects one element: $.list[condition]")
+        rule.source = qualify_selector(text, in_loop) or None
+        if rule.source:
+            rule.guard = None  # a guard and a source are exclusive
     elif isinstance(rule, FieldRule):
         value = text.strip()
         rule.source_path, rule.source_constant, rule.has_constant = None, None, False
@@ -246,5 +254,5 @@ def set_source(file: FunctionalFile, path: str, text: str) -> FunctionalFile:
         else:
             rule.source_path = qualify_source(value, in_loop) or None
     else:
-        raise FnYamlError("only field and loop rules have a Source")
+        raise FnYamlError("only field, loop and object rules have a Source")
     return file

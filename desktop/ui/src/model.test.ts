@@ -160,7 +160,7 @@ describe("insertionPoint", () => {
     expect(insertionPoint(leaf("rules[3].rules[0]"))).toEqual({ parent: "rules[3]", index: 1 });
   });
   it("goes inside a selected container", () => {
-    const row = { ...leaf("rules[3]"), rule: { kind: "object", id: null, description: null, output: "$.X", guard: null, rules: [] } as Rule };
+    const row = { ...leaf("rules[3]"), rule: { kind: "object", id: null, description: null, output: "$.X", guard: null, source: null, rules: [] } as Rule };
     expect(insertionPoint(row)).toEqual({ parent: "rules[3]", index: null });
   });
 });
@@ -201,7 +201,7 @@ describe("lookup entries", () => {
     const lookup = { kind: "lookup", id: null, description: null, label: "L", entries: { a: 1 }, type: null } as const;
     const found = lookups([
       lookup,
-      { kind: "object", id: null, description: null, output: "$.X", guard: null, rules: [lookup] },
+      { kind: "object", id: null, description: null, output: "$.X", guard: null, source: null, rules: [lookup] },
     ]);
     expect(found.map((f) => f.path)).toEqual(["rules[0]", "rules[1].rules[0]"]);
   });
@@ -269,5 +269,16 @@ describe("unsaved changes", () => {
     const index = savedIndex(file.rules);
     expect(index.byId.get("b")).toBe(file.rules[1].kind === "loop" ? file.rules[1].rules[0] : undefined);
     expect(index.byPath.get("rules[0]")).toBe(file.rules[0]);
+  });
+});
+
+describe("an object that selects an element", () => {
+  it("shows its condition in the Source column", () => {
+    const rule = {
+      kind: "object", id: null, description: null, output: "$.X", guard: null,
+      source: "$.list[@.d == 'x']", rules: [],
+    } as Rule;
+    expect(sourceOf(rule)).toBe("$.list[@.d == 'x']");
+    expect(sourceOf({ ...rule, source: null } as Rule)).toBe("");
   });
 });

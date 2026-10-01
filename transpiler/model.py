@@ -88,6 +88,9 @@ class ObjectRule:
     guard: str | None = None
     description: str | None = None
     rules: list[Rule] = dc_field(default_factory=list)
+    # `<list>[<condition>]`: the object is built from the first element that satisfies it
+    # (transpiler/selector.py); the rules inside read that element as `@`
+    source: str | None = None
     kind: Literal["object"] = "object"
 
 
@@ -104,6 +107,9 @@ class LoopRule:
     parallel: int | None = None  # `@parallel(degree=N)` on the loop's element function
     description: str | None = None
     rules: list[Rule] = dc_field(default_factory=list)
+    # internal (never written): the lowered form of an object with a selecting Source,
+    # whose result is the first element instead of a list
+    first: bool = False
     kind: Literal["loop"] = "loop"
 
 
@@ -214,7 +220,7 @@ _FIELD_KEYS = _COMMON | {
     "validation",
     "version",
 }
-_OBJECT_KEYS = _COMMON | {"output", "guard", "rules"}
+_OBJECT_KEYS = _COMMON | {"output", "guard", "source", "rules"}
 _LOOP_KEYS = _COMMON | {
     "label",
     "source",
@@ -354,12 +360,25 @@ def _load_rule(where: str, raw: Any) -> Rule:
         return _load_field(where, raw)
     if kind == "object":
         _check_keys(where, raw, _OBJECT_KEYS)
+        source = _get_str(where, raw, "source")
+        if source is not None:
+            from transpiler.selector import split_selector
+
+            if split_selector(source) is None:
+                raise _err(
+                    where,
+                    "the source of an object selects one element: $.list[condition] "
+                    f"— got {source!r}",
+                )
+            if raw.get("guard"):
+                raise _err(where, "an object has a guard or a source, not both")
         return ObjectRule(
             id=_load_rule_id(where, raw),
             output=_get_str(where, raw, "output", required=True) or "",
             guard=_get_str(where, raw, "guard"),
             description=_get_str(where, raw, "description"),
             rules=_load_children(where, raw),
+            source=source,
         )
     if kind == "loop":
         _check_keys(where, raw, _LOOP_KEYS)
@@ -527,7 +546,12 @@ def qualify_paths(rules: list[Rule], in_loop: bool = False, nested: bool = False
                 rule.source_path = qualify_source(rule.source_path, in_loop)
         elif isinstance(rule, ObjectRule):
             rule.output = qualify_output(rule.output, nested)
-            qualify_paths(rule.rules, in_loop, True)
+            if rule.source:
+                from transpiler.selector import qualify_selector
+
+                rule.source = qualify_selector(rule.source, in_loop)
+            # a selecting object reads one element of a list: inside it `@` is that element
+            qualify_paths(rule.rules, in_loop or bool(rule.source), True)
         elif isinstance(rule, LoopRule):
             rule.source = qualify_source(rule.source, in_loop)
             rule.output = qualify_output(rule.output, nested)

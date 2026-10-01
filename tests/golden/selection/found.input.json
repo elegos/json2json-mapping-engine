@@ -1,0 +1,1 @@
+{"id": "i1", "rootElement": "r", "myList": [{"discriminator": "OTHER", "other": "r", "remarks": "x|y", "name": "no"}, {"discriminator": "MY D", "other": "zz", "remarks": "q|w", "name": "no2"}, {"discriminator": "MY D", "other": "r", "remarks": "p|o", "name": "n1"}, {"discriminator": "MY D", "other": "r", "remarks": "late|o", "name": "n2"}]}

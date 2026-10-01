@@ -645,7 +645,7 @@ export function App() {
         headerName: "Source",
         colId: "source",
         width: 200,
-        editable: editableFor(["field", "loop"]),
+        editable: editableFor(["field", "loop", "object"]),
         valueGetter: (p) => (p.data ? sourceOf(p.data.rule) : ""),
         valueSetter: (p: ValueSetterParams<Row>) => {
           void remoteEdit("set_source", p.data.path, String(p.newValue ?? ""));
@@ -657,7 +657,10 @@ export function App() {
         colId: "expression",
         flex: 1,
         minWidth: 260,
-        editable: editableFor(["field", "loop", "object"]),
+        // an object that selects an element by its Source has no guard
+        editable: (p) =>
+          p.data !== undefined &&
+          (p.data.rule.kind === "object" ? !p.data.rule.source : ["field", "loop"].includes(p.data.rule.kind)),
         valueGetter: (p) => (p.data ? expressionOf(p.data.rule) : ""),
         // no expression: a field takes its Source value as it is
         cellRenderer: (p: ICellRendererParams<Row>) =>

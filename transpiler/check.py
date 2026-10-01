@@ -43,6 +43,7 @@ from transpiler.model import (
     load_rule,
 )
 from transpiler.paths import expand_paths
+from transpiler.selector import split_selector
 from transpiler.serialize import rule_to_raw
 
 Schema = dict[str, Any]
@@ -500,7 +501,10 @@ class _Checker:
                 node = UNKNOWN
             elif is_loop:
                 node = self.out.items(node)
-        if isinstance(rule, ObjectRule):
+        selector = (
+            split_selector(rule.source) if isinstance(rule, ObjectRule) and rule.source else None
+        )
+        if isinstance(rule, ObjectRule) and selector is None:
             if rule.guard:
                 self.block(path, rule.guard, scope, "expression")
                 self.refs(path, rule.guard, "expression", in_root, items, labels)
@@ -508,30 +512,32 @@ class _Checker:
                 self.typecheck(path, rule.guard, None, "", in_root, items, labels)
             self.walk(rule.rules, f"{path}.rules", scope, node, in_root, items, labels)
             return
-        # loop
+        # a loop, or an object that selects one element of a list: both read an element `@`
+        if selector is not None:
+            source, condition, label = f"{selector[0]}[*]", selector[1], None
+        else:
+            assert isinstance(rule, LoopRule)
+            source, condition, label = rule.source, rule.filter, rule.label
         item: Node = UNKNOWN
-        if not rule.source.strip():
+        if not source.strip():
             self.add(path, "source", "a loop needs a source")
-        if self.has_in and rule.source:
-            base = in_root if rule.source.startswith("$") else (items[-1] if items else in_root)
-            reached, missing = self.inp.resolve(base, re.sub(r"^[$@]", "", rule.source))
+        if self.has_in and source:
+            base = in_root if source.startswith("$") else (items[-1] if items else in_root)
+            reached, missing = self.inp.resolve(base, re.sub(r"^[$@]", "", source))
             if reached is None:
                 self.add(path, "source", f"'{missing}' is not in the input schema")
             else:
                 item = reached
         inner = AnchorScope(
-            loops=(*scope.loops, LoopRef(rule.label, "src", "index")), lookups=scope.lookups
+            loops=(*scope.loops, LoopRef(label, "src", "index")), lookups=scope.lookups
         )
-        if rule.filter:
-            self.block(path, rule.filter, inner, "expression")
-            self.refs(
-                path, rule.filter, "expression", in_root, [*items, item], [*labels, rule.label]
-            )
-            self.typecheck(
-                path, rule.filter, None, "", in_root, [*items, item], [*labels, rule.label]
-            )
+        if condition:
+            column = "expression" if selector is None else "source"
+            self.block(path, condition, inner, column)
+            self.refs(path, condition, column, in_root, [*items, item], [*labels, label])
+            self.typecheck(path, condition, None, "", in_root, [*items, item], [*labels, label])
         self.walk(
-            rule.rules, f"{path}.rules", inner, node, in_root, [*items, item], [*labels, rule.label]
+            rule.rules, f"{path}.rules", inner, node, in_root, [*items, item], [*labels, label]
         )
 
     def paths(self, original: FunctionalFile) -> None:

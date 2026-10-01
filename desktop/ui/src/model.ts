@@ -37,6 +37,8 @@ export interface ObjectRule extends Base {
   kind: "object";
   output: string;
   guard: string | null;
+  /** `$.list[condition]`: the object is built from the first element that satisfies it. */
+  source: string | null;
   rules: Rule[];
 }
 
@@ -160,6 +162,7 @@ export function sourceOf(rule: Rule): string {
     return rule.has_constant ? JSON.stringify(rule.source_constant) : (rule.source_path ?? "");
   }
   if (rule.kind === "loop") return rule.source;
+  if (rule.kind === "object") return rule.source ?? "";
   return "";
 }
 

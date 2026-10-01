@@ -60,6 +60,7 @@ from transpiler.model import (
     load_functional_file,
 )
 from transpiler.paths import expand_paths
+from transpiler.selector import lower_selectors
 
 
 @dataclass(frozen=True)
@@ -438,6 +439,8 @@ class _Builder:
                 self._top_field(rule)
             elif isinstance(rule, ObjectRule):
                 self._top_object(rule)
+            elif rule.first:
+                self._top_first(rule)
             else:
                 self._top_loop(rule)
 
@@ -457,6 +460,33 @@ class _Builder:
         out_field = _output_field(rule.output, f"rule '{rule.id}'")
         comp = self._composite(rule, rule.id, _Frame(), _pascal(out_field), rule.guard)
         self.flow += self._stmts(f"out.{out_field} = {comp.ident}(root)")
+
+    def _top_first(self, rule: LoopRule) -> None:
+        assert rule.id is not None
+        where = f"rule '{rule.id}'"
+        out_field = _output_field(rule.output, where)
+        wrapper = self._first_match(rule, rule.id, _Frame(), where)
+        self.flow += self._stmts(f"out.{out_field} = {wrapper.ident}(root)")
+
+    def _first_match(self, rule: LoopRule, fq: str, frame: _Frame, where: str) -> _Composite:
+        """A selecting object: a function that loops over the list like a loop rule, keeping the
+        elements that satisfy the condition, and returns the first one's object (nothing, so
+        the object is omitted, when none does)."""
+        stmts, list_var, sub = self._nested_loop(rule, fq, frame, where)
+        body: list[ast.stmt] = [
+            *stmts,
+            *self._stmts(f"if {list_var}:\n    return {list_var}[0]\nreturn"),
+        ]
+        ident = f"{ident_of(fq)}_first"
+        needs = _index_offsets(body)
+        fn = ast.parse(
+            f"def {ident}({self._params(frame, needs)}) -> {sub.cls} | None:\n    pass"
+        ).body[0]
+        assert isinstance(fn, ast.FunctionDef)
+        fn.body = body
+        ast.fix_missing_locations(fn)
+        self.functions.append(fn)
+        return _Composite(ident, sub.cls, needs)
 
     def _top_loop(self, rule: LoopRule) -> None:
         assert rule.id is not None
@@ -574,6 +604,15 @@ class _Builder:
                     keywords=[],
                 )
                 add(out_field, sub.cls + (" | None" if child.guard else ""), call, where)
+            elif child.first:
+                out_field = _output_field(child.output, where)
+                wrapper = self._first_match(child, cfq, frame, where)
+                call = ast.Call(
+                    func=ast.Name(id=wrapper.ident, ctx=ast.Load()),
+                    args=self._call_args(frame, None, wrapper.needs),
+                    keywords=[],
+                )
+                add(out_field, f"{wrapper.cls} | None", call, where)
             else:
                 out_field = _output_field(child.output, where)
                 stmts, list_var, sub = self._nested_loop(child, cfq, frame, where)
@@ -640,7 +679,9 @@ class _Builder:
         source = self._source_text(rule, self._scope(frame), where)
         child_frame = frame.child(rule.label, self._element_type(source, frame), rule.source)
         out_field = _output_field(rule.output, where)
-        sub = self._composite(rule, fq, child_frame, _pascal(out_field) + "Item", None)
+        sub = self._composite(
+            rule, fq, child_frame, _pascal(out_field) + ("" if rule.first else "Item"), None
+        )
 
         item, index = f"{cid}_src", f"{cid}_index"
         uses_index = 0 in sub.needs
@@ -685,7 +726,8 @@ def build_stage(
     `warnings`, when given, receives the non-fatal findings (unused `choices`,
     negative `multipleOf`, ...)."""
     assign_ids(file)
-    b = _Builder(expand_paths(file), options, input_schema)  # aliases / root override applied
+    # aliases / root override applied, selecting objects lowered to first-element loops
+    b = _Builder(lower_selectors(expand_paths(file)), options, input_schema)
     b.build()
     if warnings is not None:
         warnings.extend(b.warnings)

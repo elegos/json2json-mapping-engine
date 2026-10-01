@@ -23,6 +23,17 @@ CREATE OR REPLACE PACKAGE MAPPING_OWNER.J2JME_MAPPINGS AS
         p_err OUT CLOB
     );
 
+    PROCEDURE map_selection (
+        p_src IN  CLOB,
+        p_out OUT CLOB
+    );
+
+    PROCEDURE map_selection_safe (
+        p_src IN  CLOB,
+        p_out OUT CLOB,
+        p_err OUT CLOB
+    );
+
     PROCEDURE map_truthiness (
         p_src IN  CLOB,
         p_out OUT CLOB
@@ -75,6 +86,23 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAPPINGS AS
     BEGIN
         MAPPING_OWNER.J2JME_MAP_POSITIONS.map_positions_safe(p_src, p_out, p_err);
     END map_positions_safe;
+
+    PROCEDURE map_selection (
+        p_src IN  CLOB,
+        p_out OUT CLOB
+    ) AS
+    BEGIN
+        MAPPING_OWNER.J2JME_MAP_SELECTION.map_selection(p_src, p_out);
+    END map_selection;
+
+    PROCEDURE map_selection_safe (
+        p_src IN  CLOB,
+        p_out OUT CLOB,
+        p_err OUT CLOB
+    ) AS
+    BEGIN
+        MAPPING_OWNER.J2JME_MAP_SELECTION.map_selection_safe(p_src, p_out, p_err);
+    END map_selection_safe;
 
     PROCEDURE map_truthiness (
         p_src IN  CLOB,

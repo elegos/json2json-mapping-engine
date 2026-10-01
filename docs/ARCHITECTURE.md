@@ -1530,6 +1530,37 @@ paths:
   (a non-constant position is a compile error). PL/SQL reads it with `get_Array(...)` /
   `get_Object(pos)`; the golden mapping `positions` covers it on Oracle.
 
+#### Selecting one element
+
+A list may hold several objects, one per discriminator, of which a mapping needs a single one.
+An `object` rule can pick it with a condition in its Source:
+
+```yaml
+- kind: object
+  output: MyObject
+  source: $.myList[discriminator = 'MY DISCRIMINATOR' and other = $.rootElement]
+  rules:
+    - kind: field
+      field: Id
+      source: {path: "@.remarks"}
+      transform: {expression: 'split_first(value, "|")'}
+```
+
+- The object is built from the **first** element of the list for which the condition is true;
+  when none is, the object is **omitted** (like a false guard). More than one match is not an
+  error: the others are ignored.
+- The rules inside read the chosen element as `@` (a bare Source `remarks` is `@.remarks`),
+  and `$` is still the document root.
+- In the condition a bare name is a field of the candidate element, `=` is `==`, and `and` /
+  `or` / `not`, comparisons, built-ins and `$.` paths work as in any expression. The loader
+  writes it out in full (`@.discriminator == 'MY DISCRIMINATOR'`), as it does for Sources.
+- An object has a guard **or** a source, not both. A plain loop is still the way to map every
+  matching element.
+- Lowering: `transpiler/selector.py` turns the object into a loop with that filter whose
+  result is the first element, so the `.map.py` shows a `for` over the list and a
+  `<id>_first` function ending in `return <list>[0]`. All matches are visited (there is no
+  early exit). The golden mapping `selection` covers it.
+
 #### §format — decimal precision
 
 `format` is a Code Generator hint for numeric fields. It uses the `0.00` notation

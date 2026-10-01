@@ -108,6 +108,7 @@ def _rule_to_raw(rule: Rule, in_loop: bool = False, nested: bool = False) -> dic
     else:
         assert isinstance(rule, ObjectRule)
         raw["output"] = _short(rule.output, "@." if nested else "$.")
+        _put(raw, "source", rule.source)
         _put(raw, "guard", rule.guard)
     _put(raw, "description", rule.description)
     below_loop = in_loop or isinstance(rule, LoopRule)

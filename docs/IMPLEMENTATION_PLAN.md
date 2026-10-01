@@ -456,6 +456,10 @@ Sliced; each slice is usable on its own:
       schema, own **Paths** tab in the tool. The developer dialect gained constant array
       positions (`root.a.list[0].b`: type checker, PL/SQL codegen, golden mapping `positions`;
       not yet run on Oracle).
+- [x] **Selecting one element** (`object` with `source: $.list[condition]`;
+      `transpiler/selector.py`): first matching element, omitted when none; bare names in the
+      condition are fields of the element, `=` is `==`. Checked against the input schema,
+      editable in the Source column, golden mapping `selection` (not yet run on Oracle).
 - [x] **Unsaved changes and undo/redo.** Cells that differ from the saved file are bold (rules
       matched by id, else by path; a rule with no saved counterpart is bold whole); the file
       name in the list gets a `*`. Undo / redo (↶ ↷, Ctrl+Z / Ctrl+Y) keep snapshots of the
