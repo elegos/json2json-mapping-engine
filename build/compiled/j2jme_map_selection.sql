@@ -57,7 +57,7 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAP_SELECTION AS
             END IF;
         END LOOP;
         IF (v_my_object_first_matches IS NOT NULL AND v_my_object_first_matches.get_size > 0) THEN
-            RETURN v_my_object_first_matches.get_Object(0);
+            RETURN TREAT(v_my_object_first_matches.get(0) AS JSON_OBJECT_T);
         END IF;
         p_omitted := TRUE;
         RETURN NULL;

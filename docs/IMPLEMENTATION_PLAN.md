@@ -446,7 +446,8 @@ Sliced; each slice is usable on its own:
       `null`). The check types `value` by the Source (schema node or constant). Bare words in
       the Source column stay paths (`id` → `$.id`).
 - [x] **Truthiness** in conditions (`_ExprTranslator.condition`, `truthy` in the functions
-      package, golden mapping `truthiness`); the golden cases are not yet run on Oracle.
+      package, golden mapping `truthiness`); run on Oracle since: the `truthy` function read an empty string as true
+      (Oracle's `to_String` keeps the quotes: `""`, never NULL), fixed.
 - [x] **Unsaved changes.** Save is explicit (no autosave). Build / Check / Transpile ask
       "Save before continuing?" (they read the files on disk); switching file or project
       and closing the window ask too (Save / discard / Cancel).
@@ -457,11 +458,12 @@ Sliced; each slice is usable on its own:
       `transpiler/paths.py`). Expanded before check and transpile, checked against the input
       schema, own **Paths** tab in the tool. The developer dialect gained constant array
       positions (`root.a.list[0].b`: type checker, PL/SQL codegen, golden mapping `positions`;
-      not yet run on Oracle).
+      run on Oracle since; reading `list[0]` needed `TREAT(.get(0) AS JSON_OBJECT_T)`, a
+      `JSON_ARRAY_T` has no `get_Object`).
 - [x] **Selecting one element** (`object` with `source: $.list[condition]`;
       `transpiler/selector.py`): first matching element, omitted when none; bare names in the
       condition are fields of the element, `=` is `==`. Checked against the input schema,
-      editable in the Source column, golden mapping `selection` (not yet run on Oracle).
+      editable in the Source column, golden mapping `selection` (run on Oracle since, with the same `TREAT` fix).
 - [x] **Completion in the Target / Source / Expression cells** (CodeMirror 6; `complete` op of
       `mapper serve`, `transpiler/complete.py`). `$.` / `$.a.` list the input schema's fields
       (honouring `paths.root`), `@` the loop labels, lookups, aliases, `@root`, `@index`, `@.` /
@@ -529,7 +531,7 @@ Sliced; each slice is usable on its own:
       - **State filter** next to the text filter: validated, to review, not validated,
         override out of date, with errors (with counts; the validation ones in Developer mode).
       - Limits: a rule that cannot be transpiled makes the auto code of every rule unavailable
-        (the pane shows the reason); not yet run in the real window (see M6.1).
+        (the pane shows the reason).
 - [ ] **M6.3 — VCS.** Gitoxide save-as-commit, pull --rebase, semantic rule-level merge.
 - [ ] **M6.4 — LLM assist.** Validation suggestions, expression builder (Ollama / API).
 - [ ] **M6.5 — Schemas per mapping.** Choose, for each mapping of the project, its input and its

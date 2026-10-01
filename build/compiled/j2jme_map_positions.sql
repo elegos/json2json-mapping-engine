@@ -16,13 +16,13 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAP_POSITIONS AS
     FUNCTION fn_positions_first(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
     BEGIN
         p_omitted := FALSE;
-        RETURN p_root.get_Object('tx').get_Array('list').get_Object(0).get_String('id');
+        RETURN TREAT(p_root.get_Object('tx').get_Array('list').get(0) AS JSON_OBJECT_T).get_String('id');
     END fn_positions_first;
 
     FUNCTION fn_positions_second_qty(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN NUMBER IS
     BEGIN
         p_omitted := FALSE;
-        RETURN p_root.get_Object('tx').get_Array('list').get_Object(1).get_Number('qty');
+        RETURN TREAT(p_root.get_Object('tx').get_Array('list').get(1) AS JSON_OBJECT_T).get_Number('qty');
     END fn_positions_second_qty;
 
     FUNCTION fn_positions_last_tag(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
@@ -34,7 +34,7 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAP_POSITIONS AS
     FUNCTION fn_positions_flagged(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
     BEGIN
         p_omitted := FALSE;
-        RETURN (CASE WHEN MAPPING_OWNER.J2JME_FUNCTIONS.truthy(p_root.get_Object('tx').get_Array('list').get_Object(0).get('flag')) THEN 'T' ELSE 'F' END);
+        RETURN (CASE WHEN MAPPING_OWNER.J2JME_FUNCTIONS.truthy(TREAT(p_root.get_Object('tx').get_Array('list').get(0) AS JSON_OBJECT_T).get('flag')) THEN 'T' ELSE 'F' END);
     END fn_positions_flagged;
 
     PROCEDURE map_positions (

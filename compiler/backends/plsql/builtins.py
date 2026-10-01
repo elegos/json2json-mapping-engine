@@ -225,7 +225,8 @@ IF p_el IS NULL OR p_el.is_Null THEN
     ELSIF p_el.is_Number THEN
         RETURN COALESCE(p_el.to_Number, 0) <> 0;
     ELSIF p_el.is_String THEN
-        RETURN p_el.to_String IS NOT NULL;
+        -- to_String is the JSON text, quotes included: the empty string is '""', not NULL
+        RETURN p_el.to_String <> '""';
     ELSIF p_el.is_Array THEN
         RETURN TREAT(p_el AS JSON_ARRAY_T).get_size > 0;
     ELSIF p_el.is_Object THEN

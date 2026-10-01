@@ -38,7 +38,12 @@ def sql() -> str:
 
 def test_fields_around_a_position_read_object_then_array_then_object(sql: str) -> None:
     assert "p_root.get_Object('tx').get_Array('list').get_String(0)" not in sql
-    assert "p_root.get_Object('tx').get_Array('list').get_Object(0).get_String('id')" in sql
+    # a JSON_ARRAY_T has no get_Object: the element is read with get() and TREATed
+    assert "get_Array('list').get_Object(" not in sql
+    assert (
+        "TREAT(p_root.get_Object('tx').get_Array('list').get(0) AS JSON_OBJECT_T).get_String('id')"
+        in sql
+    )
 
 
 def test_the_last_step_may_be_a_position(sql: str) -> None:
@@ -46,8 +51,14 @@ def test_the_last_step_may_be_a_position(sql: str) -> None:
 
 
 def test_numbers_and_truthiness_go_through_the_same_chain(sql: str) -> None:
-    assert "p_root.get_Object('tx').get_Array('list').get_Object(1).get_Number('n')" in sql
-    assert "truthy(p_root.get_Object('tx').get_Array('list').get_Object(0).get('flag'))" in sql
+    assert (
+        "TREAT(p_root.get_Object('tx').get_Array('list').get(1) AS JSON_OBJECT_T).get_Number('n')"
+        in sql
+    )
+    assert (
+        "truthy(TREAT(p_root.get_Object('tx').get_Array('list').get(0) AS JSON_OBJECT_T).get('flag'))"
+        in sql
+    )
 
 
 def test_a_position_must_be_a_constant() -> None:

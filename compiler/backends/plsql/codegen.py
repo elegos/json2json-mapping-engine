@@ -543,13 +543,12 @@ class _ExprTranslator:
         code = self.translate(base, None)
         # each step reads an object (next is a field) or an array (next is a position)
         for seg, following in zip(segments, segments[1:], strict=False):
-            kind = "Array" if isinstance(following, int) else "Object"
-            code = f"{code}.get_{kind}({_segment(seg)})"
+            code = _step(code, seg, "Array" if isinstance(following, int) else "Object")
         last = _segment(segments[-1])
         if expected == "OBJECT":
-            return f"{code}.get_Object({last})"
+            return _step(code, segments[-1], "Object")
         if expected == "ARRAY":
-            return f"{code}.get_Array({last})"
+            return _step(code, segments[-1], "Array")
         return f"{code}.{_GETTER.get(expected or '', 'get_String')}({last})"
 
     _t_Subscript = _t_Attribute
@@ -632,8 +631,7 @@ class _ExprTranslator:
         base, segments = _access_chain(node)
         code = self.translate(base, None)
         for seg, following in zip(segments, segments[1:], strict=False):
-            kind = "Array" if isinstance(following, int) else "Object"
-            code = f"{code}.get_{kind}({_segment(seg)})"
+            code = _step(code, seg, "Array" if isinstance(following, int) else "Object")
         element = f"{code}.get({_segment(segments[-1])})"
         library = self.library_name("truthy") if self.library_name else None
         if library is None:
@@ -916,6 +914,15 @@ def _access_chain(node: ast.expr) -> tuple[ast.expr, list[str | int]]:
 
 def _segment(seg: str | int) -> str:
     return str(seg) if isinstance(seg, int) else _quote(seg)
+
+
+def _step(code: str, seg: str | int, kind: str) -> str:
+    """One step down a JSON path, to an `Object` or an `Array`. A field of a `JSON_OBJECT_T`
+    has `get_Object` / `get_Array`; a `JSON_ARRAY_T` has neither (only `get(pos)`, an element of
+    any type), so an element of an array is read with `get` and `TREAT`ed to what it is."""
+    if isinstance(seg, int):
+        return f"TREAT({code}.get({seg}) AS JSON_{kind.upper()}_T)"
+    return f"{code}.get_{kind}({_segment(seg)})"
 
 
 def infer_type(node: ast.expr, ctx: _FnCtx) -> str:
