@@ -92,3 +92,13 @@ button.primary:hover:not(:disabled) { background: #3468b3; }
 
 .cell-changed { font-weight: 700; }
 .history { min-width: 2.2em; }
+
+.paths { flex: 1; min-height: 0; overflow: auto; padding: 8px 20px 24px; max-width: 760px; }
+.paths h2 { font-size: 15px; margin: 14px 0 6px; }
+.paths-help { margin: 0 0 10px; }
+.paths-root { display: flex; align-items: center; gap: 10px; }
+.paths-root input { flex: 1; }
+.paths table { border-collapse: collapse; margin: 4px 0 8px; width: 100%; }
+.paths th { text-align: left; font-weight: 600; padding: 2px 6px; }
+.paths td { padding: 2px 4px; }
+.paths td:nth-child(2) input { width: 100%; }

@@ -1503,6 +1503,33 @@ rule. The transpiler builds the full output path by walking the parent chain.
 Each field group (`source`, `transform`, `description`) carries its own `*_modified`
 timestamp so diffs are readable at a semantic level, not just line-level.
 
+#### Paths section
+
+A `.fn.yaml` may start with a `paths:` section that changes how input paths are written:
+
+```yaml
+paths:
+  root: $.transmissions.list[0]          # `$` means this path in every rule
+  aliases:
+    metadata: $.transmissions.metadata   # @metadata.name = $.transmissions.metadata.name
+```
+
+- Every path in the section is written from the **real** document root, with fields and
+  constant array positions only (`$.a.list[0].b`; no `[*]`).
+- With `root` set, `$` in a Source, expression, guard, filter or loop source stands for that
+  path. `@root` is reserved and always reaches the real root (`@root.other.field`).
+- `@<alias>` stands for the alias's path. The names `root` and `index` are reserved, and
+  aliases share one namespace with lookup tables and loop labels: a name cannot be two of
+  them (loader and `check` report it).
+- Output paths (`output:`, Targets) are not affected.
+- The rules keep the text the user wrote. `transpiler/paths.py` (`expand_paths`) makes a copy
+  in which every input path is spelled from the real root, once, before `check` and
+  `transpile`; the `.map.py` and the backends never see an alias. `check` also verifies that
+  the root and every alias exist in the input schema.
+- The developer dialect reads an array element by a **constant position**: `root.tx.list[0].id`
+  (a non-constant position is a compile error). PL/SQL reads it with `get_Array(...)` /
+  `get_Object(pos)`; the golden mapping `positions` covers it on Oracle.
+
 #### §format — decimal precision
 
 `format` is a Code Generator hint for numeric fields. It uses the `0.00` notation

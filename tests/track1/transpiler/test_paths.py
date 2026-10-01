@@ -143,3 +143,12 @@ def test_check_reports_bad_names_and_paths_of_an_edited_section() -> None:
     assert any("'root' is reserved" in m for m in messages)
     assert any("'bad name' is not a valid name" in m for m in messages)
     assert not any("'ok'" in m for m in messages)
+
+
+def test_the_section_survives_the_json_round_trip_of_the_desktop_tool() -> None:
+    from transpiler.model import functional_from_dict, functional_to_dict
+
+    file = parse_functional(
+        raw({"root": "$.payload.list[0]", "aliases": {"metadata": "$.p.m"}}), "t"
+    )
+    assert functional_from_dict(functional_to_dict(file)).paths == file.paths

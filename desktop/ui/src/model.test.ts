@@ -45,6 +45,7 @@ const file: FunctionalFile = {
   name: "T",
   id: "t",
   path: null,
+  paths: { root: null, aliases: {} },
   rules: [
     field("a", "A", "$.a"),
     {

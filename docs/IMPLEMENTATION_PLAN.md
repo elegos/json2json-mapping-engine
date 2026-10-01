@@ -451,6 +451,11 @@ Sliced; each slice is usable on its own:
 - [x] **Path style.** Targets show and are saved without `$.` / `@.`; a bare Source is
       rewritten to `$.x` (outside a loop) or `@.x` (inside one) by the loader and by
       `set_source`; both forms are accepted (`transpiler.model.qualify_paths`).
+- [x] **Paths section** (`paths:` of `.fn.yaml`: `root` override, `aliases`, `@root` reserved;
+      `transpiler/paths.py`). Expanded before check and transpile, checked against the input
+      schema, own **Paths** tab in the tool. The developer dialect gained constant array
+      positions (`root.a.list[0].b`: type checker, PL/SQL codegen, golden mapping `positions`;
+      not yet run on Oracle).
 - [x] **Unsaved changes and undo/redo.** Cells that differ from the saved file are bold (rules
       matched by id, else by path; a rule with no saved counterpart is bold whole); the file
       name in the list gets a `*`. Undo / redo (↶ ↷, Ctrl+Z / Ctrl+Y) keep snapshots of the

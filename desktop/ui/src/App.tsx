@@ -3,6 +3,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AgGridReact } from "ag-grid-react";
 import { type Choice, Confirm } from "./Confirm";
 import { Lookups } from "./Lookups";
+import { Paths } from "./Paths";
 import { ProjectProperties } from "./ProjectProperties";
 import {
   type ConfigIssue,
@@ -110,7 +111,7 @@ export function App() {
   const folding = useRef(false);
   const treeRef = useRef<FunctionalFile | null>(null);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
-  const [view, setView] = useState<"rules" | "lookups" | "project">("rules");
+  const [view, setView] = useState<"rules" | "lookups" | "paths" | "project">("rules");
   // mapper.toml: the form's descriptors, the file's values, the draft being edited
   const [configSchema, setConfigSchema] = useState<ConfigSchema | null>(null);
   const [configSaved, setConfigSaved] = useState("");
@@ -362,6 +363,19 @@ export function App() {
       return copy;
     });
   }, [remember]);
+
+  const editPaths = useCallback(
+    (change: (paths: NonNullable<FunctionalFile["paths"]>) => void) => {
+      remember(treeRef.current, "paths");
+      setTree((old) => {
+        if (!old) return old;
+        const copy = structuredClone(old);
+        change(copy.paths);
+        return copy;
+      });
+    },
+    [remember],
+  );
 
   /** Target / Source edits are done by the Python worker (one implementation of the path rules). */
   const remoteEdit = useCallback(
@@ -784,6 +798,9 @@ export function App() {
               <button className={view === "lookups" ? "tab active" : "tab"} onClick={() => setView("lookups")}>
                 Lookups
               </button>
+              <button className={view === "paths" ? "tab active" : "tab"} onClick={() => setView("paths")}>
+                Paths
+              </button>
               {config && (
                 <button className={view === "project" ? "tab active" : "tab"} onClick={() => setView("project")}>
                   mapper.toml{configDirty ? " ●" : ""}
@@ -800,6 +817,13 @@ export function App() {
                 remember(treeRef.current, "config");
                 setConfig(next);
               }}
+            />
+          )}
+          {tree && view === "paths" && (
+            <Paths
+              paths={tree.paths}
+              issues={(diagnostics.get("") ?? []).filter((d) => d.message.startsWith("paths:"))}
+              onChange={editPaths}
             />
           )}
           {tree && view === "lookups" && (
@@ -891,7 +915,9 @@ export function App() {
       )}
       <footer>
         <div className="status">{status}</div>
-        {(diagnostics.get("") ?? []).map((d, i) => (
+        {(diagnostics.get("") ?? [])
+          .filter((d) => view !== "paths" || !d.message.startsWith("paths:"))
+          .map((d, i) => (
           <div key={`f${i}`} className={d.severity}>
             {d.severity}: {d.message}
           </div>

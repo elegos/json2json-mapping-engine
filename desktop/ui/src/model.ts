@@ -60,11 +60,25 @@ export interface LookupRule extends Base {
 
 export type Rule = FieldRule | ObjectRule | LoopRule | LookupRule;
 
+/** The `paths:` section: what `$` means and the named path aliases (all from the real root). */
+export interface PathsSection {
+  root: string | null;
+  aliases: Record<string, string>;
+}
+
 export interface FunctionalFile {
   name: string;
   id: string;
   rules: Rule[];
   path: string | null;
+  paths: PathsSection;
+}
+
+/** `aliases` plus a new one with a free name (`alias`, `alias2`, …). */
+export function addAlias(aliases: Record<string, string>): Record<string, string> {
+  let name = "alias";
+  for (let n = 2; name in aliases; n++) name = `alias${n}`;
+  return { ...aliases, [name]: "$." };
 }
 
 /** One grid row: a rule plus where it sits in the tree. */
