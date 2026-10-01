@@ -469,6 +469,12 @@ Sliced; each slice is usable on its own:
       closes. `CodeEditor.tsx` is reusable: the multi-line editor of a rule's code override (M6.2)
       will use it with a developer-dialect completer (`root.`, `src.`).
       Not driven by hand yet (no GUI automation here).
+- [x] **Function registry** (`compiler/builtins.py`, `compiler/function_registry.py`): the
+      built-ins as typed Python read with `ast`; typer signatures, completion and the IDE stub
+      derive from it; `fn/*.fn` of a project are read the same way and replace a built-in of the
+      same name (`all_functions(project)`). The registry showed that `len` was typed but had no
+      PL/SQL implementation: it is no longer a built-in. Compiling and linking the project
+      functions still waits for the `.fn` loader (Phase 1).
 - [x] **Unsaved changes and undo/redo.** Cells that differ from the saved file are bold (rules
       matched by id, else by path; a rule with no saved counterpart is bold whole); the file
       name in the list gets a `*`. Undo / redo (↶ ↷, Ctrl+Z / Ctrl+Y) keep snapshots of the

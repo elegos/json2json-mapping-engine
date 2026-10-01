@@ -11,6 +11,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from compiler.function_registry import FunctionInfo, builtin_functions
 from transpiler.check import UNKNOWN, Node, _Schemas
 from transpiler.model import (
     RESERVED_ALIASES,
@@ -26,24 +27,6 @@ from transpiler.selector import split_selector
 
 Schema = dict[str, Any]
 
-# name -> signature as shown in the list
-FUNCTIONS: dict[str, str] = {
-    "coalesce": "coalesce(a, b, …)",
-    "concat": "concat(a, b, …)",
-    "count": "count(list)",
-    "if_else": "if_else(condition, then, otherwise)",
-    "len": "len(value)",
-    "lookup": "lookup(key, @table, default)",
-    "max": "max(list, field)",
-    "min": "min(list, field)",
-    "avg": "avg(list, field)",
-    "sum": "sum(list, field)",
-    "parse_date": "parse_date(text, format)",
-    "round": "round(number, digits)",
-    "split_first": "split_first(text, separator)",
-    "split_nth": "split_nth(text, separator, n)",
-    "trunc": "trunc(number, digits)",
-}
 _KEYWORDS = ("and", "or", "not", "in", "True", "False", "None")
 
 
@@ -53,6 +36,8 @@ class Item:
     insert: str  # replaces the text typed since `from_`
     kind: str  # field | function | label | lookup | alias | keyword | value
     detail: str = ""
+    doc: str = ""  # longer explanation (a function's docstring)
+    origin: str = ""  # where a function comes from: "built-in" or its project file
 
     def to_json(self) -> dict[str, str]:
         return {
@@ -60,6 +45,8 @@ class Item:
             "insert": self.insert,
             "kind": self.kind,
             "detail": self.detail,
+            "doc": self.doc,
+            "origin": self.origin,
         }
 
 
@@ -188,6 +175,7 @@ def complete(
     cursor: int,
     input_schema: Schema | None,
     output_schema: Schema | None,
+    functions: dict[str, FunctionInfo] | None = None,
 ) -> Completion:
     """Suggestions for `text` (the cell's content) at offset `cursor` of the rule at `path`.
     `column` is `target`, `source` or `expression`."""
@@ -274,7 +262,11 @@ def complete(
         found += _fields(inp, current, "", insert_plain=True)
     if column == "expression":
         found.append(Item("value", "value", "value", "the Source's value"))
-        found += [Item(n, n + "(", "function", sig) for n, sig in sorted(FUNCTIONS.items())]
+        registry = functions if functions is not None else builtin_functions()
+        found += [
+            Item(f.name, f.name + "(", "function", f.signature(), f.doc, f.origin)
+            for f in sorted(registry.values(), key=lambda f: f.name)
+        ]
         found += [Item(k, k, "keyword") for k in _KEYWORDS]
     return Completion(start, _rank(found, partial))
 

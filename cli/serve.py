@@ -18,6 +18,7 @@ from typing import Any, TextIO
 
 from cli import project_config
 from cli.config import MapperConfigError
+from compiler.function_registry import all_functions
 from transpiler.check import check_functional, schemas_for
 from transpiler.complete import complete
 from transpiler.edit import add_rule, delete_rule, retarget, set_source
@@ -31,13 +32,20 @@ def handle(request: dict[str, Any]) -> dict[str, Any]:
     if op == "check":
         file = functional_from_dict(request["tree"])
         inp, out = schemas_for(Path(request["project"]), request["stem"])
-        issues = check_functional(file, inp, out)
+        issues = check_functional(file, inp, out, all_functions(Path(request["project"])))
         return {"ok": True, "diagnostics": [i.to_json() for i in issues]}
     if op == "complete":
         file = functional_from_dict(request["tree"])
         inp, out = schemas_for(Path(request["project"]), request["stem"])
         found = complete(
-            file, request["path"], request["column"], request["text"], request["cursor"], inp, out
+            file,
+            request["path"],
+            request["column"],
+            request["text"],
+            request["cursor"],
+            inp,
+            out,
+            all_functions(Path(request["project"])),
         )
         return {"ok": True, **found.to_json()}
     if op in ("retarget", "set_source"):

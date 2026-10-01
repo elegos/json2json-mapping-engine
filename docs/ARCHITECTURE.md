@@ -427,6 +427,17 @@ of a `return`, an `out.<field> = ...` assignment, or an `.append(...)` argument 
 nested inside a larger expression. In the Python subset the array/field arguments are
 positional: `max(<array>, "<field name>")`.
 
+**The registry.** The built-ins are declared once, as typed Python with docstrings, in
+`compiler/builtins.py`; the project's `fn/*.fn` files are read the same way (with `ast`:
+project code is never executed by the tool), and a project function replaces a built-in of the
+same name. `compiler/function_registry.py` reads names, parameters, annotations, docstrings
+and decorators. Everything else derives from it: the type checker's signatures
+(`transpiler/exprtypes.py`; a function marked `@special` has a type that depends on its
+arguments and is typed by hand), the completion of the desktop tool (signature, description and
+origin), and the `def` stubs that `mapper stubs` adds to `__mapping__.pyi` for the IDE. A
+conformance test compiles a call to every registered function with each backend, so a
+function that is declared but not implemented fails the build of the tool, not of a project.
+
 The built-in library is versioned with the tool using **SemVer**:
 - **MAJOR** — signature change (breaking); `.fn.yaml` files referencing the changed
   function must be updated explicitly before the build succeeds.

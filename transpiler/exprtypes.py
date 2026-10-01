@@ -16,8 +16,10 @@ reported. Only single-expression rules are typed; blocks with statements are lef
 from __future__ import annotations
 
 import ast
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any
+
+from compiler.function_registry import FunctionInfo, builtin_functions
 
 Ty = frozenset[str] | None
 
@@ -34,18 +36,48 @@ _STR_METHODS = {
 }  # fmt: skip
 _CASTS: dict[str, Ty] = {"str": STRING, "int": INTEGER, "float": NUMBER, "bool": BOOLEAN}
 
-# name -> (parameter expectations, returns); `None` = anything. The built-ins with a type
-# that depends on their arguments (coalesce, if_else, lookup) are handled in `_call`.
-SIGNATURES: dict[str, tuple[tuple[Ty, ...], Ty]] = {
-    "round": ((NUMERIC, INTEGER), NUMBER),
-    "trunc": ((NUMERIC, INTEGER), NUMBER),
-    "split_first": ((STRING, STRING), STRING),
-    "split_nth": ((STRING, STRING, INTEGER), STRING),
-    "parse_date": ((STRING, STRING), STRING),  # a date travels as a string
-    "len": ((None,), INTEGER),
-}
-# Built-ins that are typed by hand in `_call`, or deliberately not typed yet.
-HANDLED = {"coalesce", "if_else", "lookup", "concat", "count", "max", "min", "sum", "avg"}
+
+def annotation_type(text: str, *, parameter: bool) -> Ty:
+    """The type set of a parameter / return annotation of a registered function; `None` when
+    it says nothing (`Any`, no annotation). A numeric parameter accepts integers."""
+    names = {n.strip() for n in text.split("|")} - {"None", ""}
+    if not names or "Any" in names:
+        return None
+    found: set[str] = set()
+    for n in names:
+        if n in ("str", "date", "datetime"):
+            found.add("string")
+        elif n == "int":
+            found.add("integer")
+        elif n == "float":
+            found |= {"number", "integer"} if parameter else {"number"}
+        elif n == "bool":
+            found.add("boolean")
+        elif n.startswith(("list[", "list")):
+            found.add("array")
+        else:
+            return None
+    return frozenset(found)
+
+
+def signature_table(
+    functions: Mapping[str, FunctionInfo],
+) -> dict[str, tuple[tuple[Ty, ...], Ty]]:
+    """name -> (parameter expectations, returns) for the functions typed by their annotations;
+    the `@special` built-ins (typed by hand in `_call`) are not in it."""
+    table: dict[str, tuple[tuple[Ty, ...], Ty]] = {}
+    for info in functions.values():
+        if info.special:
+            continue
+        params = tuple(annotation_type(p.annotation, parameter=True) for p in info.params)
+        table[info.name] = (params, annotation_type(info.returns, parameter=False))
+    return table
+
+
+_BUILTINS = builtin_functions()
+# the built-ins as the registry (`compiler/builtins.py`) says
+SIGNATURES = signature_table(_BUILTINS)
+HANDLED = {name for name, info in _BUILTINS.items() if info.special}
 
 
 def describe(ty: Ty) -> str:
@@ -60,7 +92,18 @@ class ExprTyper:
     """`env` maps the names the anchors resolve to (`root`, `_L1`, …) to schema nodes;
     `schemas` offers `types(node)`, `prop(node, name)` and `values(node)` on such nodes."""
 
-    def __init__(self, schemas: Any, env: dict[str, Any], report: Callable[[str], None]):
+    def __init__(
+        self,
+        schemas: Any,
+        env: dict[str, Any],
+        report: Callable[[str], None],
+        functions: Mapping[str, FunctionInfo] | None = None,
+    ):
+        # the project's functions replace the built-ins of the same name
+        self.signatures = signature_table(functions) if functions is not None else SIGNATURES
+        self.special = (
+            {n for n, f in functions.items() if f.special} if functions is not None else HANDLED
+        )
         self.schemas = schemas
         self.env = env
         self.report = report
@@ -204,23 +247,23 @@ class ExprTyper:
             for arg in args:
                 self.infer(arg)
             return _CASTS[name]
-        if name == "lookup":
+        if name == "lookup" and name in self.special:
             return self._lookup(args, want)
-        if name == "if_else" and len(args) == 3:
+        if name == "if_else" and name in self.special and len(args) == 3:
             self._arg(name, 0, args[0], BOOLEAN)
             return self._branches(args[1:], want)
-        if name == "coalesce" and args:
+        if name == "coalesce" and name in self.special and args:
             return self._branches(args, want)
-        if name == "concat":
+        if name == "concat" and name in self.special:
             for arg in args:
                 self.infer(arg)
             return STRING
-        if name == "count":
+        if name == "count" and name in self.special:
             for arg in args:
                 self.infer(arg)
             return INTEGER
-        if name in SIGNATURES:
-            params, returns = SIGNATURES[name]
+        if name in self.signatures:
+            params, returns = self.signatures[name]
             for i, arg in enumerate(args):
                 self._arg(name, i, arg, params[i] if i < len(params) else None)
             return returns

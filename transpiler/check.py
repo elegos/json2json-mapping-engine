@@ -18,10 +18,12 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from compiler.function_registry import FunctionInfo
 from transpiler.anchors import (
     AnchorScope,
     LoopRef,
@@ -280,9 +282,14 @@ _REF = re.compile(
 
 class _Checker:
     def __init__(
-        self, file: FunctionalFile, input_schema: Schema | None, output_schema: Schema | None
+        self,
+        file: FunctionalFile,
+        input_schema: Schema | None,
+        output_schema: Schema | None,
+        functions: Mapping[str, FunctionInfo] | None = None,
     ):
         self.file = file
+        self.functions = functions
         self.inp = _Schemas(input_schema)
         self.out = _Schemas(output_schema)
         self.has_in = input_schema is not None
@@ -394,7 +401,9 @@ class _Checker:
         env: dict[str, Any] = {"root": root, "value": value}
         env.update({f"_LK_{label}": node for label, node in self.lookup_nodes.items()})
         env.update({f"_L{i}": node for i, node in enumerate(items, 1)})
-        typer = ExprTyper(self.inp, env, lambda message: self.add(path, "expression", message))
+        typer = ExprTyper(
+            self.inp, env, lambda message: self.add(path, "expression", message), self.functions
+        )
         typer.check(resolved, want, what)
 
     def _anchor(self, anchor: str, root: Node, items: list[Node], labels: list[str | None]) -> Node:
@@ -623,8 +632,11 @@ def check_functional(
     file: FunctionalFile,
     input_schema: Schema | None = None,
     output_schema: Schema | None = None,
+    functions: Mapping[str, FunctionInfo] | None = None,
 ) -> list[Issue]:
-    checker = _Checker(expand_paths(file), input_schema, output_schema)
+    """`functions`: the registry to type calls with (built-ins and the project's own); the
+    built-ins by default."""
+    checker = _Checker(expand_paths(file), input_schema, output_schema, functions)
     checker.paths(file)
     return checker.run()
 

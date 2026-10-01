@@ -149,6 +149,9 @@ export interface CompletionItem {
   insert: string;
   kind: "field" | "function" | "label" | "lookup" | "alias" | "keyword" | "value";
   detail: string;
+  /** A function's documentation, and where it is defined (built-in or a project file). */
+  doc: string;
+  origin: string;
 }
 
 /** What can be typed at `cursor` in the Target / Source / Expression cell of the rule at `path`

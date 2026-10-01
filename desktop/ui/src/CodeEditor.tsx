@@ -82,6 +82,7 @@ export function CodeEditor({
         displayLabel: item.label,
         detail: item.detail,
         type: KINDS[item.kind],
+        info: item.doc ? `${item.doc}\n\n(${item.origin})` : undefined,
       }));
       return { from, options, filter: false };
     };
