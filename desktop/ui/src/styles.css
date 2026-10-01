@@ -89,3 +89,6 @@ button.primary:hover:not(:disabled) { background: #3468b3; }
 .config-row { display: flex; gap: 4px; width: 100%; }
 .config-row input { flex: 1; }
 .muted { opacity: 0.5; font-style: italic; }
+
+.cell-changed { font-weight: 700; }
+.history { min-width: 2.2em; }

@@ -448,6 +448,12 @@ Sliced; each slice is usable on its own:
 - [x] **Unsaved changes.** Save is explicit (no autosave). Build / Check / Transpile ask
       "Save before continuing?" (they read the files on disk); switching file or project
       and closing the window ask too (Save / discard / Cancel).
+- [x] **Unsaved changes and undo/redo.** Cells that differ from the saved file are bold (rules
+      matched by id, else by path; a rule with no saved counterpart is bold whole); the file
+      name in the list gets a `*`. Undo / redo (↶ ↷, Ctrl+Z / Ctrl+Y) keep snapshots of the
+      rules and the `mapper.toml` draft; quick successive edits of one field are one step;
+      history is dropped on switching file or project and kept across Save. Inside a text
+      field the field's own undo applies.
 - [x] **Project properties** (`mapper.toml` form; `cli/project_config.py`, `config_read` /
       `config_check` / `config_write` of `mapper serve`). Engine sections (`[project]`,
       `[optimizer]`, `[compiler.default_choices]`, `[test]`) are described in

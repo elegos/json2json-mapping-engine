@@ -162,6 +162,41 @@ export function setExpression(rule: Rule, value: string): void {
   else if (rule.kind === "object") rule.guard = value || null;
 }
 
+/** Where a rule in `saved` is: by id when it has one (survives inserts and deletes), else by path. */
+export function savedIndex(saved: Rule[]): { byId: Map<string, Rule>; byPath: Map<string, Rule> } {
+  const byId = new Map<string, Rule>();
+  const byPath = new Map<string, Rule>();
+  for (const row of flatten(saved)) {
+    byPath.set(row.path, row.rule);
+    if (row.rule.id) byId.set(row.rule.id, row.rule);
+  }
+  return { byId, byPath };
+}
+
+/**
+ * Grid columns (colId) whose value differs from the saved rule; "*" = the rule is new.
+ * Used to show unsaved edits in bold.
+ */
+export function changedColumns(rule: Rule, before: Rule | undefined): Set<string> {
+  if (!before || before.kind !== rule.kind) return new Set(["*"]);
+  const changed = new Set<string>();
+  const differ = (col: string, a: unknown, b: unknown) => {
+    if (a !== b) changed.add(col);
+  };
+  differ("target", nameOf(rule, 0), nameOf(before, 0));
+  differ("source", sourceOf(rule), sourceOf(before));
+  differ("expression", expressionOf(rule), expressionOf(before));
+  differ("description", rule.description ?? "", before.description ?? "");
+  if (rule.kind === "field" && before.kind === "field") {
+    differ("type", rule.type, before.type);
+    differ("req", rule.required, before.required);
+    differ("validated", rule.validation.validated, before.validation.validated);
+    differ("review", rule.validation.needs_review, before.validation.needs_review);
+    differ("notes", rule.validation.notes ?? "", before.validation.notes ?? "");
+  }
+  return changed;
+}
+
 export interface Diagnostic {
   severity: "error" | "warning";
   file: string | null;

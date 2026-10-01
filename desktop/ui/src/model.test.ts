@@ -3,6 +3,8 @@ import { type ConfigOption, issuesAt, setAt, shownValue, tableAt } from "./proje
 import {
   columnOfMessage,
   addEntry,
+  changedColumns,
+  savedIndex,
   insertionPoint,
   lookups,
   parseTyped,
@@ -244,5 +246,26 @@ describe("sourceOf", () => {
     expect(sourceOf(field({ has_constant: true, source_constant: 27 }))).toBe("27");
     expect(sourceOf(field({ has_constant: true, source_constant: "x" }))).toBe('"x"');
     expect(sourceOf(field({ has_constant: true, source_constant: null }))).toBe("null");
+  });
+});
+
+describe("unsaved changes", () => {
+  it("lists the columns that differ from the saved rule", () => {
+    const before = ruleAt(file, "rules[0]")!;
+    const after = structuredClone(before);
+    expect(changedColumns(after, before).size).toBe(0);
+    if (after.kind === "field") {
+      after.transform.expression = "$.b";
+      after.validation.notes = "n";
+    }
+    expect([...changedColumns(after, before)].sort()).toEqual(["expression", "notes"]);
+  });
+  it("marks a rule with no saved counterpart as new", () => {
+    expect([...changedColumns(file.rules[0], undefined)]).toEqual(["*"]);
+  });
+  it("finds saved rules by id, then by path", () => {
+    const index = savedIndex(file.rules);
+    expect(index.byId.get("b")).toBe(file.rules[1].kind === "loop" ? file.rules[1].rules[0] : undefined);
+    expect(index.byPath.get("rules[0]")).toBe(file.rules[0]);
   });
 });

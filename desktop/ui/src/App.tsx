@@ -29,6 +29,7 @@ import {
   writeFn,
 } from "./api";
 import {
+  changedColumns,
   columnOf,
   descendants,
   insertionPoint,
@@ -41,6 +42,7 @@ import {
   nameOf,
   pushRecent,
   rowIssues,
+  savedIndex,
   treePrefix,
   visibleRows,
   ruleAt,
@@ -114,6 +116,13 @@ export function App() {
   const [configSaved, setConfigSaved] = useState("");
   const [config, setConfig] = useState<ConfigValues | null>(null);
   const [configIssues, setConfigIssues] = useState<ConfigIssue[]>([]);
+  // undo / redo: snapshots of what the user can edit (the rules and the mapper.toml draft)
+  type Snapshot = { tree: FunctionalFile | null; config: ConfigValues | null };
+  const past = useRef<Snapshot[]>([]);
+  const future = useRef<Snapshot[]>([]);
+  const configRef = useRef<ConfigValues | null>(null);
+  const lastEdit = useRef({ key: "", at: 0 });
+  const [, setHistoryVersion] = useState(0);
   const [showIds, setShowIds] = usePersisted("showRuleIds");
   const [developerMode, setDeveloperMode] = usePersisted("developerMode");
 
@@ -122,10 +131,43 @@ export function App() {
   }, []);
 
   treeRef.current = tree;
+  configRef.current = config;
   const fnDirty = tree !== null && JSON.stringify(tree) !== saved;
   const configDirty = config !== null && JSON.stringify(config) !== configSaved;
   const dirty = fnDirty || configDirty;
   dirtyRef.current = dirty;
+
+  /**
+   * Remember the state before a change. Edits with the same `key` in quick succession
+   * (typing in one field) count as one step.
+   */
+  const remember = useCallback((before: FunctionalFile | null = treeRef.current, key = "") => {
+    const now = Date.now();
+    const same = key !== "" && lastEdit.current.key === key && now - lastEdit.current.at < 800;
+    lastEdit.current = { key, at: now };
+    if (!same) past.current.push({ tree: before, config: configRef.current });
+    future.current = [];
+    setHistoryVersion((v) => v + 1);
+  }, []);
+  const forgetHistory = useCallback(() => {
+    past.current = [];
+    future.current = [];
+    lastEdit.current = { key: "", at: 0 };
+    setHistoryVersion((v) => v + 1);
+  }, []);
+  const travel = useCallback((from: Snapshot[], to: Snapshot[]) => {
+    const target = from.pop();
+    if (!target) return;
+    to.push({ tree: treeRef.current, config: configRef.current });
+    lastEdit.current = { key: "", at: 0 };
+    setTree(target.tree);
+    if (target.config && configRef.current) setConfig(target.config);
+    setHistoryVersion((v) => v + 1);
+  }, []);
+  const undo = useCallback(() => travel(past.current, future.current), [travel]);
+  const redo = useCallback(() => travel(future.current, past.current), [travel]);
+  const canUndo = past.current.length > 0;
+  const canRedo = future.current.length > 0;
 
   const ask = useCallback(
     (message: string, choices: Choice[]) =>
@@ -169,10 +211,11 @@ export function App() {
   const canBuild = python?.available === true && project !== null && !busy;
 
   const load = useCallback(
-    async (file: string) => {
+    async (file: string, keepHistory = false) => {
       if (!project) return;
       try {
         const loaded = await readFn(project, file);
+        if (!keepHistory) forgetHistory();
         setCurrent(file);
         setTree(loaded);
         setSaved(JSON.stringify(loaded));
@@ -181,13 +224,14 @@ export function App() {
         setStatus(String(e instanceof Error ? e.message : e));
       }
     },
-    [project],
+    [project, forgetHistory],
   );
 
   const openDir = useCallback(async (dir: string) => {
     try {
       const found = await listFnFiles(dir);
       setProject(dir);
+      forgetHistory();
       setConfig(null);
       setConfigSchema(null);
       setView("rules");
@@ -215,7 +259,7 @@ export function App() {
     } catch (e) {
       setStatus(String(e));
     }
-  }, []);
+  }, [forgetHistory]);
 
   const switchGuard = useCallback(
     () => guardRef.current("Save the current file before switching? Your unsaved changes will be lost otherwise.", "Discard changes"),
@@ -244,7 +288,7 @@ export function App() {
       let decayed: string[] = [];
       if (current && tree && fnDirty) {
         decayed = await writeFn(project, current, tree);
-        await load(current);
+        await load(current, true);
       }
       if (config && configDirty) {
         await configWrite(project, config);
@@ -289,13 +333,27 @@ export function App() {
       if ((e.ctrlKey || e.metaKey) && e.key === "s") {
         e.preventDefault();
         if (dirty && !busy) void save();
+        return;
+      }
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      // inside a text field the field's own undo applies
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
+      const key = e.key.toLowerCase();
+      if (key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      } else if (key === "y" || (key === "z" && e.shiftKey)) {
+        e.preventDefault();
+        redo();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [dirty, busy, save]);
+  }, [dirty, busy, save, undo, redo]);
 
-  const edit = useCallback((path: string, change: (rule: NonNullable<ReturnType<typeof ruleAt>>) => void) => {
+  const edit = useCallback((path: string, change: (rule: NonNullable<ReturnType<typeof ruleAt>>) => void, key = "") => {
+    remember(treeRef.current, key);
     setTree((old) => {
       if (!old) return old;
       const copy = structuredClone(old);
@@ -303,7 +361,7 @@ export function App() {
       if (rule) change(rule);
       return copy;
     });
-  }, []);
+  }, [remember]);
 
   /** Target / Source edits are done by the Python worker (one implementation of the path rules). */
   const remoteEdit = useCallback(
@@ -311,13 +369,15 @@ export function App() {
       const current = treeRef.current;
       if (!current) return;
       try {
-        setTree(await editTree(current, op, path, value));
+        const next = await editTree(current, op, path, value);
+        remember(current);
+        setTree(next);
         setStatus("");
       } catch (e) {
         setStatus(String(e instanceof Error ? e.message : e));
       }
     },
-    [],
+    [remember],
   );
 
   const openProperties = useCallback(async () => {
@@ -364,13 +424,15 @@ export function App() {
     if (!current) return;
     const at = atRoot ? { parent: null, index: null } : insertionPoint(selectedRow());
     try {
-      setTree(await changeStructure(current, { op: "add_rule", ...at, kind }));
+      const next = await changeStructure(current, { op: "add_rule", ...at, kind });
+      remember(current);
+      setTree(next);
       if (at.parent) setCollapsed((old) => new Set([...old].filter((p) => p !== at.parent)));
       setStatus("");
     } catch (e) {
       setStatus(String(e instanceof Error ? e.message : e));
     }
-  }, []);
+  }, [remember]);
 
   const deleteRule = useCallback(async (path?: string) => {
     const current = treeRef.current;
@@ -390,12 +452,14 @@ export function App() {
       if (choice !== "delete") return;
     }
     try {
-      setTree(await changeStructure(current, { op: "delete_rule", path: row.path }));
+      const next = await changeStructure(current, { op: "delete_rule", path: row.path });
+      remember(current);
+      setTree(next);
       setStatus("");
     } catch (e) {
       setStatus(String(e instanceof Error ? e.message : e));
     }
-  }, [ask]);
+  }, [ask, remember]);
 
   const rows = useMemo(
     // lookups have their own view
@@ -432,6 +496,24 @@ export function App() {
     };
   }, [tree, project, current, python]);
 
+  // what differs from the saved file, per row path ("*" = a new rule)
+  const changes = useMemo(() => {
+    const found = new Map<string, Set<string>>();
+    if (!tree || !saved) return found;
+    const before = savedIndex((JSON.parse(saved) as FunctionalFile).rules);
+    for (const row of flatten(tree.rules)) {
+      const old = row.rule.id
+        ? before.byId.get(row.rule.id)
+        : (() => {
+            const same = before.byPath.get(row.path);
+            return same && !same.id ? same : undefined;
+          })();
+      const cols = changedColumns(row.rule, old);
+      if (cols.size) found.set(row.path, cols);
+    }
+    return found;
+  }, [tree, saved]);
+
   const diagnostics = useMemo(
     () =>
       diagnosticsByRule(
@@ -456,7 +538,7 @@ export function App() {
   // row / cell classes are computed from the diagnostics: redraw when they change
   useEffect(() => {
     grid.current?.api?.redrawRows();
-  }, [diagnostics]);
+  }, [diagnostics, changes]);
 
   const columns = useMemo<ColDef<Row>[]>(() => {
     const isField = (r?: Row) => r?.rule.kind === "field";
@@ -651,6 +733,12 @@ export function App() {
           }} />
         <span className="project">{project ?? "no project"}</span>
         <span className="spacer" />
+        <button className="history" title="Undo (Ctrl + Z)" disabled={!canUndo || busy} onClick={undo}>
+          ↶
+        </button>
+        <button className="history" title="Redo (Ctrl + Y)" disabled={!canRedo || busy} onClick={redo}>
+          ↷
+        </button>
         <button disabled={!dirty || busy} onClick={() => void save()}>
           Save{dirty ? " ●" : ""}
         </button>
@@ -683,6 +771,7 @@ export function App() {
               }}
             >
               {f.replace("mappings/functional/", "")}
+              {f === current && fnDirty ? "*" : ""}
             </div>
           ))}
         </nav>
@@ -707,7 +796,10 @@ export function App() {
               schema={configSchema}
               values={config}
               issues={configIssues}
-              onChange={setConfig}
+              onChange={(next) => {
+                remember(treeRef.current, "config");
+                setConfig(next);
+              }}
             />
           )}
           {tree && view === "lookups" && (
@@ -715,9 +807,13 @@ export function App() {
               tree={tree}
               diagnostics={diagnostics}
               onEdit={(path, change) =>
-                edit(path, (r) => {
-                  if (r.kind === "lookup") change(r as LookupRule);
-                })
+                edit(
+                  path,
+                  (r) => {
+                    if (r.kind === "lookup") change(r as LookupRule);
+                  },
+                  `lookup:${path}`,
+                )
               }
               onAdd={() => void addRule("lookup", true)}
               onDelete={(path) => void deleteRule(path)}
@@ -744,6 +840,10 @@ export function App() {
                   "cell-invalid": (p) => {
                     const cols = invalidColumns(p.data?.path ?? "");
                     return cols.has(p.column.getColId()) || cols.has("*");
+                  },
+                  "cell-changed": (p) => {
+                    const cols = changes.get(p.data?.path ?? "");
+                    return !!cols && (cols.has("*") || cols.has(p.column.getColId()));
                   },
                 },
               }}
