@@ -412,7 +412,7 @@ class _Checker:
         env: dict[str, Any] = {"root": root}
         env.update({("src" if o == 0 else f"src{o}"): n for o, n in enumerate(reversed(items))})
         ExprTyper(
-            self.inp, env, lambda message: self.add(path, "expression", message), self.functions
+            self.inp, env, lambda message: self.add(path, "status", message), self.functions
         ).check_block(text)
 
     def _anchor(self, anchor: str, root: Node, items: list[Node], labels: list[str | None]) -> Node:
@@ -481,7 +481,13 @@ class _Checker:
             else:
                 value = node
         if text:
-            self.block(path, text, scope, "expression", dev=t.status == "manual")
+            self.block(
+                path,
+                text,
+                scope,
+                "status" if t.status == "manual" else "expression",
+                t.status == "manual",
+            )
             if t.status == "manual":
                 self.devcheck(path, text, in_root, items)
             if t.status != "manual":

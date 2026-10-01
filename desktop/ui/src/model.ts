@@ -449,10 +449,11 @@ const COLUMN_LABELS: Record<string, string> = {
   expression: "Expression / filter / guard",
   description: "Description",
   validation: "Validation",
+  status: "Code override",
 };
 
-/** What makes a row worth a warning sign, one line per issue (the sign's tooltip). */
-/** `withValidation`: the validation state is a developer's matter, hidden from the functional view. */
+/** What makes a row worth a warning sign, one line per issue (the sign's tooltip).
+ * `withValidation`: the validation state is a developer's matter, hidden from the functional view. */
 export function rowIssues(
   rule: Rule,
   diagnostics: Diagnostic[],
@@ -472,8 +473,9 @@ export function rowIssues(
     issues.push("Override out of date: the auto code changed since the override was taken");
   }
   if (withValidation && rule.kind === "field") {
-    if (rule.validation.needs_review) issues.push("Review flag");
-    else if (!rule.validation.validated) issues.push("Not validated");
+    const state = reviewState(rule);
+    if (state === "review") issues.push("To review");
+    else if (state === "none") issues.push("Not validated");
   }
   return issues;
 }

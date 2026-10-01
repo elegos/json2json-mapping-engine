@@ -384,12 +384,18 @@ def _code(
         return Completion(cursor - len(partial), _fields(inp, base, partial, insert_plain=True))
     if "[" in token:
         return Completion(cursor, [])
+    # the variables assigned on the lines above
+    earlier = before.rpartition("\n")[0]
+    local = sorted(
+        set(re.findall(r"^\s*([A-Za-z_]\w*)\s*=(?!=)", earlier, flags=re.M)) - set(names)
+    )
     # `names` runs from the innermost element out, after `root`
     notes = list(reversed(ctx.notes))
     found = [
         Item(n, n, "label", "the document root" if n == "root" else notes[i - 1])
         for i, n in enumerate(names)
     ]
+    found += [Item(n, n, "value", "local variable") for n in local]
     for offset, is_loop in enumerate(reversed(ctx.loops)):
         if is_loop:  # an object that selects an element has no position
             n = "index" if offset == 0 else f"index{offset}"

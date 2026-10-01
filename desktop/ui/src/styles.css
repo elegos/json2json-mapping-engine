@@ -109,6 +109,7 @@ button.primary:hover:not(:disabled) { background: #3468b3; }
 .code-editor .cm-content { padding: 0; align-items: center; }
 .code-editor .cm-line { padding: 0 2px; }
 .cm-tooltip.cm-tooltip-autocomplete { background: Canvas; color: CanvasText; border: 1px solid #8886; border-radius: 4px; box-shadow: 0 4px 12px #0006; font-size: 13px; }
+.cm-tooltip.cm-completionInfo { background: Canvas; color: CanvasText; border: 1px solid #8886; border-radius: 4px; box-shadow: 0 4px 12px #0006; padding: 4px 8px; font-size: 13px; }
 .cm-tooltip-autocomplete > ul > li { padding: 2px 8px; display: flex; gap: 12px; }
 .cm-tooltip-autocomplete > ul > li[aria-selected] { background: #2a5a9f; color: white; }
 .cm-completionDetail { margin-left: auto; opacity: 0.65; font-style: normal; }

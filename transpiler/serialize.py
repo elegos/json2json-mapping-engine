@@ -71,7 +71,7 @@ def _field_to_raw(rule: FieldRule) -> dict[str, Any]:
     validation: dict[str, Any] = {}
     if rule.validation.validated:
         validation["validated"] = True
-    if rule.validation.needs_review:
+    if rule.validation.needs_review and not rule.validation.validated:  # never both
         validation["needs_review"] = True
     _put(validation, "notes", rule.validation.notes)
     if validation:

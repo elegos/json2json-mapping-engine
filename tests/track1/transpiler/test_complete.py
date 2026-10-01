@@ -202,3 +202,28 @@ def test_code_dialect_describes_a_selecting_object() -> None:
     by = {i.insert: i.detail for i in found.items}
     assert by["src"].startswith("element selected by the object's Source")
     assert "index" not in by
+
+
+def test_code_dialect_suggests_the_variables_assigned_above() -> None:
+    file = parse_functional(
+        {
+            "id": "t",
+            "rules": [
+                {
+                    "kind": "field",
+                    "id": "a",
+                    "field": "A",
+                    "type": "str",
+                    "source": {"path": "$.name"},
+                }
+            ],
+        },
+        "t",
+    )
+    text = "yadda = root.name\nreturn y"
+    found = complete(file, "rules[0]", "code", text, len(text), None, None)
+    assert [i.insert for i in found.items][:1] == ["yadda"]
+    # not the variable being assigned on the line itself
+    own = "yadda"
+    again = complete(file, "rules[0]", "code", own, len(own), None, None)
+    assert "yadda" not in [i.insert for i in again.items]

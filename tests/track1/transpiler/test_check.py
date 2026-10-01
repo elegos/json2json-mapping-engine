@@ -420,6 +420,23 @@ def test_a_call_with_the_wrong_number_of_arguments_is_an_error() -> None:
     assert _call_issues("round(1.5)")[0].startswith("round() takes 2")
 
 
+def test_a_code_override_error_is_on_the_status_column() -> None:
+    raw = {
+        "id": "t",
+        "rules": [
+            {
+                "kind": "field",
+                "id": "a",
+                "field": "A",
+                "type": "str",
+                "transform": {"status": "manual", "code_override": "split_first(root.name)"},
+            }
+        ],
+    }
+    issues = check_functional(parse_functional(raw, "t"), None, None)
+    assert [(i.column, i.severity) for i in issues] == [("status", "error")]
+
+
 def test_a_code_override_is_checked_too() -> None:
     assert _call_issues("split_first(root.name)", "manual")[0].startswith("split_first() takes 2")
     assert _call_issues("split_first(root.name, ',')", "manual") == []
