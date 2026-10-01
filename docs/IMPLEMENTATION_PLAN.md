@@ -519,8 +519,9 @@ Sliced; each slice is usable on its own:
       - **Function signature changes** are the check's business, not a separate mark: the check
         now counts the arguments of every call of a registered function (`ExprTyper._arity`) and
         also checks a manual rule's `code_override` (`Checker.devcheck`: `root`, `src`, `src1`...,
-        a block too). A validated rule that gets an error goes back to *To review*
-        automatically (`App.tsx`), and a rule with errors cannot be set to *Validated*.
+        a block too). A validated rule that gets an error keeps its tick while it is
+        edited and goes back to *To review* on save (`mapper fn write`, `demote_invalid`); a rule
+        with errors cannot be set to *Validated*.
         A compatible signature change raises nothing; keeping a function compatible is its
         author's job.
       - **State filter** next to the text filter: validated, to review, not validated,
