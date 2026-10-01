@@ -1,5 +1,8 @@
 name: Orders
 id: orders
+paths:
+  aliases:
+    metadata: $.metadata   # @metadata.source = $.metadata.source
 rules:
   - id: oid
     kind: field
@@ -37,6 +40,37 @@ rules:
     source:
       constant: 27
     transform: {}
+  - id: chan
+    kind: field
+    field: Channel
+    type: str
+    required: false
+    description: Where the order came from, read through the @metadata path alias.
+    source:
+      path: "@metadata.source"
+    transform: {}
+  - id: cust
+    kind: object
+    output: Customer
+    description: The party with role CUSTOMER (the first one); left out when there is none.
+    source: parties[role = 'CUSTOMER']
+    rules:
+      - id: cust_name
+        kind: field
+        field: Name
+        type: str
+        source:
+          path: name
+        transform: {}
+      - id: cust_code
+        kind: field
+        field: Code
+        type: str
+        description: Code before the first pipe of the remarks.
+        source:
+          path: remarks
+        transform:
+          expression: split_first(value, "|")
   - id: lines
     kind: loop
     label: item

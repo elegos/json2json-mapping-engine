@@ -6,6 +6,15 @@
     "Currency": {"type": ["string", "null"]},
     "Warehouse": {"type": ["string", "null"]},
     "MapVersion": {"type": "integer"},
+    "Channel": {"type": ["string", "null"]},
+    "Customer": {
+      "type": "object",
+      "properties": {
+        "Name": {"type": "string"},
+        "Code": {"type": "string"}
+      },
+      "required": ["Name", "Code"]
+    },
     "Lines": {
       "type": "array",
       "items": {
