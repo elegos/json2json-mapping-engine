@@ -587,6 +587,19 @@ else in the system depends on it.
 
 ---
 
+## ⬜ Release artifacts and packaging (a milestone of its own, later)
+
+`build/compiled/*.sql` stay tracked in the repository (§Build folder: they are the deployable
+artifacts and show up in review). The release will carry them too, together with the rest of
+what is shipped: the desktop tool's installers, the engine, and these compiled packages, so
+that someone who only installs does not need the project. Still to design: what a release
+contains and its layout, how it is built and published from CI (both pipelines, forgejo and
+github), versioning, and the bundled Python runtime the tool already needs (see M6.1). Open
+point, not decided: whether CI should fail when `mapper build` produces a diff against the
+tracked artifacts (it would catch a generator change committed without them).
+
+---
+
 ## ⬜ Python backend (queued, after M6)
 
 A backend of its own (`compiler/backends/python/`, `[project] target = "python"`), lightweight:
