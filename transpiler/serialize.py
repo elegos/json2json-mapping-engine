@@ -74,8 +74,6 @@ def _field_to_raw(rule: FieldRule) -> dict[str, Any]:
     if rule.validation.needs_review:
         validation["needs_review"] = True
     _put(validation, "notes", rule.validation.notes)
-    if rule.validation.functions:
-        validation["functions"] = dict(rule.validation.functions)
     if validation:
         raw["validation"] = validation
     if rule.version:

@@ -8,7 +8,6 @@ project replaces a built-in with the same name (docs/ARCHITECTURE.md, §Project 
 from __future__ import annotations
 
 import ast
-import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -35,12 +34,6 @@ class FunctionInfo:
     origin: str = "built-in"  # "built-in" or the project file it comes from
     special: bool = False  # typed by hand (`@special`)
     overrides: dict[str, str] = field(default_factory=dict)  # target -> verbatim template
-
-    def signature_hash(self) -> str:
-        """A hash of what a caller depends on: the parameters (names, types, defaults, `*`) and
-        the return type. The body, decorators and docstring are not part of it."""
-        text = repr([(p.name, p.annotation, p.default, p.variadic) for p in self.params])
-        return hashlib.sha1(f"{text}->{self.returns}".encode()).hexdigest()[:10]
 
     def signature(self) -> str:
         """`split_first(s, sep)`, as shown while typing."""
