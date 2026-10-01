@@ -994,6 +994,8 @@ export function App() {
               }}
               singleClickEdit
               rowSelection={{ mode: "singleRow", checkboxes: false, enableClickSelection: true }}
+              // the row classes (validation edge) were not redrawn while the editor was open
+              onCellEditingStopped={(e) => e.api.redrawRows()}
               onSelectionChanged={(e) => setSelectedPath(e.api.getSelectedRows()[0]?.path ?? null)}
               rowClassRules={{
                 "row-error": (p) =>
