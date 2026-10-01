@@ -1,5 +1,4 @@
 import { AllCommunityModule, ModuleRegistry } from "ag-grid-community";
-import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import "./styles.css";
@@ -14,8 +13,6 @@ const applyScheme = () => {
 applyScheme();
 dark.addEventListener("change", applyScheme);
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-);
+// No <StrictMode>: in development it mounts, unmounts and mounts every component again, and the
+// grid takes the unmounted cell editor for a finished edit and closes it at once.
+createRoot(document.getElementById("root")!).render(<App />);

@@ -501,7 +501,8 @@ export function App() {
     const timer = setTimeout(() => {
       checkTree(tree, project, stem).then(
         (found) => {
-          if (!stale) setLive(found);
+          // same findings: keep the array, or the grid redraws (and closes an open editor)
+          if (!stale) setLive((old) => (JSON.stringify(old) === JSON.stringify(found) ? old : found));
         },
         () => {},
       );
@@ -553,7 +554,9 @@ export function App() {
 
   // row / cell classes are computed from the diagnostics: redraw when they change
   useEffect(() => {
-    grid.current?.api?.redrawRows();
+    const api = grid.current?.api;
+    // never under an open editor: redrawing the row would close it
+    if (api && api.getEditingCells().length === 0) api.redrawRows();
   }, [diagnostics, changes]);
 
   // suggestions for the cell being edited: the Python worker knows the schemas and the scope
@@ -901,7 +904,6 @@ export function App() {
               }}
               singleClickEdit
               rowSelection={{ mode: "singleRow", checkboxes: false, enableClickSelection: true }}
-              stopEditingWhenCellsLoseFocus
               rowClassRules={{
                 "row-error": (p) =>
                   (diagnostics.get(p.data?.path ?? "") ?? []).some((d: { severity: string }) => d.severity === "error"),
