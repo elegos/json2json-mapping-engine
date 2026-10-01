@@ -163,3 +163,15 @@ def proposal_view(file: FunctionalFile, path: str) -> dict[str, object]:
         "override": t.code_override,
         "last_auto_version": t.last_auto_version,
     }
+
+
+def demote_invalid(file: FunctionalFile, error_paths: set[str]) -> tuple[FunctionalFile, list[str]]:
+    """On save: a validated rule the check finds errors in goes back to review. Returns the file
+    and the ids (or paths) of the rules demoted."""
+    file = copy.deepcopy(file)
+    demoted: list[str] = []
+    for path, rule in _with_paths(file.rules):
+        if isinstance(rule, FieldRule) and rule.validation.validated and path in error_paths:
+            rule.validation.validated, rule.validation.needs_review = False, True
+            demoted.append(rule.id or path)
+    return file, demoted

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { type Proposal, proposalOf } from "./api";
 import { CodeEditor, type Completer } from "./CodeEditor";
 import type { FieldRule, FunctionalFile, ReviewFlag } from "./model";
@@ -28,6 +28,11 @@ export function OverridePane({ tree, path, rule, target, flag, onResolve, comple
   const [proposal, setProposal] = useState<Proposal | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const manual = rule.transform.status === "manual";
+  // right after "Edit as code" the cursor goes into the editor; selecting another rule leaves it be
+  const focusNext = useRef(false);
+  useEffect(() => {
+    focusNext.current = false;
+  }, [path]);
   // the auto code depends on the functional side only, not on the override being typed
   const functional = JSON.stringify([rule.source_path, rule.source_constant, rule.has_constant, rule.transform.expression]);
 
@@ -68,7 +73,13 @@ export function OverridePane({ tree, path, rule, target, flag, onResolve, comple
             Use auto code
           </button>
         ) : (
-          <button onClick={() => onResolve("take_over")} disabled={auto === null}>
+          <button
+            onClick={() => {
+              focusNext.current = true;
+              onResolve("take_over");
+            }}
+            disabled={auto === null}
+          >
             Edit as code
           </button>
         )}
@@ -89,6 +100,7 @@ export function OverridePane({ tree, path, rule, target, flag, onResolve, comple
               className="code-editor multi"
               singleLine={false}
               highlightPython
+              autoFocus={focusNext.current}
               completer={completer}
               value={rule.transform.code_override ?? ""}
               onChange={onCode}

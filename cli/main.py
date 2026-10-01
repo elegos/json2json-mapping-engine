@@ -28,12 +28,15 @@ from cli.config import MapperConfigError, load_config
 from cli.stubs import generate_stubs
 from cli.track1 import run_track1
 from cli.track2 import Track2Error, detect_runtime, run_track2, runtime_diagnostic
+from compiler.function_registry import all_functions
+from transpiler.check import check_functional, schemas_for
 from transpiler.model import (
     FnYamlError,
     functional_from_dict,
     functional_to_dict,
     load_functional_file,
 )
+from transpiler.review import demote_invalid
 from transpiler.serialize import apply_decay_tree, write_functional
 from transpiler.stages import STAGES, artifact, parse_stage
 
@@ -412,7 +415,6 @@ def fn_read(file: str = typer.Argument(..., help=".fn.yaml file")) -> None:
 def fn_check(file: str = typer.Argument(..., help=".fn.yaml file")) -> None:
     """Check every rule of a file (form, and validity against the project's schemas);
     prints `{"ok", "diagnostics"}`. Exit 1 when a rule has an error."""
-    from transpiler.check import check_functional, schemas_for
 
     path = Path(file)
     try:
@@ -422,7 +424,7 @@ def fn_check(file: str = typer.Argument(..., help=".fn.yaml file")) -> None:
         raise typer.Exit(code=1) from exc
     stem = path.name.removesuffix(".fn.yaml")
     inp, out = schemas_for(Path.cwd(), stem)
-    issues = check_functional(tree, inp, out)
+    issues = check_functional(tree, inp, out, all_functions(Path.cwd()))
     failed = any(i.severity == "error" for i in issues)
     typer.echo(
         json.dumps(
@@ -446,6 +448,12 @@ def fn_write(file: str = typer.Argument(..., help=".fn.yaml file to write")) -> 
         decayed: list[str] = []
         if path.is_file():
             new, decayed = apply_decay_tree(load_functional_file(path), new)
+        # a validated rule that no longer checks goes back to review (while editing it only
+        # shows: the developer may fix it before saving)
+        inp, out = schemas_for(Path.cwd(), path.name.removesuffix(".fn.yaml"))
+        issues = check_functional(new, inp, out, all_functions(Path.cwd()))
+        new, demoted = demote_invalid(new, {i.rule for i in issues if i.severity == "error"})
+        decayed += demoted
         write_functional(path, new)
     except (FnYamlError, OSError, ValueError, KeyError, TypeError) as exc:
         typer.echo(json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"}))

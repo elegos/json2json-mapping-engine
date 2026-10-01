@@ -561,28 +561,6 @@ export function App() {
         (found) => {
           // same findings: keep the array, or the grid redraws (and closes an open editor)
           if (stale) return;
-          // a validated rule that no longer checks is no longer validated: back to review
-          const errors = diagnosticsByRule(found.diagnostics, current);
-          const broken = flatten(tree.rules).filter(
-            (r) =>
-              reviewState(r.rule) === "validated" &&
-              (errors.get(r.path) ?? []).some((d) => d.severity === "error"),
-          );
-          if (broken.length > 0) {
-            remember(tree, "auto-review");
-            setTree((old) => {
-              if (old !== tree) return old;
-              const copy = structuredClone(old);
-              for (const { path } of broken) {
-                const rule = ruleAt(copy, path);
-                if (rule) setReviewState(rule, "review");
-              }
-              return copy;
-            });
-            setStatus(
-              `${broken.length} rule(s) with errors went back to "To review": fix them, then validate again.`,
-            );
-          }
           setLive((old) => (JSON.stringify(old) === JSON.stringify(found.diagnostics) ? old : found.diagnostics));
           setFlags((old) => {
             const next = new Map(found.review.map((f) => [f.rule, f] as const));
@@ -596,7 +574,7 @@ export function App() {
       stale = true;
       clearTimeout(timer);
     };
-  }, [tree, project, current, python, remember]);
+  }, [tree, project, current, python]);
 
   // what differs from the saved file, per row path ("*" = a new rule)
   const changes = useMemo(() => {

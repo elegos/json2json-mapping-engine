@@ -144,3 +144,8 @@ button.primary:hover:not(:disabled) { background: #3468b3; }
 .code-editor.multi { height: 100%; font: 13px ui-monospace, monospace; }
 .code-editor.multi .cm-scroller { overflow: auto; }
 .code-editor.multi .cm-content { align-items: flex-start; }
+/* CodeMirror takes the page for a light theme and draws a black caret: follow the text colour */
+.code-editor .cm-content { caret-color: CanvasText; }
+.code-editor.multi .cm-editor { height: 100%; }
+.code-editor.multi .cm-content { min-height: 100%; }
+.code-editor.multi .cm-scroller { min-height: 100%; }
