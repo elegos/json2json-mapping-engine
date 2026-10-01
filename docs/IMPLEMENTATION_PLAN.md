@@ -530,6 +530,29 @@ Sliced; each slice is usable on its own:
         (the pane shows the reason); not yet run in the real window (see M6.1).
 - [ ] **M6.3 — VCS.** Gitoxide save-as-commit, pull --rebase, semantic rule-level merge.
 - [ ] **M6.4 — LLM assist.** Validation suggestions, expression builder (Ollama / API).
+- [ ] **M6.5 — Schemas per mapping.** Choose, for each mapping of the project, its input and its
+      output JSON Schema (today they are found only by the name convention
+      `schemas/input|output/<stem>.json`, `schemas_for`). Changing a schema halfway through
+      forces the Targets and Sources to be validated again: the check re-runs on the whole mapping
+      and the grid flags what no longer fits (ARCHITECTURE.md, §Schema change management: no silent
+      drift). Open points: where the choice is kept (the `.fn.yaml` header or `mapper.toml`), a
+      picker in the UI with the schemas of the project (or a file from outside, copied in),
+      and what "rule validated" becomes for rules the new schema invalidates.
+- [ ] **M6.6 — Create and delete mappings.** Every session so far has used the `orders` fixture:
+      the tool cannot make a new `.fn.yaml` (name, id, and the schemas of M6.5; an empty file
+      that loads) nor delete one (with a confirmation; what depends on it: `build/`, `generated/`,
+      the golden cases). Also rename, and the unsaved-changes guard that already exists for
+      switching files.
+- [ ] **M6.7 — In-app guide and function explorer.** A help panel in the tool: what each part
+      does, the syntax of Target (`A.B`, `Lines[*]`), Source (`$`, `@`, `@label`, constants,
+      selectors `list[cond]`, aliases), Expression (`value`, anchors, blocks, `Null`, bare `return`,
+      lookups, truthiness) and the manual override (developer dialect: `root`, `src`, `index`,
+      locals), plus Developer mode and the validation states. And an *explore* list of the
+      functions, built-in and the project's own (`fn/*.fn`): signature, docstring, where each comes
+      from, searchable, an entry inserting a call into the cell being edited. The function list comes
+      from the registry (`compiler/function_registry.py`), so it never drifts from what the check
+      and the completion know; the syntax pages are written once and also checked against the
+      grammar in `ARCHITECTURE.md`.
 
 **Extra mile (needs the Python backend below).** *Try a mapping in the tool*: import an input
 JSON for the open mapping, run it and show the output next to the input, with the per-rule
