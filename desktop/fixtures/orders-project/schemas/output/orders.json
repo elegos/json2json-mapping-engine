@@ -8,7 +8,7 @@
     "MapVersion": {"type": "integer"},
     "Channel": {"type": ["string", "null"]},
     "Customer": {
-      "type": "object",
+      "type": ["object", "null"],
       "properties": {
         "Name": {"type": "string"},
         "Code": {"type": "string"}
