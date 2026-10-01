@@ -22,6 +22,7 @@ from __future__ import annotations
 import copy
 import json
 import re
+from typing import Any
 
 from transpiler.model import (
     FieldRule,
@@ -31,6 +32,7 @@ from transpiler.model import (
     LoopRule,
     ObjectRule,
     Rule,
+    qualify_source,
 )
 
 _SEGMENT = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)(\[\*\])?$")
@@ -203,13 +205,14 @@ def delete_rule(file: FunctionalFile, path: str) -> FunctionalFile:
     return file
 
 
-def normalize_source(text: str, top_level: bool) -> str:
-    """A container's `source` gets its scope prefix: `items[*]` -> `$.items[*]` at the
-    top level, `@.items[*]` inside a container. Already-anchored text is kept."""
-    raw = text.strip()
-    if not raw or raw[0] in "$@":
-        return raw
-    return f"{_scope_prefix(top_level)}{raw}"
+def _in_loop(file: FunctionalFile, path: str) -> bool:
+    """Is the rule at `path` inside a loop (so a bare Source is relative to its element)?"""
+    node: Any = file
+    for step in re.findall(r"rules\[(\d+)\]", path)[:-1]:
+        node = node.rules[int(step)]
+        if isinstance(node, LoopRule):
+            return True
+    return False
 
 
 def parse_constant(text: str) -> tuple[bool, object]:
@@ -225,15 +228,15 @@ def parse_constant(text: str) -> tuple[bool, object]:
 
 
 def set_source(file: FunctionalFile, path: str, text: str) -> FunctionalFile:
-    """Set the Source column of the rule at `path`. A loop's `source` and a top-level
-    field's `source.path` are normalised; a nested field's path is kept as typed. A number,
+    """Set the Source column of the rule at `path`. A path without `$` / `@` is relative to
+    the current context (root outside a loop, the loop element inside one). A number,
     `true`, `false`, `null` or a quoted string is a constant (`27`, `"text"`); the rest is a path."""
     file = copy.deepcopy(file)
     holder, index = _locate(file, path)
     rule = holder[index]
-    top_level = holder is file.rules
+    in_loop = _in_loop(file, path)
     if isinstance(rule, LoopRule):
-        rule.source = normalize_source(text, top_level)
+        rule.source = qualify_source(text, in_loop)
     elif isinstance(rule, FieldRule):
         value = text.strip()
         rule.source_path, rule.source_constant, rule.has_constant = None, None, False
@@ -241,7 +244,7 @@ def set_source(file: FunctionalFile, path: str, text: str) -> FunctionalFile:
         if is_constant:
             rule.source_constant, rule.has_constant = constant, True
         else:
-            rule.source_path = (normalize_source(value, True) if top_level else value) or None
+            rule.source_path = qualify_source(value, in_loop) or None
     else:
         raise FnYamlError("only field and loop rules have a Source")
     return file

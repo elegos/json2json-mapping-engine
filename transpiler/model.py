@@ -422,7 +422,47 @@ def parse_functional(raw: Any, default_id: str, path: Path | None = None) -> Fun
     if not isinstance(rules_raw, list) or not rules_raw:
         raise _err(where, "'rules' must be a non-empty list")
     rules = [_load_rule(f"rules[{i}]", r) for i, r in enumerate(rules_raw)]
+    qualify_paths(rules)
     return FunctionalFile(name=str(raw.get("name", file_id)), id=file_id, rules=rules, path=path)
+
+
+# -- path style --------------------------------------------------------------
+
+
+def qualify_source(path: str, in_loop: bool) -> str:
+    """A Source without `$` / `@` is relative to the current context: the document root
+    outside a loop (`id` = `$.id`), the loop's element inside one (`sku` = `@.sku`).
+    `$.name` always means the root, so both spellings are accepted everywhere."""
+    text = path.strip()
+    if not text or text[0] in "$@":
+        return text
+    return f"{'@' if in_loop else '$'}.{text}"
+
+
+def qualify_output(output: str, nested: bool) -> str:
+    """A container's `output` without `$` / `@` is relative to its parent: the output
+    root at the top level (`Lines[*]` = `$.Lines[*]`), the parent container otherwise."""
+    text = output.strip()
+    if not text or text[0] in "$@":
+        return text
+    return f"{'@' if nested else '$'}.{text}"
+
+
+def qualify_paths(rules: list[Rule], in_loop: bool = False, nested: bool = False) -> None:
+    """Spell every Source and container Target in full (`$.` / `@.`), in place, so that
+    the rest of the pipeline sees one form. The style the user writes and sees is the
+    short one; this is where it is understood."""
+    for rule in rules:
+        if isinstance(rule, FieldRule):
+            if rule.source_path:
+                rule.source_path = qualify_source(rule.source_path, in_loop)
+        elif isinstance(rule, ObjectRule):
+            rule.output = qualify_output(rule.output, nested)
+            qualify_paths(rule.rules, in_loop, True)
+        elif isinstance(rule, LoopRule):
+            rule.source = qualify_source(rule.source, in_loop)
+            rule.output = qualify_output(rule.output, nested)
+            qualify_paths(rule.rules, True, True)
 
 
 # -- validation decay (§Rule validation) --------------------------------------

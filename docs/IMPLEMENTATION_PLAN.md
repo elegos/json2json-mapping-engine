@@ -448,6 +448,9 @@ Sliced; each slice is usable on its own:
 - [x] **Unsaved changes.** Save is explicit (no autosave). Build / Check / Transpile ask
       "Save before continuing?" (they read the files on disk); switching file or project
       and closing the window ask too (Save / discard / Cancel).
+- [x] **Path style.** Targets show and are saved without `$.` / `@.`; a bare Source is
+      rewritten to `$.x` (outside a loop) or `@.x` (inside one) by the loader and by
+      `set_source`; both forms are accepted (`transpiler.model.qualify_paths`).
 - [x] **Unsaved changes and undo/redo.** Cells that differ from the saved file are bold (rules
       matched by id, else by path; a rule with no saved counterpart is bold whole); the file
       name in the list gets a `*`. Undo / redo (↶ ↷, Ctrl+Z / Ctrl+Y) keep snapshots of the

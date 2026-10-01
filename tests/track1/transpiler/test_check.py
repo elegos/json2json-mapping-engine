@@ -56,13 +56,13 @@ def test_source_and_reference_must_exist_in_the_input() -> None:
     def mutate(tree):
         tree.rules[0].source_path = "$.idd"
         tree.rules[1].transform.expression = 'lookup($.contry, $.currencies, "N/A")'
-        loop = tree.rules[3]
+        loop = next(r for r in tree.rules if r.kind == "loop")
         loop.rules[0].transform.expression = "@.skuu"
 
     found = errors(check(mutate))
     assert ("rules[0]", "source", "'idd' is not in the input schema") in found
     assert any(r == "rules[1]" and c == "expression" and "contry" in m for r, c, m in found)
-    assert any(r == "rules[3].rules[0]" and "skuu" in m for r, _, m in found)
+    assert any(r.endswith(".rules[0]") and "skuu" in m for r, _, m in found)
 
 
 def test_a_method_call_is_not_a_missing_field() -> None:

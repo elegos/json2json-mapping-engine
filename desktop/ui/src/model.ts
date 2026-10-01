@@ -128,14 +128,15 @@ export function ruleAt(file: FunctionalFile, path: string): Rule | undefined {
 
 /** What the Target column shows: a top-level field as `$.Name`, a nested one relative to its
  * parent (`Name`), a container by its stored output (`$.Lines[*]`, `@.Tax`). */
-export function nameOf(rule: Rule, depth = 1): string {
+export function nameOf(rule: Rule): string {
   switch (rule.kind) {
     case "field":
-      return depth === 0 ? `$.${rule.field}` : rule.field;
+      return rule.field;
     case "lookup":
       return rule.label;
     default:
-      return rule.output;
+      // `$.Lines[*]` / `@.Tax` are written `Lines[*]` / `Tax`: the prefix is only noise
+      return rule.output.replace(/^[$@]\.?/, "");
   }
 }
 
@@ -183,7 +184,7 @@ export function changedColumns(rule: Rule, before: Rule | undefined): Set<string
   const differ = (col: string, a: unknown, b: unknown) => {
     if (a !== b) changed.add(col);
   };
-  differ("target", nameOf(rule, 0), nameOf(before, 0));
+  differ("target", nameOf(rule), nameOf(before));
   differ("source", sourceOf(rule), sourceOf(before));
   differ("expression", expressionOf(rule), expressionOf(before));
   differ("description", rule.description ?? "", before.description ?? "");

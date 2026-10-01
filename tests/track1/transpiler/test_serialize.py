@@ -113,3 +113,32 @@ def test_a_lookup_keeps_its_declared_type() -> None:
     }
     again = parse_functional(functional_to_raw(parse_functional(raw, default_id="t")), "t")
     assert again.rules[0].type == "int"  # type: ignore[union-attr]
+
+
+def test_targets_are_written_without_prefix_and_sources_in_full() -> None:
+    from transpiler.model import FieldRule, LoopRule, parse_functional
+
+    raw = {
+        "id": "t",
+        "rules": [
+            {"kind": "field", "field": "A", "type": "str", "source": {"path": "$.id"}},
+            {
+                "kind": "loop",
+                "source": "$.items[*]",
+                "output": "$.Lines[*]",
+                "rules": [
+                    {"kind": "field", "field": "S", "type": "str", "source": {"path": "@.sku"}},
+                    {"kind": "field", "field": "C", "type": "str", "source": {"path": "$.cur"}},
+                ],
+            },
+        ],
+    }
+    file = parse_functional(raw, default_id="t")
+    out = functional_to_raw(file)
+    assert out["rules"][0]["source"] == {"path": "$.id"}
+    loop = out["rules"][1]
+    assert (loop["source"], loop["output"]) == ("$.items[*]", "Lines[*]")
+    assert [r["source"]["path"] for r in loop["rules"]] == ["@.sku", "$.cur"]
+    again = parse_functional(out, default_id="t")  # and it reads back as the same tree
+    assert again == file
+    assert isinstance(again.rules[1], LoopRule) and isinstance(again.rules[0], FieldRule)

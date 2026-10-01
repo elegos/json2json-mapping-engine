@@ -31,6 +31,13 @@ def _put(out: dict[str, Any], key: str, value: Any) -> None:
         out[key] = value
 
 
+def _short(path: str, implied: str) -> str:
+    """A container's Target without the prefix its context implies (`$.` at the top level,
+    `@.` inside a container); the loader spells it out again. Sources are always written in
+    full: the explicit form teaches that `$.` means the document root."""
+    return path.removeprefix(implied)
+
+
 def _field_to_raw(rule: FieldRule) -> dict[str, Any]:
     raw: dict[str, Any] = {"kind": "field"}
     _put(raw, "id", rule.id)
@@ -74,7 +81,7 @@ def _field_to_raw(rule: FieldRule) -> dict[str, Any]:
     return raw
 
 
-def _rule_to_raw(rule: Rule) -> dict[str, Any]:
+def _rule_to_raw(rule: Rule, in_loop: bool = False, nested: bool = False) -> dict[str, Any]:
     if isinstance(rule, FieldRule):
         return _field_to_raw(rule)
     raw: dict[str, Any] = {"kind": rule.kind}
@@ -94,16 +101,17 @@ def _rule_to_raw(rule: Rule) -> dict[str, Any]:
             if rule.sort_reverse:
                 sort["reverse"] = True
             raw["sort"] = sort
-        raw["output"] = rule.output
+        raw["output"] = _short(rule.output, "@." if nested else "$.")
         if rule.index_start:
             raw["index_start"] = rule.index_start
         _put(raw, "parallel", rule.parallel)
     else:
         assert isinstance(rule, ObjectRule)
-        raw["output"] = rule.output
+        raw["output"] = _short(rule.output, "@." if nested else "$.")
         _put(raw, "guard", rule.guard)
     _put(raw, "description", rule.description)
-    raw["rules"] = [_rule_to_raw(r) for r in rule.rules]
+    below_loop = in_loop or isinstance(rule, LoopRule)
+    raw["rules"] = [_rule_to_raw(r, below_loop, True) for r in rule.rules]
     return raw
 
 

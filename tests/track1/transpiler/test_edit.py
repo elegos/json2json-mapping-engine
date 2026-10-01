@@ -131,7 +131,9 @@ def test_source_gets_its_scope_prefix() -> None:
     loop = set_source(tree(), "rules[2]", "orders[*]")
     assert loop.rules[2].source == "$.orders[*]"  # type: ignore[union-attr]
     nested = set_source(tree(), "rules[2].rules[0]", "sku")
-    assert nested.rules[2].rules[0].source_path == "sku"  # type: ignore[union-attr]
+    assert nested.rules[2].rules[0].source_path == "@.sku"  # type: ignore[union-attr]
+    root = set_source(tree(), "rules[2].rules[0]", "$.top.level")
+    assert root.rules[2].rules[0].source_path == "$.top.level"  # type: ignore[union-attr]
 
 
 def test_the_original_is_not_modified() -> None:
@@ -258,3 +260,21 @@ def test_changing_a_constant_back_to_a_path_and_rejecting_structures() -> None:
     assert isinstance(rule, FieldRule) and not rule.has_constant and rule.source_path == "$.id"
     with pytest.raises(FnYamlError):
         set_source(tree(), "rules[0]", "[1, 2]")
+
+
+def test_a_loader_spells_out_short_paths_and_accepts_the_long_ones() -> None:
+    raw = json.loads(json.dumps(RAW))
+    raw["rules"][0]["source"] = {"path": "id"}
+    raw["rules"][2]["source"] = "items[*]"
+    raw["rules"][2]["output"] = "Lines[*]"
+    raw["rules"][2]["rules"][0]["source"] = {"path": "sku"}
+    raw["rules"][2]["rules"].append(
+        {"kind": "field", "field": "Cur", "type": "str", "source": {"path": "$.currency"}}
+    )
+    loaded = parse_functional(raw, default_id="t")
+    first, loop = loaded.rules[0], loaded.rules[2]
+    assert isinstance(first, FieldRule) and first.source_path == "$.id"
+    assert isinstance(loop, LoopRule) and (loop.source, loop.output) == ("$.items[*]", "$.Lines[*]")
+    sku, cur = loop.rules
+    assert isinstance(sku, FieldRule) and sku.source_path == "@.sku"
+    assert isinstance(cur, FieldRule) and cur.source_path == "$.currency"

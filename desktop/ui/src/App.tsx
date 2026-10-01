@@ -443,7 +443,7 @@ export function App() {
     const below = descendants(row.rule);
     if (below > 0) {
       const choice = await ask(
-        `Delete "${nameOf(row.rule, 0)}" and the ${below} rule${below === 1 ? "" : "s"} inside it?`,
+        `Delete "${nameOf(row.rule)}" and the ${below} rule${below === 1 ? "" : "s"} inside it?`,
         [
           { id: "delete", label: "Delete", primary: true },
           { id: "cancel", label: "Cancel" },
@@ -564,7 +564,7 @@ export function App() {
         colId: "target",
         width: 200,
         editable: (p) => !folding.current && p.data?.rule.kind !== "lookup",
-        valueGetter: (p) => (p.data ? nameOf(p.data.rule, p.data.depth) : ""),
+        valueGetter: (p) => (p.data ? nameOf(p.data.rule) : ""),
         valueSetter: (p: ValueSetterParams<Row>) => {
           void remoteEdit("retarget", p.data.path, String(p.newValue ?? ""));
           return true;

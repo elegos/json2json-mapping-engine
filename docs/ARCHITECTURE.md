@@ -1478,6 +1478,14 @@ field-level sentinel. This is the mechanism for conditional sub-objects and cove
     description_modified: 2026-08-01T10:00:00
 ```
 
+**Path style.** A Target is written without prefix (`OrderId`, `Lines[*]`, `Customer.Name`);
+`$.` / `@.` on a Target are accepted and dropped when the file is saved. A Source is
+relative to the current context: `id` outside a loop means `$.id`, inside a loop `sku` means
+`@.sku` (the loop's element), and `$.name` always means the document root, so a loop can
+read a root value. Both spellings are accepted everywhere; the loader and the grid's Source
+column spell a bare Source out in full (`$.id`, `@.sku`) so the user learns that `$.` is the
+root. `.fn.yaml` files keep Sources in full and Targets short.
+
 **The Source value.** `source` names where a field's value comes from, and that value is
 available to the expression as the name `value`; an **empty expression** means "the
 Source value, as it is". So `source: {path: $.id}` alone copies `$.id`, and

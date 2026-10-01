@@ -41,21 +41,21 @@ rules:
     kind: loop
     label: item
     source: $.items[*]
-    output: $.Lines[*]
+    output: Lines[*]
     rules:
       - id: sku
         kind: field
         field: Sku
         type: str
         source:
-          path: $.items[*].sku
+          path: "@.sku"
         transform: {}
       - id: qty
         kind: field
         field: Qty
         type: int
         source:
-          path: $.items[*].qty
+          path: "@.qty"
         transform: {}
       - id: fam
         kind: field
