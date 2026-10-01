@@ -910,7 +910,7 @@ export function App() {
                 ref={filterInput}
                 className="rule-filter"
                 type="search"
-                placeholder="Filter by rule id or target (customer.name)"
+                placeholder="Filter by rule id or target (customer.name, cusnam)"
                 value={filterText}
                 onChange={(e) => setFilterText(e.target.value)}
                 onKeyDown={(e) => e.key === "Escape" && setFilterText("")}

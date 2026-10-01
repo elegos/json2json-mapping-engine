@@ -336,3 +336,39 @@ describe("filterRows with a dotted path", () => {
     expect(found("channel.zzz")).toEqual([]);
   });
 });
+
+describe("filterRows by pieces of the names", () => {
+  const tree: Rule[] = [
+    {
+      kind: "object", id: "ch", description: null, output: "$.Channel", guard: null, source: null,
+      rules: [
+        {
+          kind: "object", id: "cu", description: null, output: "@.Customer", guard: null, source: null,
+          rules: [field("na", "Name", "@.n"), field("co", "Code", "@.c")],
+        },
+        field("nt", "Notes", "@.m"),
+      ],
+    },
+    field("un", "Unit", "$.u"),
+  ];
+  const rows = flatten(tree);
+  const found = (text: string) => filterRows(rows, text).map((r) => nameOf(r.rule));
+
+  it("takes a space like a dot", () => {
+    expect(found("customer name")).toEqual(["Channel", "Customer", "Name"]);
+    expect(found("cus name")).toEqual(["Channel", "Customer", "Name"]);
+  });
+  it("finds pieces in order, across the names, when the text matches nothing as it is", () => {
+    expect(found("cusnam")).toEqual(["Channel", "Customer", "Name"]);
+    expect(found("cs nm")).toEqual(["Channel", "Customer", "Name"]);
+    expect(found("chcunam")).toEqual(["Channel", "Customer", "Name"]);
+  });
+  it("uses the exact matches alone when there are any", () => {
+    expect(found("cust")).toEqual(["Channel", "Customer", "Name", "Code"]);
+    expect(found("zq")).toEqual([]);
+  });
+  it("needs the last piece to end in the rule itself", () => {
+    expect(found("cuco")).toEqual(["Channel", "Customer", "Code"]);
+    expect(found("unic")).toEqual([]);
+  });
+});
