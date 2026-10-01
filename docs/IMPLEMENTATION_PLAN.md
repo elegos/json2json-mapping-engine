@@ -554,6 +554,16 @@ Sliced; each slice is usable on its own:
       and the completion know; the syntax pages are written once and also checked against the
       grammar in `ARCHITECTURE.md`.
 
+- [ ] **M6.8 — Golden data in the tool.** Manage the cases of `tests/golden/<mapping>/` from the
+      UI, so that a functional user can check on their own machine that, given an input, the
+      output is the one expected: list a mapping's cases; create, rename, delete; edit the input
+      JSON, the expected output and the expected rule errors (`.input.json`, `.expected.json`,
+      `.expected_errors.json`) in a JSON editor; *record* the current output as the expected one
+      (after looking at it); run one case or all, with PASS / FAIL, the diff and the per-rule errors
+      shown on the grid rows. The cases are the shared contract of every backend (see "Python
+      backend"), so what the user writes here is also what CI runs. Running locally needs the
+      Python backend (no container); the editor can come first, running second.
+
 **Extra mile (needs the Python backend below).** *Try a mapping in the tool*: import an input
 JSON for the open mapping, run it and show the output next to the input, with the per-rule
 errors highlighted on the grid rows (as `_safe` reports them). It runs the mapping compiled by
