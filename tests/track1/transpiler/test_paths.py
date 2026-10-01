@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from transpiler.check import check_functional
-from transpiler.model import FnYamlError, FieldRule, PathsSection, parse_functional
+from transpiler.model import FieldRule, FnYamlError, PathsSection, parse_functional
 from transpiler.paths import expand_paths, expand_text
 from transpiler.serialize import functional_to_raw
 from transpiler.transpile import transpile_file_model
