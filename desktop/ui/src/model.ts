@@ -184,18 +184,16 @@ export function filterRows(rows: Row[], text: string): Row[] {
     return true;
   };
 
-  for (const matches of [exact, pieces]) {
-    const keep = new Set<string>();
-    for (const row of rows) {
-      if (!matches(row)) continue;
-      keep.add(row.path);
-      for (const outer of outerOf.get(row.path) ?? []) keep.add(outer.path);
-      // and what a matching container holds
-      for (const other of rows) if (other.path.startsWith(`${row.path}.rules[`)) keep.add(other.path);
-    }
-    if (keep.size > 0) return rows.filter((row) => keep.has(row.path));
+  // both readings count: `cusnam` may be a rule called so, and also Customer.Name
+  const keep = new Set<string>();
+  for (const row of rows) {
+    if (!exact(row) && !pieces(row)) continue;
+    keep.add(row.path);
+    for (const outer of outerOf.get(row.path) ?? []) keep.add(outer.path);
+    // and what a matching container holds
+    for (const other of rows) if (other.path.startsWith(`${row.path}.rules[`)) keep.add(other.path);
   }
-  return [];
+  return rows.filter((row) => keep.has(row.path));
 }
 
 /** The rows that are visible when the rules at `collapsed` paths are folded. */

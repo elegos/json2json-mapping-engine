@@ -363,8 +363,10 @@ describe("filterRows by pieces of the names", () => {
     expect(found("cs nm")).toEqual(["Channel", "Customer", "Name"]);
     expect(found("chcunam")).toEqual(["Channel", "Customer", "Name"]);
   });
-  it("uses the exact matches alone when there are any", () => {
-    expect(found("cust")).toEqual(["Channel", "Customer", "Name", "Code"]);
+  it("keeps both readings: a rule literally called cusnam does not hide Customer.Name", () => {
+    const both = flatten([...tree, field("lit", "CusNam", "$.x")]);
+    const names = filterRows(both, "cusnam").map((r) => nameOf(r.rule));
+    expect(names).toEqual(["Channel", "Customer", "Name", "CusNam"]);
     expect(found("zq")).toEqual([]);
   });
   it("needs the last piece to end in the rule itself", () => {
