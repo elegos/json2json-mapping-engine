@@ -28,12 +28,14 @@ from cli.config import MapperConfigError, load_config
 from cli.stubs import generate_stubs
 from cli.track1 import run_track1
 from cli.track2 import Track2Error, detect_runtime, run_track2, runtime_diagnostic
+from compiler.function_registry import all_functions
 from transpiler.model import (
     FnYamlError,
     functional_from_dict,
     functional_to_dict,
     load_functional_file,
 )
+from transpiler.review import stamp_validation
 from transpiler.serialize import apply_decay_tree, write_functional
 from transpiler.stages import STAGES, artifact, parse_stage
 
@@ -446,6 +448,7 @@ def fn_write(file: str = typer.Argument(..., help=".fn.yaml file to write")) -> 
         decayed: list[str] = []
         if path.is_file():
             new, decayed = apply_decay_tree(load_functional_file(path), new)
+        new = stamp_validation(new, all_functions(Path.cwd()))
         write_functional(path, new)
     except (FnYamlError, OSError, ValueError, KeyError, TypeError) as exc:
         typer.echo(json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"}))

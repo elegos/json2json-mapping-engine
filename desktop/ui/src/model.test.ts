@@ -159,19 +159,21 @@ describe("model", () => {
 
   it("reports the review flags of a row", () => {
     const rule = ruleAt(file, "rules[0]")!;
-    const flag: ReviewFlag = { rule: "rules[0]", stale_override: true, proposal_error: null };
+    const flag: ReviewFlag = { rule: "rules[0]", stale_override: true, proposal_error: null, changed_functions: ["concat"] };
     const issues = rowIssues(rule, [], flag);
     expect(issues[0]).toMatch(/^Override out of date/);
+    expect(issues[1]).toBe("Signature changed since validation: concat");
     expect(rowIssues(rule, [], undefined, false)).toEqual([]);
   });
 
   it("filters by state, keeping the containers of what it finds", () => {
     const rows = flatten(file.rules);
     const flags = new Map<string, ReviewFlag>([
-      ["rules[1].rules[0]", { rule: "rules[1].rules[0]", stale_override: true, proposal_error: null }],
+      ["rules[1].rules[0]", { rule: "rules[1].rules[0]", stale_override: true, proposal_error: null, changed_functions: [] }],
     ]);
     const none = new Map();
     expect(filterByState(rows, "all", flags, none)).toBe(rows);
+    expect(filterByState(rows, "changed", flags, none)).toEqual([]);
     expect(filterByState(rows, "stale", flags, none).map((r) => r.path)).toEqual(["rules[1]", "rules[1].rules[0]"]);
     expect(filterByState(rows, "unvalidated", flags, none).map((r) => r.path)).toEqual(rows.map((r) => r.path));
   });

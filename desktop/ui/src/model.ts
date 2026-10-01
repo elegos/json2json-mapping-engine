@@ -5,6 +5,8 @@ export interface Validation {
   validated: boolean;
   needs_review: boolean;
   notes: string | null;
+  /** Signature hashes of the functions the rule called when it was saved as validated. */
+  functions?: Record<string, string>;
 }
 
 export interface Transform {
@@ -345,9 +347,11 @@ export interface ReviewFlag {
   rule: string;
   stale_override: boolean;
   proposal_error: string | null;
+  /** Functions whose signature changed since the rule was validated. */
+  changed_functions: string[];
 }
 
-export type StateFilter = "all" | "validated" | "review" | "unvalidated" | "stale" | "invalid";
+export type StateFilter = "all" | "validated" | "review" | "unvalidated" | "stale" | "changed" | "invalid";
 
 export const STATE_FILTERS: [StateFilter, string][] = [
   ["all", "All rules"],
@@ -355,6 +359,7 @@ export const STATE_FILTERS: [StateFilter, string][] = [
   ["review", "To review"],
   ["unvalidated", "Not validated"],
   ["stale", "Override out of date"],
+  ["changed", "Function signature changed"],
   ["invalid", "With errors"],
 ];
 
@@ -379,6 +384,8 @@ export function matchesState(
       return state === "none";
     case "stale":
       return flag?.stale_override === true;
+    case "changed":
+      return (flag?.changed_functions.length ?? 0) > 0;
   }
 }
 
@@ -414,6 +421,8 @@ export function setReviewState(rule: Rule, state: ReviewState): void {
   if (rule.kind !== "field") return;
   rule.validation.validated = state === "validated";
   rule.validation.needs_review = state === "review";
+  // validating again takes the functions' current signatures (the worker does it on save)
+  if (state !== "validated") rule.validation.functions = {};
 }
 
 export type ReviewState = "validated" | "review" | "none";
@@ -470,6 +479,9 @@ export function rowIssues(
   }
   if (flag?.stale_override) {
     issues.push("Override out of date: the auto code changed since the override was taken");
+  }
+  if (flag?.changed_functions.length) {
+    issues.push(`Signature changed since validation: ${flag.changed_functions.join(", ")}`);
   }
   if (withValidation && rule.kind === "field") {
     if (rule.validation.needs_review) issues.push("Review flag");

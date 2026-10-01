@@ -1289,8 +1289,8 @@ which config keys affect which stage.
 
 - If the function signature changed (MAJOR): all `.fn.yaml` files referencing it must
   be re-transpiled; the build system flags each affected rule in the editor grid with a
-  **function-changed warning** and resets `validated → false, needs_review → true` for
-  those rows. The build proceeds but the developer must review and re-validate before
+  **function-changed warning** (a mark on the rule; the validation tick stays, see §Rule
+  validation). The build proceeds but the developer must review and re-validate before
   clearing the warnings.
 - If only the implementation changed (PATCH): affected `.fn.yaml` files are recompiled
   (to pick up the new target implementation) but no validation flags are set — the
@@ -1483,6 +1483,7 @@ field-level sentinel. This is the mechanism for conditional sub-objects and cove
     validated: false                 # true once a developer has verified this rule
     needs_review: false              # true = explicitly flagged for re-review
     notes: null                      # free text: functional and/or programmatic validation details
+    functions: {}                    # function name -> signature hash, taken when saved as validated
   version:
     source_modified: 2026-09-18T09:11:00
     transform_modified: 2026-09-18T09:11:00
@@ -1920,6 +1921,16 @@ code may no longer match the new intent and requires re-review:
 
 Changes to `code_override` by a developer do **not** trigger decay — the developer
 owns that code and is responsible for its correctness.
+
+**Function signature changes** — saving a rule as validated records in `validation.functions`
+a hash of the *signature* (parameters with their types and defaults, and the return type) of
+every registered function its expression, or its override, calls; built-ins and `fn/*.fn`
+alike. Only the signature counts: a change of the body or of a target `@override` is the
+function author's responsibility and raises nothing. When the signature of one of those
+functions differs later, the grid marks the rule in Developer mode ("Signature changed since
+validation") and the state filter can list them; the tick stays. Putting the rule back to
+validated (To review, then Validated, then save) takes the new signatures and clears the mark.
+A function that is gone, or called with the wrong arguments, is an error of the check.
 
 **Import behaviour** — all rows produced by an import (Excel, LLM-assisted, or
 reverse import) start with `validated: false, needs_review: false`. If the

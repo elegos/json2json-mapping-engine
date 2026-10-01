@@ -5,7 +5,7 @@ so that per-edit operations (Target / Source normalisation) cost a message, not 
 Python start-up. Requests: `{"id", "op", ...}`; answers `{"id", "ok", ...}`.
 
 Ops: `ping`; `complete` (`tree`, `project`, `stem`, `path`, `column`, `text`, `cursor`: what can be typed there, see `transpiler/complete.py`); `check` (`tree`, `project`, `stem`); `retarget` (`tree`, `path`, `value`); `set_source` (`tree`, `path`,
-`value`); `add_rule` (`tree`, `parent`, `index`, `kind`); `delete_rule` (`tree`, `path`); `proposal` (`tree`, `path`: the auto code, the override), `take_over` / `accept_proposal` / `keep_override` (`tree`, `path`), `set_override` (`tree`, `path`, `code`), see `transpiler/review.py`; `check` also answers `review` (overrides whose auto code moved); `config_read` (`project`), `config_check` (`values`), `config_write` (`project`, `values`): `mapper.toml`, see `cli/project_config.py`. `tree` is the file as `mapper fn read` prints it; the answer carries the new
+`value`); `add_rule` (`tree`, `parent`, `index`, `kind`); `delete_rule` (`tree`, `path`); `proposal` (`tree`, `path`: the auto code, the override), `take_over` / `accept_proposal` / `keep_override` (`tree`, `path`), `set_override` (`tree`, `path`, `code`), see `transpiler/review.py`; `check` also answers `review` (overrides whose auto code moved, validated rules whose functions changed signature); `config_read` (`project`), `config_check` (`values`), `config_write` (`project`, `values`): `mapper.toml`, see `cli/project_config.py`. `tree` is the file as `mapper fn read` prints it; the answer carries the new
 `tree`, or `error`.
 """
 
@@ -43,7 +43,7 @@ def handle(request: dict[str, Any]) -> dict[str, Any]:
         inp, out = schemas_for(Path(request["project"]), request["stem"])
         issues = check_functional(file, inp, out, all_functions(Path(request["project"])))
         try:
-            flags = [r.to_json() for r in rv.review(file)]
+            flags = [r.to_json() for r in rv.review(file, all_functions(Path(request["project"])))]
         except FnYamlError:
             flags = []  # a rule that cannot be transpiled is the check's business
         return {"ok": True, "diagnostics": [i.to_json() for i in issues], "review": flags}

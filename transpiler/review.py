@@ -4,15 +4,24 @@
 - a *manual* rule keeps `transform.last_auto_version`, the code the transpiler generated when the
   developer took over; when what it generates now differs, the rule's functional side moved
   under the override (`stale_override`), and the developer decides between the new proposal and
-  the override (a *manual* rule is the developer's business, so this is a developer-mode signal only).
+  the override;
+- a *validated* rule keeps `validation.functions`, the signature hash (parameters and return
+  type, not the body) of every function its expression calls, taken when it was saved as
+  validated; when one of those signatures changed, what was verified may no longer hold
+  (`changed_functions`). The tick stays: the warning stays until the rule is validated again.
+
+Both are signals for the developer, shown in Developer mode only.
 """
 
 from __future__ import annotations
 
 import copy
-from collections.abc import Iterator
-from dataclasses import dataclass
+import re
+from collections.abc import Iterator, Mapping
+from dataclasses import dataclass, field
 
+from compiler.function_registry import FunctionInfo
+from transpiler.anchors import _split_strings
 from transpiler.ids import assign_ids, walk
 from transpiler.model import (
     FieldRule,
@@ -24,18 +33,51 @@ from transpiler.model import (
 )
 from transpiler.transpile import auto_proposals
 
+_CALL = re.compile(r"(?<![\w.@$])([A-Za-z_]\w*)\s*\(")
+
+
+def functions_used(text: str | None, functions: Mapping[str, FunctionInfo]) -> list[str]:
+    """Names of the registered functions an expression calls (string literals skipped)."""
+    code = "".join(chunk for is_string, chunk in _split_strings(text or "") if not is_string)
+    return sorted({m[1] for m in _CALL.finditer(code) if m[1] in functions})
+
+
+def signatures(rule: FieldRule, functions: Mapping[str, FunctionInfo]) -> dict[str, str]:
+    """What `validation.functions` records: the functions the rule calls, with their signature
+    hash (the override's, when the rule is manual)."""
+    t = rule.transform
+    text = t.code_override if t.status == "manual" else t.expression
+    return {n: functions[n].signature_hash() for n in functions_used(text, functions)}
+
+
+def stamp_validation(file: FunctionalFile, functions: Mapping[str, FunctionInfo]) -> FunctionalFile:
+    """On save: a validated rule without a record gets the current signatures; a rule that is not
+    validated has none (validating it again takes new ones)."""
+    file = copy.deepcopy(file)
+    for _path, rule in _with_paths(file.rules):
+        if not isinstance(rule, FieldRule):
+            continue
+        v = rule.validation
+        if not v.validated:
+            v.functions = {}
+        elif not v.functions:
+            v.functions = signatures(rule, functions)
+    return file
+
 
 @dataclass
 class RuleReview:
     path: str  # `rules[0].rules[1]`, as the check's diagnostics name a rule
     stale_override: bool = False
     proposal_error: str | None = None  # a manual rule whose auto code cannot be generated
+    changed_functions: list[str] = field(default_factory=list)  # signature changed since validation
 
     def to_json(self) -> dict[str, object]:
         return {
             "rule": self.path,
             "stale_override": self.stale_override,
             "proposal_error": self.proposal_error,
+            "changed_functions": self.changed_functions,
         }
 
 
@@ -65,7 +107,7 @@ def proposals_by_path(file: FunctionalFile) -> tuple[dict[str, str], dict[str, s
     )
 
 
-def review(file: FunctionalFile) -> list[RuleReview]:
+def review(file: FunctionalFile, functions: Mapping[str, FunctionInfo]) -> list[RuleReview]:
     """The rules that need a look: only those with something to report are returned."""
     proposals, errors = proposals_by_path(file)
     found: list[RuleReview] = []
@@ -81,7 +123,14 @@ def review(file: FunctionalFile) -> list[RuleReview]:
                 and path in proposals
                 and proposals[path] != t.last_auto_version
             )
-        if item.stale_override:
+        if rule.validation.validated:
+            # a function that is gone is the check's error; here only a signature that moved
+            item.changed_functions = sorted(
+                n
+                for n, h in rule.validation.functions.items()
+                if n in functions and functions[n].signature_hash() != h
+            )
+        if item.stale_override or item.changed_functions:
             found.append(item)
     return found
 

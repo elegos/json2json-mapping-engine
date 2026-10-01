@@ -515,11 +515,13 @@ Sliced; each slice is usable on its own:
         tooltip), which also catches changes that are not in the expression itself.
       - **One Validation column** (Developer mode only; Not validated / To review / Validated,
         over the two flags of the file). The validation marks, edges and filter are hidden in
-        the functional view. A *function-changed* warning (hashes of the functions a validated
-        rule calls) was built and removed: the check already errors on a function that is gone
-        or called wrongly, and keeping a function compatible is its author's job.
+        the functional view.
+      - **Function-signature warnings**: `validation.functions` (name → hash of parameters and
+        return type, not the body) is taken by `mapper fn write` for a rule saved as validated;
+        a changed signature marks the rule (tooltip, filter), the tick stays.
       - **State filter** next to the text filter: validated, to review, not validated,
-        override out of date, with errors (with counts; the validation ones in Developer mode).
+        override out of date, signature changed, with errors (with counts; all but the last in
+        Developer mode).
       - Limits: a rule that cannot be transpiled makes the auto code of every rule unavailable
         (the pane shows the reason); not yet run in the real window (see M6.1).
 - [ ] **M6.3 — VCS.** Gitoxide save-as-commit, pull --rebase, semantic rule-level merge.
