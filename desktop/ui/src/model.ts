@@ -5,6 +5,8 @@ export interface Validation {
   validated: boolean;
   needs_review: boolean;
   notes: string | null;
+  /** Fingerprints of the functions the rule called when it was validated. */
+  functions?: Record<string, string>;
 }
 
 export interface Transform {
@@ -324,6 +326,73 @@ export function diagnosticsByRule(
   return byRule;
 }
 
+/** What the worker found about a field rule beyond the check: see `transpiler/review.py`. */
+export interface ReviewFlag {
+  rule: string;
+  stale_override: boolean;
+  proposal_error: string | null;
+  changed_functions: string[];
+}
+
+export type StateFilter = "all" | "validated" | "review" | "unvalidated" | "stale" | "changed" | "invalid";
+
+export const STATE_FILTERS: [StateFilter, string][] = [
+  ["all", "All rules"],
+  ["validated", "Validated"],
+  ["review", "Needs review"],
+  ["unvalidated", "Not validated"],
+  ["stale", "Override out of date"],
+  ["changed", "Function changed"],
+  ["invalid", "With errors"],
+];
+
+/** Whether a row belongs to a state filter; only field rules carry a validation state. */
+export function matchesState(
+  row: Row,
+  filter: StateFilter,
+  flags: ReadonlyMap<string, ReviewFlag>,
+  diagnostics: ReadonlyMap<string, Diagnostic[]>,
+): boolean {
+  if (filter === "all") return true;
+  if (filter === "invalid") return (diagnostics.get(row.path) ?? []).some((d) => d.severity === "error");
+  if (row.rule.kind !== "field") return false;
+  const state = reviewState(row.rule);
+  const flag = flags.get(row.path);
+  switch (filter) {
+    case "validated":
+      return state === "validated";
+    case "review":
+      return state === "review";
+    case "unvalidated":
+      return state === "none";
+    case "stale":
+      return flag?.stale_override === true;
+    case "changed":
+      return (flag?.changed_functions.length ?? 0) > 0;
+  }
+}
+
+/** The rows of a state filter with the containers they sit in, in tree order. */
+export function filterByState(
+  rows: Row[],
+  filter: StateFilter,
+  flags: ReadonlyMap<string, ReviewFlag>,
+  diagnostics: ReadonlyMap<string, Diagnostic[]>,
+): Row[] {
+  if (filter === "all") return rows;
+  const hits = rows.filter((r) => matchesState(r, filter, flags, diagnostics));
+  const keep = new Set<string>();
+  for (const { path } of hits) {
+    let at = path;
+    keep.add(at);
+    while (at.includes(".rules[")) {
+      at = at.slice(0, at.lastIndexOf(".rules["));
+      keep.add(at);
+    }
+  }
+  return rows.filter((r) => keep.has(r.path));
+}
+
 export type ReviewState = "validated" | "review" | "none";
 
 export function reviewState(rule: Rule): ReviewState {
@@ -360,7 +429,7 @@ const COLUMN_LABELS: Record<string, string> = {
 };
 
 /** What makes a row worth a warning sign, one line per issue (the sign's tooltip). */
-export function rowIssues(rule: Rule, diagnostics: Diagnostic[]): string[] {
+export function rowIssues(rule: Rule, diagnostics: Diagnostic[], flag?: ReviewFlag): string[] {
   const issues: string[] = [];
   for (const d of diagnostics) {
     const column = columnOf(d);
@@ -369,6 +438,12 @@ export function rowIssues(rule: Rule, diagnostics: Diagnostic[]): string[] {
   }
   if ((rule.kind === "loop" || rule.kind === "object") && rule.rules.length === 0) {
     issues.push("Empty container");
+  }
+  if (flag?.stale_override) {
+    issues.push("Override out of date: the auto code changed since the override was taken");
+  }
+  if (flag?.changed_functions.length) {
+    issues.push(`Function changed since validation: ${flag.changed_functions.join(", ")}`);
   }
   if (rule.kind === "field") {
     if (rule.validation.needs_review) issues.push("Review flag");

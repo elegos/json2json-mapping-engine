@@ -28,6 +28,7 @@ import {
   type PythonStatus,
   pythonStatus,
   readFn,
+  reviewEdit,
   runMapper,
   writeFn,
 } from "./api";
@@ -38,9 +39,12 @@ import {
   insertionPoint,
   diagnosticsByRule,
   expressionOf,
+  filterByState,
+  matchesState,
   filterRows,
   flatten,
   type Diagnostic,
+  type FieldRule,
   type FunctionalFile,
   type LookupRule,
   nameOf,
@@ -51,10 +55,14 @@ import {
   visibleRows,
   ruleAt,
   reviewState,
+  type ReviewFlag,
   type Row,
   setExpression,
   sourceOf,
+  STATE_FILTERS,
+  type StateFilter,
 } from "./model";
+import { OverridePane } from "./OverridePane";
 
 // Boolean columns only make sense on field rules; elsewhere the cell stays empty.
 const fieldOnly = (p: { data?: Row }) =>
@@ -115,6 +123,9 @@ export function App() {
   const treeRef = useRef<FunctionalFile | null>(null);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [filterText, setFilterText] = useState("");
+  const [stateFilter, setStateFilter] = useState<StateFilter>("all");
+  const [flags, setFlags] = useState<ReadonlyMap<string, ReviewFlag>>(new Map());
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const filterInput = useRef<HTMLInputElement>(null);
   const [view, setView] = useState<"rules" | "lookups" | "paths" | "project">("rules");
   // mapper.toml: the form's descriptors, the file's values, the draft being edited
@@ -419,6 +430,27 @@ export function App() {
     [remember],
   );
 
+  /** Overrides and validation: also done by the worker (it knows the generated code and the functions). */
+  const reviewOp = useCallback(
+    async (
+      op: "take_over" | "accept_proposal" | "keep_override" | "set_validated",
+      path: string,
+      extra: { value?: boolean } = {},
+    ) => {
+      const current = treeRef.current;
+      if (!current) return;
+      try {
+        const next = await reviewEdit(current, op, path, { ...extra, project: project ?? undefined });
+        remember(current);
+        setTree(next);
+        setStatus("");
+      } catch (e) {
+        setStatus(String(e instanceof Error ? e.message : e));
+      }
+    },
+    [remember, project],
+  );
+
   const openProperties = useCallback(async () => {
     if (!project) return;
     try {
@@ -500,16 +532,6 @@ export function App() {
     }
   }, [ask, remember]);
 
-  const rows = useMemo(
-    // lookups have their own view
-    () => {
-      if (!tree) return [];
-      const all = flatten(tree.rules).filter((r) => r.rule.kind !== "lookup");
-      // a filter shows what it finds, folded or not
-      return filterText.trim() ? filterRows(all, filterText) : visibleRows(all, collapsed);
-    },
-    [tree, collapsed, filterText],
-  );
   const toggleFold = useCallback((path: string) => {
     setCollapsed((old) => {
       const next = new Set(old);
@@ -521,6 +543,7 @@ export function App() {
   useEffect(() => {
     if (!tree || !project || !current || python?.available !== true) {
       setLive([]);
+      setFlags(new Map());
       return;
     }
     const stem = current.replace(/^.*\//, "").replace(/\.fn\.yaml$/, "");
@@ -529,7 +552,12 @@ export function App() {
       checkTree(tree, project, stem).then(
         (found) => {
           // same findings: keep the array, or the grid redraws (and closes an open editor)
-          if (!stale) setLive((old) => (JSON.stringify(old) === JSON.stringify(found) ? old : found));
+          if (stale) return;
+          setLive((old) => (JSON.stringify(old) === JSON.stringify(found.diagnostics) ? old : found.diagnostics));
+          setFlags((old) => {
+            const next = new Map(found.review.map((f) => [f.rule, f] as const));
+            return JSON.stringify([...old]) === JSON.stringify([...next]) ? old : next;
+          });
         },
         () => {},
       );
@@ -567,6 +595,22 @@ export function App() {
     [current, report, live],
   );
 
+  const selectedRule = tree && selectedPath ? ruleAt(tree, selectedPath) : undefined;
+
+  const rows = useMemo(
+    // lookups have their own view
+    () => {
+      if (!tree) return [];
+      const all = flatten(tree.rules).filter((r) => r.rule.kind !== "lookup");
+      // a filter shows what it finds, folded or not
+      const found = filterByState(all, stateFilter, flags, diagnostics);
+      return filterText.trim() || stateFilter !== "all"
+        ? filterRows(found, filterText)
+        : visibleRows(all, collapsed);
+    },
+    [tree, collapsed, filterText, stateFilter, flags, diagnostics],
+  );
+
   /** Columns (by colId) with an error on this row; "*" = the whole row. */
   const invalidColumns = useCallback(
     (path: string): Set<string> => {
@@ -584,7 +628,7 @@ export function App() {
     const api = grid.current?.api;
     // never under an open editor: redrawing the row would close it
     if (api && api.getEditingCells().length === 0) api.redrawRows();
-  }, [diagnostics, changes]);
+  }, [diagnostics, changes, flags]);
 
   // suggestions for the cell being edited: the Python worker knows the schemas and the scope
   const gridContext = useMemo<GridContext>(
@@ -619,9 +663,9 @@ export function App() {
         resizable: false,
         cellClass: "warn-cell",
         valueGetter: (p) =>
-          p.data && rowIssues(p.data.rule, diagnostics.get(p.data.path) ?? []).length ? "⚠️" : "",
+          p.data && rowIssues(p.data.rule, diagnostics.get(p.data.path) ?? [], flags.get(p.data.path)).length ? "⚠️" : "",
         tooltipValueGetter: (p) =>
-          p.data ? rowIssues(p.data.rule, diagnostics.get(p.data.path) ?? []).join("\n") : "",
+          p.data ? rowIssues(p.data.rule, diagnostics.get(p.data.path) ?? [], flags.get(p.data.path)).join("\n") : "",
       },
       { headerName: "Id", colId: "id", hide: !showIds, valueGetter: (p) => p.data?.rule.id ?? "", width: 100 },
       {
@@ -757,11 +801,8 @@ export function App() {
         cellRendererSelector: fieldOnly,
         valueGetter: (p) => (isField(p.data) && p.data?.rule.kind === "field" ? p.data.rule.validation.validated : null),
         valueSetter: (p: ValueSetterParams<Row>) => {
-          edit(p.data.path, (r) => {
-            if (r.kind !== "field") return;
-            r.validation.validated = Boolean(p.newValue);
-            if (r.validation.validated) r.validation.needs_review = false;
-          });
+          // the worker records the functions the rule calls, to tell later when one changed
+          void reviewOp("set_validated", p.data.path, { value: Boolean(p.newValue) });
           return true;
         },
       },
@@ -794,7 +835,7 @@ export function App() {
         },
       },
     ];
-  }, [edit, remoteEdit, showIds, developerMode, diagnostics, collapsed, toggleFold]);
+  }, [edit, remoteEdit, reviewOp, showIds, developerMode, diagnostics, flags, collapsed, toggleFold]);
 
   return (
     <div className="app">
@@ -906,6 +947,19 @@ export function App() {
               <button onClick={() => void addRule("object")}>+ Object</button>
               <button onClick={() => void addRule("loop")}>+ Loop</button>
               <button onClick={() => void deleteRule()}>Delete</button>
+              <select
+                className="state-filter"
+                value={stateFilter}
+                onChange={(e) => setStateFilter(e.target.value as StateFilter)}
+                title="Show only the rules in a state"
+              >
+                {STATE_FILTERS.map(([id, label]) => (
+                  <option key={id} value={id}>
+                    {label}
+                    {id !== "all" && id !== "invalid" ? ` (${[...flatten(tree.rules)].filter((r) => matchesState(r, id, flags, diagnostics)).length})` : ""}
+                  </option>
+                ))}
+              </select>
               <input
                 ref={filterInput}
                 className="rule-filter"
@@ -918,6 +972,7 @@ export function App() {
             </div>
           )}
           {tree && view === "rules" ? (
+            <>
             <div className="grid">
             <AgGridReact<Row>
               rowData={rows}
@@ -941,16 +996,42 @@ export function App() {
               }}
               singleClickEdit
               rowSelection={{ mode: "singleRow", checkboxes: false, enableClickSelection: true }}
+              onSelectionChanged={(e) => setSelectedPath(e.api.getSelectedRows()[0]?.path ?? null)}
               rowClassRules={{
                 "row-error": (p) =>
                   (diagnostics.get(p.data?.path ?? "") ?? []).some((d: { severity: string }) => d.severity === "error"),
                 "row-warning": (p) =>
                   (diagnostics.get(p.data?.path ?? "") ?? []).some((d: { severity: string }) => d.severity === "warning"),
+                "row-stale": (p) => flags.get(p.data?.path ?? "")?.stale_override === true,
                 "row-review": (p) => (p.data ? reviewState(p.data.rule) === "review" : false),
                 "row-validated": (p) => (p.data ? reviewState(p.data.rule) === "validated" : false),
               }}
             />
             </div>
+            {developerMode && selectedPath && selectedRule?.kind === "field" && (
+              <OverridePane
+                tree={tree}
+                path={selectedPath}
+                rule={selectedRule as FieldRule}
+                flag={flags.get(selectedPath)}
+                onResolve={(op) => void reviewOp(op, selectedPath)}
+                completer={(text, cursor) => gridContext.complete?.(selectedPath, "code", text, cursor) ?? Promise.resolve({ from: cursor, items: [] })}
+                onCode={(code) =>
+                  edit(
+                    selectedPath,
+                    (r) => {
+                      if (r.kind === "field") r.transform.code_override = code;
+                    },
+                    `override:${selectedPath}`,
+                  )
+                }
+                onClose={() => {
+                  grid.current?.api.deselectAll();
+                  setSelectedPath(null);
+                }}
+              />
+            )}
+            </>
           ) : tree || view === "project" ? null : (
             <div className="empty">{project ? "Pick a mapping" : "Open a project to begin"}</div>
           )}

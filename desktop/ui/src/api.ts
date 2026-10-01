@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import type { Diagnostic, FunctionalFile } from "./model";
+import type { Diagnostic, FunctionalFile, ReviewFlag } from "./model";
 import type { ConfigIssue, ConfigSchema, ConfigValues } from "./projectConfig";
 
 export interface PythonStatus {
@@ -91,18 +91,64 @@ export async function editTree(
   return parsed.tree;
 }
 
-/** Checks every rule of the tree (form, and validity against the project's schemas). */
+export interface CheckResult {
+  diagnostics: Diagnostic[];
+  review: ReviewFlag[];
+}
+
+/** Checks every rule of the tree (form, and validity against the project's schemas), and
+ * reports the overrides whose auto code moved and the validated rules whose functions changed. */
 export async function checkTree(
   tree: FunctionalFile,
   project: string,
   stem: string,
-): Promise<Diagnostic[]> {
+): Promise<CheckResult> {
   const answer = await invoke<string>("edit_request", {
     request: JSON.stringify({ id: 1, op: "check", tree, project, stem }),
   });
-  const parsed = JSON.parse(answer) as { ok: boolean; diagnostics?: Diagnostic[]; error?: string };
+  const parsed = JSON.parse(answer) as {
+    ok: boolean;
+    diagnostics?: Diagnostic[];
+    review?: ReviewFlag[];
+    error?: string;
+  };
   if (!parsed.ok) throw new Error(parsed.error ?? "check failed");
-  return parsed.diagnostics ?? [];
+  return { diagnostics: parsed.diagnostics ?? [], review: parsed.review ?? [] };
+}
+
+/** What the split pane of a rule shows. */
+export interface Proposal {
+  /** What the transpiler generates now from the Source and expression. */
+  auto: string | null;
+  /** Why it cannot (no expression and no Source, a broken expression...). */
+  error: string | null;
+  override: string | null;
+  last_auto_version: string | null;
+}
+
+async function reviewRequest<T>(request: Record<string, unknown>): Promise<T> {
+  const answer = await invoke<string>("edit_request", {
+    request: JSON.stringify({ id: 1, ...request }),
+  });
+  const parsed = JSON.parse(answer) as { ok: boolean; error?: string } & T;
+  if (!parsed.ok) throw new Error(parsed.error ?? "request failed");
+  return parsed;
+}
+
+export const proposalOf = (tree: FunctionalFile, path: string) =>
+  reviewRequest<Proposal>({ op: "proposal", tree, path });
+
+/** Resolving a rule's override and validating it (one implementation, in Python):
+ * `take_over` (auto -> manual), `accept_proposal` (manual -> auto), `keep_override`
+ * (the auto code that moved is the new baseline), `set_override` (`code`) and
+ * `set_validated` (`value`, `project`: records the functions the rule calls). */
+export async function reviewEdit(
+  tree: FunctionalFile,
+  op: "take_over" | "accept_proposal" | "keep_override" | "set_override" | "set_validated",
+  path: string,
+  extra: { code?: string; value?: boolean; project?: string } = {},
+): Promise<FunctionalFile> {
+  return (await reviewRequest<{ tree: FunctionalFile }>({ op, tree, path, ...extra })).tree;
 }
 
 /** Adds a rule (`parent` null = document root, `index` null = last) or deletes one. */

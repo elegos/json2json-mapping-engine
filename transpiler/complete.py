@@ -8,7 +8,7 @@ the project's JSON Schemas; the tool shows the answer in a drop-down. The semant
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from compiler.function_registry import FunctionInfo, builtin_functions
@@ -67,6 +67,8 @@ class _Context:
     labels: list[str | None]
     out: Node  # the output node of the container the rule is in
     taken: set[str]  # sibling names already used in that container
+    notes: list[str] = field(default_factory=list)  # what each element of `items` is
+    loops: list[bool] = field(default_factory=list)  # ... and whether it is a loop's (has an index)
 
 
 def _describe(schemas: _Schemas, node: Any) -> str:
@@ -108,6 +110,8 @@ def _context(
     out_node: Node = out.root if out.root is not None else UNKNOWN
     items: list[Node] = []
     labels: list[str | None] = []
+    notes: list[str] = []
+    loops: list[bool] = []
     for depth, step in enumerate(steps):
         if step >= len(rules):
             return None
@@ -118,7 +122,7 @@ def _context(
                 for i, r in enumerate(rules)
                 if i != step and not isinstance(r, LookupRule)
             }
-            return _Context(items, labels, out_node, siblings)
+            return _Context(items, labels, out_node, siblings, notes, loops)
         if not isinstance(rule, ObjectRule | LoopRule):
             return None
         out_node = out.prop(out_node, _basename(rule.output))
@@ -135,6 +139,13 @@ def _context(
             )
             items = [*items, node if node is not None else UNKNOWN]
             labels = [*labels, rule.label if isinstance(rule, LoopRule) else None]
+            loops = [*loops, isinstance(rule, LoopRule)]
+            notes = [
+                *notes,
+                f"element of the loop over {source}"
+                if isinstance(rule, LoopRule)
+                else f"element selected by the object's Source ({source})",
+            ]
         rules = rule.rules
     return None
 
@@ -178,7 +189,8 @@ def complete(
     functions: dict[str, FunctionInfo] | None = None,
 ) -> Completion:
     """Suggestions for `text` (the cell's content) at offset `cursor` of the rule at `path`.
-    `column` is `target`, `source` or `expression`."""
+    `column` is `target`, `source`, `expression` or `code` (a rule's `code_override`:
+    the developer dialect, with `root`, `src`, `src1`... instead of anchors)."""
     inp, out = _Schemas(input_schema), _Schemas(output_schema)
     expanded = expand_paths(file)
     section = file.paths
@@ -195,6 +207,9 @@ def complete(
         return Completion(cursor, [])
     if column == "target":
         return _target(before, cursor, ctx, out)
+
+    if column == "code":
+        return _code(before, cursor, ctx, inp, real_root, functions)
 
     # a condition `$.list[...]` in a Source: the element is the one being tested
     items, labels = ctx.items, ctx.labels
@@ -334,3 +349,56 @@ def _target(before: str, cursor: int, ctx: _Context, out: _Schemas) -> Completio
         detail = _describe(out, sub)
         items.append(Item(name, name, "field", detail))
     return Completion(cursor - len(partial), _rank(items, partial))
+
+
+_CODE_RUN = re.compile(r"[\w.\[\]*]*$")
+
+
+def _code(
+    before: str,
+    cursor: int,
+    ctx: _Context,
+    inp: _Schemas,
+    root: Node,
+    functions: dict[str, FunctionInfo] | None,
+) -> Completion:
+    """The developer dialect of a `code_override`: `root` is the document, `src` the element of
+    the innermost loop (`src1` the one around it), `index` / `index1` their positions."""
+    token = _CODE_RUN.search(before).group(0)  # type: ignore[union-attr]
+    start = cursor - len(token)
+    names: dict[str, Node] = {"root": root}
+    for offset, node in enumerate(reversed(ctx.items)):
+        names["src" if offset == 0 else f"src{offset}"] = node
+    if "." in token:
+        head, _, tail = token.partition(".")
+        base = names.get(head)
+        if base is None:
+            return Completion(cursor, [])
+        cut = tail.rfind(".")
+        chain, partial = (tail[:cut], tail[cut + 1 :]) if cut >= 0 else ("", tail)
+        if "[" in partial:  # `items[0]` needs a `.` before a name
+            return Completion(cursor, [])
+        if chain:
+            reached, _missing = inp.resolve(base, "." + re.sub(r"\[[^\]]*\]", "[*]", chain))
+            base = reached if reached is not None else UNKNOWN
+        return Completion(cursor - len(partial), _fields(inp, base, partial, insert_plain=True))
+    if "[" in token:
+        return Completion(cursor, [])
+    # `names` runs from the innermost element out, after `root`
+    notes = list(reversed(ctx.notes))
+    found = [
+        Item(n, n, "label", "the document root" if n == "root" else notes[i - 1])
+        for i, n in enumerate(names)
+    ]
+    for offset, is_loop in enumerate(reversed(ctx.loops)):
+        if is_loop:  # an object that selects an element has no position
+            n = "index" if offset == 0 else f"index{offset}"
+            found.append(Item(n, n, "label", "position in the loop"))
+    registry = functions if functions is not None else builtin_functions()
+    found += [
+        Item(f.name, f.name + "(", "function", f.signature(), f.doc, f.origin)
+        for f in sorted(registry.values(), key=lambda f: f.name)
+    ]
+    found += [Item("Null", "Null", "keyword", "no value")]
+    found += [Item(k, k, "keyword") for k in _KEYWORDS]
+    return Completion(start, _rank(found, token))

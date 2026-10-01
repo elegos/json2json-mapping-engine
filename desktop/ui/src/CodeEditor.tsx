@@ -6,10 +6,23 @@ import {
   startCompletion,
 } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import { python } from "@codemirror/lang-python";
+import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { EditorState, Prec } from "@codemirror/state";
 import { EditorView, keymap, tooltips } from "@codemirror/view";
 import { type MutableRefObject, useEffect, useRef } from "react";
+import { tags } from "@lezer/highlight";
 import type { CompletionItem } from "./api";
+
+/** Python colours that read on a light and on a dark background. */
+const PYTHON_COLOURS = HighlightStyle.define([
+  { tag: [tags.keyword, tags.controlKeyword, tags.operatorKeyword], color: "#c678dd" },
+  { tag: [tags.string, tags.special(tags.string)], color: "#4f9d5e" },
+  { tag: [tags.number, tags.bool, tags.null], color: "#d19a66" },
+  { tag: tags.comment, color: "#8b949e", fontStyle: "italic" },
+  { tag: [tags.function(tags.variableName), tags.function(tags.propertyName)], color: "#4a90d9" },
+  { tag: tags.propertyName, color: "#2aa5a5" },
+]);
 
 /** Asks for the suggestions at a position of the text being edited. */
 export type Completer = (
@@ -36,6 +49,8 @@ interface Props {
   completer?: Completer;
   /** A single line commits on Enter; a multi-line editor does not. */
   singleLine?: boolean;
+  /** Python syntax colours (the developer dialect of a code override). */
+  highlightPython?: boolean;
   onChange: (value: string) => void;
   /** Enter (single line) with no menu open. */
   onCommit?: () => void;
@@ -58,6 +73,7 @@ export function CodeEditor({
   value,
   completer,
   singleLine = true,
+  highlightPython = false,
   onChange,
   onCommit,
   onCancel,
@@ -135,6 +151,7 @@ export function CodeEditor({
           if (u.docChanged) latest.current.onChange(u.state.doc.toString());
         }),
         EditorView.lineWrapping,
+        highlightPython ? [python(), syntaxHighlighting(PYTHON_COLOURS)] : [],
         EditorView.domEventHandlers({
           blur: (_event, editor) => {
             // a menu click keeps the focus; wait to see where it went

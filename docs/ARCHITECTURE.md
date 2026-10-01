@@ -1478,11 +1478,12 @@ field-level sentinel. This is the mechanism for conditional sub-objects and cove
     expression: "round(coalesce(@.price, $.defaults.price) * @.qty, 2)"
     status: auto                     # auto | manual
     code_override: null              # Python subset — set when status: manual
-    last_auto_version: null          # snapshot before first manual edit
+    last_auto_version: null          # auto code at the time of the first manual edit
   validation:
     validated: false                 # true once a developer has verified this rule
     needs_review: false              # true = explicitly flagged for re-review
     notes: null                      # free text: functional and/or programmatic validation details
+    functions: {}                    # function name -> hash, recorded when validated (see §Rule validation)
   version:
     source_modified: 2026-09-18T09:11:00
     transform_modified: 2026-09-18T09:11:00
@@ -1865,8 +1866,12 @@ Each rule's `transform` field is independently in one of two states:
 on every build. The developer does not touch the generated `.map` file directly.
 
 **`status: manual`** — `code_override` contains Python subset written by a developer.
-The transpiler emits `code_override` verbatim. `last_auto_version` stores the last
-expression the transpiler generated before the first manual edit, as a reference.
+The transpiler emits `code_override` verbatim. `last_auto_version` stores the *code* the
+transpiler generated (developer dialect, anchors resolved, normalised) when the developer took
+over; taking over starts `code_override` as that same text. The *proposal* is what the
+transpiler generates now from `source` and `expression` (the `proposal` op of `mapper serve`,
+`transpiler/review.py`). A manual rule whose proposal differs from `last_auto_version` is
+**out of date**: its functional side moved under the override.
 
 State transitions:
 
@@ -1881,8 +1886,9 @@ When a functional user modifies `source` or `expression` on a row that has
 1. Filter the grid to show only "functionally modified, manually overridden" rows.
 2. Open a split-pane view: current `code_override` on the left, transpiler's new
    auto-generated proposal on the right.
-3. Accept the auto proposal (→ `status: auto`, `code_override` cleared) or revise
-   `code_override` manually and keep `status: manual`.
+3. Accept the auto proposal (→ `status: auto`, `code_override` cleared, the rule flagged
+   `needs_review`) or keep the override (`last_auto_version` becomes the new proposal, so the
+   flag goes) and revise `code_override` if needed.
 
 No manual override is silently discarded. The developer must explicitly resolve
 each flagged row.
@@ -1915,6 +1921,13 @@ code may no longer match the new intent and requires re-review:
 
 Changes to `code_override` by a developer do **not** trigger decay — the developer
 owns that code and is responsible for its correctness.
+
+**Function changes** — validating a rule (the grid's Validated cell, `set_validated` of
+`mapper serve`) records in `validation.functions` a hash of every registered function its
+expression (or `code_override`) calls: signature, decorators and body, for built-ins and for
+`fn/*.fn` alike. When a hash differs later (the function was edited, or is gone), the grid
+marks the rule with a warning ("Function changed since validation"); validating again, or
+un-validating, replaces or clears the record. The comparison needs no VCS.
 
 **Import behaviour** — all rows produced by an import (Excel, LLM-assisted, or
 reverse import) start with `validated: false, needs_review: false`. If the

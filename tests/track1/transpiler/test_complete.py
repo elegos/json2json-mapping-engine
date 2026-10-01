@@ -9,7 +9,7 @@ from pathlib import Path
 from cli.serve import serve
 from transpiler.check import schemas_for
 from transpiler.complete import complete
-from transpiler.model import functional_to_dict, load_functional_file
+from transpiler.model import functional_to_dict, load_functional_file, parse_functional
 
 PROJECT = Path(__file__).parents[3] / "desktop" / "fixtures" / "orders-project"
 FILE = load_functional_file(PROJECT / "mappings/functional/orders.fn.yaml")
@@ -125,3 +125,80 @@ def test_serve_complete_op() -> None:
     answer = json.loads(out.getvalue())
     assert answer["ok"] and answer["from"] == 6
     assert [i["label"] for i in answer["items"]] == ["country"]
+
+
+def test_code_dialect_completes_root_src_and_functions() -> None:
+    file = parse_functional(
+        {
+            "id": "t",
+            "rules": [
+                {
+                    "kind": "loop",
+                    "id": "l",
+                    "source": "$.items[*]",
+                    "output": "$.Lines[*]",
+                    "rules": [
+                        {
+                            "kind": "field",
+                            "id": "s",
+                            "field": "Sku",
+                            "type": "str",
+                            "transform": {"expression": "@.sku"},
+                        }
+                    ],
+                }
+            ],
+        },
+        "t",
+    )
+    item = {"type": "object", "properties": {"sku": {"type": "string"}}}
+    schema = {
+        "type": "object",
+        "properties": {"name": {"type": "string"}, "items": {"type": "array", "items": item}},
+    }
+
+    def inserts(text: str) -> list[str]:
+        found = complete(file, "rules[0].rules[0]", "code", text, len(text), schema, None)
+        return [i.insert for i in found.items]
+
+    assert {"root", "src", "index", "concat(", "Null"} <= set(inserts(""))
+    assert inserts("sr")[0] == "src"
+    assert inserts("src.") == ["sku"]
+    assert inserts("root.") == ["name", "items"]
+    assert inserts("root.items[0].") == ["sku"]
+    assert inserts("nope.") == []
+    described = {
+        i.insert: i.detail
+        for i in complete(file, "rules[0].rules[0]", "code", "s", 1, schema, None).items
+    }
+    assert described["src"] == "element of the loop over $.items[*]"
+
+
+def test_code_dialect_describes_a_selecting_object() -> None:
+    file = parse_functional(
+        {
+            "id": "t",
+            "rules": [
+                {
+                    "kind": "object",
+                    "id": "o",
+                    "output": "$.Customer",
+                    "source": "$.parties[@.role == 'X']",
+                    "rules": [
+                        {
+                            "kind": "field",
+                            "id": "n",
+                            "field": "Name",
+                            "type": "str",
+                            "source": {"path": "@.name"},
+                        }
+                    ],
+                }
+            ],
+        },
+        "t",
+    )
+    found = complete(file, "rules[0].rules[0]", "code", "s", 1, None, None)
+    by = {i.insert: i.detail for i in found.items}
+    assert by["src"].startswith("element selected by the object's Source")
+    assert "index" not in by

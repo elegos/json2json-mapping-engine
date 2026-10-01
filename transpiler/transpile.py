@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import ast
 import re
+import textwrap
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
@@ -221,6 +222,8 @@ class _Builder:
         self.functions: list[ast.stmt] = []
         self.flow: list[ast.stmt] = []
         self._class_names: set[str] = set()
+        self.proposals: dict[str, str] = {}  # fq id -> auto code, of every field rule
+        self.proposal_errors: dict[str, str] = {}
 
     # -- helpers -----------------------------------------------------------
 
@@ -349,22 +352,38 @@ class _Builder:
                 )
         return resolve_anchors(path, scope, f"{where} source").text
 
+    def _auto_text(self, rule: FieldRule, scope: AnchorScope, frame: _Frame, where: str) -> str:
+        """What the transpiler generates from the rule's Source and expression, as developer
+        dialect text (anchors resolved), whatever the rule's status."""
+        t = rule.transform
+        value = self._value_text(rule, frame, scope, where)
+        expression = t.expression or "value"  # no expression: the Source's value as it is
+        if re.search(r"(?<![\w.])value\s*=(?!=)", expression):
+            raise FnYamlError(f"{where}: `value` is reserved (the rule's Source value)")
+        if value is None and uses_value(expression):
+            raise FnYamlError(f"{where}: the expression uses `value` but the rule has no Source")
+        return resolve_anchors(expression, scope, where, value).text
+
+    def _propose(
+        self, rule: FieldRule, fq: str, scope: AnchorScope, frame: _Frame, where: str
+    ) -> None:
+        """What the transpiler would generate now for a field rule, whatever its status
+        (`self.proposals`), normalised so that only a change in meaning shows."""
+        try:
+            text = self._auto_text(rule, scope, frame, where)
+            self.proposals[fq] = ast.unparse(ast.parse(textwrap.dedent(text).strip("\n")))
+        except (FnYamlError, SyntaxError) as exc:
+            self.proposal_errors[fq] = str(exc)
+
     def _field_block(self, rule: FieldRule, fq: str, scope: AnchorScope, frame: _Frame) -> Block:
         where = f"rule '{fq}'"
         t = rule.transform
+        self._propose(rule, fq, scope, frame, where)
         if t.status == "manual":
             assert t.code_override is not None
             text = t.code_override
         else:
-            value = self._value_text(rule, frame, scope, where)
-            expression = t.expression or "value"  # no expression: the Source's value as it is
-            if re.search(r"(?<![\w.])value\s*=(?!=)", expression):
-                raise FnYamlError(f"{where}: `value` is reserved (the rule's Source value)")
-            if value is None and uses_value(expression):
-                raise FnYamlError(
-                    f"{where}: the expression uses `value` but the rule has no Source"
-                )
-            text = resolve_anchors(expression, scope, where, value).text
+            text = self._auto_text(rule, scope, frame, where)
         block = parse_block(text, ident_of(fq), where)
         steps = self._post_steps(rule, where)
         if steps:
@@ -737,6 +756,20 @@ def build_stage(
     return _render(module) + "\n"
 
 
+def auto_proposals(
+    file: FunctionalFile,
+    options: TranspileOptions | None = None,
+    input_schema: SchemaTypes | None = None,
+) -> tuple[dict[str, str], dict[str, str]]:
+    """For every field rule, what the transpiler would generate from its Source and expression
+    now (it is what a manual rule's override replaces), keyed by fully-qualified rule id; and,
+    for the rules where that fails, the reason."""
+    assign_ids(file)
+    b = _Builder(lower_selectors(expand_paths(file)), options or TranspileOptions(), input_schema)
+    b.build()
+    return b.proposals, b.proposal_errors
+
+
 def fuse_stage(text: str, options: TranspileOptions) -> str:
     """Stage `fuse`: loop fusion over the `build` output (identity when
     `options.loop_fusion` is off)."""
@@ -809,6 +842,7 @@ def transpile_file(
 __all__ = [
     "Rule",
     "TranspileOptions",
+    "auto_proposals",
     "build_stage",
     "emit_stage",
     "fuse_stage",

@@ -129,3 +129,17 @@ button.primary:hover:not(:disabled) { background: #3468b3; }
 }
 
 .rule-filter { margin-left: 8px; min-width: 300px; padding: 3px 8px; font: inherit; color: inherit; background: color-mix(in srgb, CanvasText 6%, Canvas); border: 1px solid color-mix(in srgb, CanvasText 22%, transparent); border-radius: 4px; }
+.row-stale { box-shadow: inset 3px 0 0 #c0392b; }
+.state-filter { margin-left: 8px; padding: 3px 6px; font: inherit; color: inherit; background: color-mix(in srgb, CanvasText 6%, Canvas); border: 1px solid color-mix(in srgb, CanvasText 22%, transparent); border-radius: 4px; }
+.override-pane { border-top: 1px solid #8886; height: 240px; display: flex; flex-direction: column; }
+.override-pane header { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-bottom: 1px solid #8884; }
+.override-pane .grow { flex: 1; }
+.override-pane .stale { color: #c0392b; }
+.override-pane .panes { flex: 1; min-height: 0; display: flex; }
+.override-pane .pane { flex: 1; min-width: 0; padding: 4px 8px; overflow: auto; }
+.override-pane .pane + .pane { border-left: 1px solid #8884; }
+.override-pane h4 { margin: 0 0 4px; font-size: 12px; opacity: 0.7; font-weight: normal; }
+.override-pane pre { margin: 0; font: 13px ui-monospace, monospace; white-space: pre-wrap; }
+.code-editor.multi { height: 100%; font: 13px ui-monospace, monospace; }
+.code-editor.multi .cm-scroller { overflow: auto; }
+.code-editor.multi .cm-content { align-items: flex-start; }
