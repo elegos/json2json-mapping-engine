@@ -37,6 +37,8 @@ from compiler.backends.integration import (
 )
 from compiler.backends.plsql.naming import PlsqlNaming
 
+DEFAULT_IMAGE = "container-registry.oracle.com/database/adb-free"
+DEFAULT_TAG = "latest-23ai"
 _ORACLE_PORT = 1521  # plain SQL*Net listener; 1522 is the wallet/TLS one (spike-notes.md)
 _SERVICE = "myatp"
 _STARTUP_TIMEOUT_S = 600
@@ -111,9 +113,11 @@ def runtime_diagnostic() -> str:
 
 
 def _image_ref(test: Mapping[str, Any]) -> str:
-    image, tag = test.get("container_image"), test.get("container_tag")
-    if not image:
-        raise IntegrationError("[target.plsql.test] container_image is not set in mapper.toml")
+    """The image to start: what `[target.plsql.test]` says, else the backend's defaults (the tag
+    only follows the image when the image is not the default one too: a custom image without a
+    tag is run as it is)."""
+    image = test.get("container_image") or DEFAULT_IMAGE
+    tag = test.get("container_tag") or (DEFAULT_TAG if image == DEFAULT_IMAGE else None)
     return f"{image}:{tag}" if tag else image
 
 

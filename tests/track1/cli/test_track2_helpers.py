@@ -208,3 +208,20 @@ def test_check_parallel_wrapper_reports_sql_failure(tmp_path: Path):
     conn = _FakeConn(oracledb.DatabaseError(_Err()))
     msg = oracle.check_parallel_wrapper(conn, "P.map_m_fn", _case(tmp_path), {})
     assert "failed from SQL" in msg
+
+
+def test_the_container_defaults_come_from_the_backend():
+    assert oracle._image_ref({}) == f"{oracle.DEFAULT_IMAGE}:{oracle.DEFAULT_TAG}"
+    assert oracle._image_ref({"container_tag": "19c"}) == f"{oracle.DEFAULT_IMAGE}:19c"
+    assert oracle._image_ref({"container_image": "x/y", "container_tag": "1"}) == "x/y:1"
+    assert oracle._image_ref({"container_image": "x/y"}) == "x/y"  # a custom image, no tag assumed
+
+
+def test_the_form_shows_the_defaults_as_placeholders():
+    from compiler.backends.plsql.backend import PlsqlBackend
+
+    defaults = {o.key: o.default for o in PlsqlBackend.test_options}
+    assert defaults == {
+        "container_image": oracle.DEFAULT_IMAGE,
+        "container_tag": oracle.DEFAULT_TAG,
+    }

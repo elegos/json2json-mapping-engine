@@ -79,8 +79,13 @@ class PlsqlBackend(Backend):
 
     # `[target.plsql.test]`: the database the integration tests start (a container)
     test_options: ClassVar[tuple[Option, ...]] = (
-        Option("container_image", "string", "Database container image for `mapper test`"),
-        Option("container_tag", "string", "Image tag"),
+        Option(
+            "container_image",
+            "string",
+            "Database container image for `mapper test`",
+            default=integration.DEFAULT_IMAGE,
+        ),
+        Option("container_tag", "string", "Image tag", default=integration.DEFAULT_TAG),
     )
     has_integration: ClassVar[bool] = True
 
