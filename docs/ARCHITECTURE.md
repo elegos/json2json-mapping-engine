@@ -1554,6 +1554,8 @@ An `object` rule can pick it with a condition in its Source:
 - In the condition a bare name is a field of the candidate element, `=` is `==`, and `and` /
   `or` / `not`, comparisons, built-ins and `$.` paths work as in any expression. The loader
   writes it out in full (`@.discriminator == 'MY DISCRIMINATOR'`), as it does for Sources.
+- Because the object can be left out (like one with a guard), its output schema type must allow
+  null (`"type": ["object", "null"]`); `check` reports it, as the build would.
 - An object has a guard **or** a source, not both. A plain loop is still the way to map every
   matching element.
 - Lowering: `transpiler/selector.py` turns the object into a loop with that filter whose

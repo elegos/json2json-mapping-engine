@@ -122,6 +122,14 @@ class _Schemas:
             found |= {t} if isinstance(t, str) else set(t) if isinstance(t, list) else set()
         return found - {"null"}
 
+    def nullable(self, node: Schema) -> bool:
+        """Whether the schema lets the value be null."""
+        for v in self.variants(node):
+            t = v.get("type")
+            if t == "null" or (isinstance(t, list) and "null" in t):
+                return True
+        return False
+
     def prop(self, node: Node, name: str) -> Node:
         if not isinstance(node, dict):
             return node
@@ -501,6 +509,15 @@ class _Checker:
                 node = UNKNOWN
             elif is_loop:
                 node = self.out.items(node)
+            elif types and not self.out.nullable(node) and (rule.guard or rule.source):
+                # the build refuses a non-nullable output for a value that may be omitted
+                self.add(
+                    path,
+                    "type",
+                    f"'{name}' is left out when its "
+                    f"{'guard is false' if rule.guard else 'source selects no element'}, "
+                    'so the output schema must allow null (type ["object", "null"])',
+                )
         selector = (
             split_selector(rule.source) if isinstance(rule, ObjectRule) and rule.source else None
         )

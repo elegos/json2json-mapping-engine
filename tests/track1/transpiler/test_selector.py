@@ -139,7 +139,7 @@ SCHEMA_OUT = {
     "properties": {
         "A": {"type": "string"},
         "MyObject": {
-            "type": "object",
+            "type": ["object", "null"],
             "properties": {"Id": {"type": "string"}, "Name": {"type": "string"}},
             "required": ["Id", "Name"],
         },
@@ -173,3 +173,11 @@ def test_set_source_on_an_object() -> None:
     # inside it a bare Source is relative to the selected element
     inner = set_source(file, "rules[1].rules[1]", "name")
     assert inner.rules[1].rules[1].source_path == "@.name"  # type: ignore[union-attr]
+
+
+def test_an_object_that_may_be_left_out_needs_a_nullable_output() -> None:
+    assert [i for i in check_functional(tree(), SCHEMA_IN, SCHEMA_OUT) if i.column == "type"] == []
+    strict = {**SCHEMA_OUT, "properties": {**SCHEMA_OUT["properties"]}}
+    strict["properties"]["MyObject"] = dict(SCHEMA_OUT["properties"]["MyObject"], type="object")
+    errors = [i for i in check_functional(tree(), SCHEMA_IN, strict) if i.severity == "error"]
+    assert any(i.column == "type" and "allow null" in i.message for i in errors)
