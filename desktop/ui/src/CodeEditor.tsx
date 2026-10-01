@@ -8,11 +8,14 @@ import {
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { python } from "@codemirror/lang-python";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
-import { EditorState, Prec } from "@codemirror/state";
+import { Annotation, EditorState, Prec } from "@codemirror/state";
 import { EditorView, keymap, tooltips } from "@codemirror/view";
 import { type MutableRefObject, useEffect, useRef } from "react";
 import { tags } from "@lezer/highlight";
 import type { CompletionItem } from "./api";
+
+/** Marks a change that came from outside (undo / redo of the page): it is not an edit to report. */
+const External = Annotation.define<boolean>();
 
 /** Python colours that read on a light and on a dark background. */
 const PYTHON_COLOURS = HighlightStyle.define([
@@ -148,7 +151,9 @@ export function CodeEditor({
         keymap.of([...defaultKeymap, ...historyKeymap]),
         singleLine ? EditorState.transactionFilter.of((tr) => (tr.newDoc.lines > 1 ? [] : tr)) : [],
         EditorView.updateListener.of((u) => {
-          if (u.docChanged) latest.current.onChange(u.state.doc.toString());
+          if (u.docChanged && !u.transactions.some((t) => t.annotation(External))) {
+            latest.current.onChange(u.state.doc.toString());
+          }
         }),
         EditorView.lineWrapping,
         highlightPython ? [python(), syntaxHighlighting(PYTHON_COLOURS)] : [],
@@ -185,6 +190,17 @@ export function CodeEditor({
     // created once per mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // the text changed from outside (undo / redo): show it, without reporting it as an edit
+  useEffect(() => {
+    const editor = view.current;
+    if (!editor || editor.state.doc.toString() === value) return;
+    editor.dispatch({
+      changes: { from: 0, to: editor.state.doc.length, insert: value },
+      selection: { anchor: value.length },
+      annotations: External.of(true),
+    });
+  }, [value]);
 
   return <div ref={host} className={`code-editor ${className ?? ""}`} />;
 }
