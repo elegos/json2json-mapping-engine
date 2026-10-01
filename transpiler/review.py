@@ -129,15 +129,13 @@ def set_override(file: FunctionalFile, path: str, code: str) -> FunctionalFile:
 
 
 def accept_proposal(file: FunctionalFile, path: str) -> FunctionalFile:
-    """manual -> auto: the override is dropped. The generated code is not the one that was
-    validated, so the rule is flagged for review."""
+    """manual -> auto: the override is dropped. Which mode a rule is in is the developer's
+    choice and not a functional change: the validation is left as it is."""
     file = copy.deepcopy(file)
     rule = _field_at(file, path)
     if rule.transform.status != "manual":
         return file
     rule.transform.status = "auto"
-    rule.validation.validated = False
-    rule.validation.needs_review = True
     rule.transform.code_override = rule.transform.last_auto_version = None
     return file
 

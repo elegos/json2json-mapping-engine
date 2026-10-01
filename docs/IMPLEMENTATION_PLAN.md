@@ -509,7 +509,7 @@ Sliced; each slice is usable on its own:
         field): the auto code on the left (what the transpiler generates from Source and
         expression, `auto_proposals`), the `code_override` in a multi-line `CodeEditor` on the
         right. *Edit as code* starts the override as that code; *Use auto code* drops it (the
-        rule goes to needs_review); *Keep override* takes the new auto code as the baseline.
+        validation is left alone); *Keep override* takes the new auto code as the baseline.
       - **Override out of date**: `transform.last_auto_version` now holds the auto *code* at
         take-over; a manual rule whose current auto code differs is flagged (red edge, ⚠️
         tooltip), which also catches changes that are not in the expression itself.

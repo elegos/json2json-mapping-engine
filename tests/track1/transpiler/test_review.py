@@ -83,14 +83,14 @@ def test_keep_override_moves_the_baseline():
     assert file.rules[0].transform.code_override == "concat(root.name, '!')"
 
 
-def test_accept_proposal_returns_to_auto_and_flags_review():
+def test_accept_proposal_returns_to_auto_and_keeps_the_validation():
     file = take_over(make(), "rules[0]")
     file.rules[0].validation.validated = True
     file = accept_proposal(file, "rules[0]")
     r = file.rules[0]
     assert r.transform.status == "auto" and r.transform.code_override is None
     assert r.transform.last_auto_version is None
-    assert (r.validation.validated, r.validation.needs_review) == (False, True)
+    assert (r.validation.validated, r.validation.needs_review) == (True, False)
 
 
 def test_set_override_needs_manual_and_code():

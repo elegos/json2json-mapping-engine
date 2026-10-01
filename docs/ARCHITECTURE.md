@@ -1890,8 +1890,8 @@ When a functional user modifies `source` or `expression` on a row that has
 1. Filter the grid to show only "functionally modified, manually overridden" rows.
 2. Open a split-pane view: current `code_override` on the left, transpiler's new
    auto-generated proposal on the right.
-3. Accept the auto proposal (→ `status: auto`, `code_override` cleared, the rule flagged
-   `needs_review`) or keep the override (`last_auto_version` becomes the new proposal, so the
+3. Accept the auto proposal (→ `status: auto`, `code_override` cleared; the validation is left as it is: the mode is
+   the developer's choice, not a functional change) or keep the override (`last_auto_version` becomes the new proposal, so the
    flag goes) and revise `code_override` if needed.
 
 No manual override is silently discarded. The developer must explicitly resolve
