@@ -110,7 +110,9 @@ def test_duplicate_names_in_a_container() -> None:
 
 def test_without_schemas_only_the_form_is_checked() -> None:
     tree = load_functional_file(FN)
-    tree.rules[0].field = "Nope"
+    first = tree.rules[0]
+    assert isinstance(first, FieldRule)
+    first.field = "Nope"
     assert check_functional(tree, None, None) == []
 
 

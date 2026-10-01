@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from transpiler.model import FnYamlError, parse_functional
+from transpiler.model import FieldRule, FnYamlError, parse_functional
 from transpiler.review import (
     accept_proposal,
     keep_override,
@@ -47,26 +47,36 @@ RAW = {
 }
 
 
+def fr(file, *path: int) -> FieldRule:
+    """The field rule at `path` (indexes down the tree), for the type checker."""
+    rules = file.rules
+    for i in path[:-1]:
+        rules = rules[i].rules
+    rule = rules[path[-1]]
+    assert isinstance(rule, FieldRule)
+    return rule
+
+
 def make():
     return parse_functional(copy.deepcopy(RAW), "t")
 
 
 def test_take_over_copies_the_auto_code_and_remembers_it():
     out = take_over(make(), "rules[0]")
-    t = out.rules[0].transform
+    t = fr(out, 0).transform
     assert t.status == "manual"
     assert t.code_override == t.last_auto_version == "concat(root.name, '!')"
 
 
 def test_take_over_a_nested_rule():
     out = take_over(make(), "rules[1].rules[0]")
-    assert out.rules[1].rules[0].transform.code_override == "src.sku"
+    assert fr(out, 1, 0).transform.code_override == "src.sku"
 
 
 def test_stale_override_after_the_expression_changes():
     file = take_over(make(), "rules[0]")
     assert review(file) == []
-    file.rules[0].transform.expression = "coalesce(value, '?')"
+    fr(file, 0).transform.expression = "coalesce(value, '?')"
     [item] = review(file)
     assert (item.path, item.stale_override) == ("rules[0]", True)
     view = proposal_view(file, "rules[0]")
@@ -77,17 +87,17 @@ def test_stale_override_after_the_expression_changes():
 
 def test_keep_override_moves_the_baseline():
     file = take_over(make(), "rules[0]")
-    file.rules[0].transform.expression = "coalesce(value, '?')"
+    fr(file, 0).transform.expression = "coalesce(value, '?')"
     file = keep_override(file, "rules[0]")
     assert review(file) == []
-    assert file.rules[0].transform.code_override == "concat(root.name, '!')"
+    assert fr(file, 0).transform.code_override == "concat(root.name, '!')"
 
 
 def test_accept_proposal_returns_to_auto_and_keeps_the_validation():
     file = take_over(make(), "rules[0]")
-    file.rules[0].validation.validated = True
+    fr(file, 0).validation.validated = True
     file = accept_proposal(file, "rules[0]")
-    r = file.rules[0]
+    r = fr(file, 0)
     assert r.transform.status == "auto" and r.transform.code_override is None
     assert r.transform.last_auto_version is None
     assert (r.validation.validated, r.validation.needs_review) == (True, False)
@@ -127,15 +137,15 @@ def test_demote_invalid_sends_a_validated_rule_with_errors_back_to_review():
     from transpiler.review import demote_invalid
 
     file = make()
-    file.rules[0].validation.validated = True
+    fr(file, 0).validation.validated = True
     out, demoted = demote_invalid(file, {"rules[0]"})
     assert demoted == ["a"]
-    assert (out.rules[0].validation.validated, out.rules[0].validation.needs_review) == (
+    assert (fr(out, 0).validation.validated, fr(out, 0).validation.needs_review) == (
         False,
         True,
     )
     same, none = demote_invalid(file, {"rules[1]"})
-    assert none == [] and same.rules[0].validation.validated
+    assert none == [] and fr(same, 0).validation.validated
 
 
 def test_fn_write_demotes_a_validated_rule_that_does_not_check(tmp_path: Path, monkeypatch):
@@ -149,15 +159,15 @@ def test_fn_write_demotes_a_validated_rule_that_does_not_check(tmp_path: Path, m
     (tmp_path / "mappings").mkdir()
     target = tmp_path / "mappings" / "t.fn.yaml"
     file = make()
-    file.rules[0].transform.expression = "split_first(value)"  # one argument too few
-    file.rules[0].validation.validated = True
+    fr(file, 0).transform.expression = "split_first(value)"  # one argument too few
+    fr(file, 0).validation.validated = True
     monkeypatch.chdir(tmp_path)
     result = CliRunner().invoke(
         app, ["fn", "write", str(target)], input=json.dumps({"file": functional_to_dict(file)})
     )
     assert json.loads(result.stdout)["decayed"] == ["a"]
     saved = parse_functional(__import__("yaml").safe_load(target.read_text()), "t")
-    assert (saved.rules[0].validation.validated, saved.rules[0].validation.needs_review) == (
+    assert (fr(saved, 0).validation.validated, fr(saved, 0).validation.needs_review) == (
         False,
         True,
     )
@@ -187,21 +197,21 @@ def test_a_validation_set_in_the_same_edit_is_not_decayed_or_demoted(tmp_path: P
 
     # the expression is edited *and* the rule validated in one go: the tick stands
     file = make()
-    file.rules[0].transform.expression = "concat(value, '?')"
-    file.rules[0].validation.validated = True
+    fr(file, 0).transform.expression = "concat(value, '?')"
+    fr(file, 0).validation.validated = True
     decayed, saved = save(file)
-    assert decayed == [] and saved.rules[0].validation.validated
+    assert decayed == [] and fr(saved, 0).validation.validated
 
     # edited again, validation untouched: it decays
     file = parse_functional(__import__("yaml").safe_load(target.read_text()), "t")
-    file.rules[0].transform.expression = "concat(value, '!')"
+    fr(file, 0).transform.expression = "concat(value, '!')"
     decayed, saved = save(file)
-    assert decayed == ["a"] and saved.rules[0].validation.needs_review
+    assert decayed == ["a"] and fr(saved, 0).validation.needs_review
 
     # validated on purpose, but it has an error: the choice stands too, the check shows it
     file = parse_functional(__import__("yaml").safe_load(target.read_text()), "t")
-    file.rules[0].transform.expression = "split_first(value)"
-    file.rules[0].validation.validated = True
-    file.rules[0].validation.needs_review = False
+    fr(file, 0).transform.expression = "split_first(value)"
+    fr(file, 0).validation.validated = True
+    fr(file, 0).validation.needs_review = False
     decayed, saved = save(file)
-    assert decayed == [] and saved.rules[0].validation.validated
+    assert decayed == [] and fr(saved, 0).validation.validated
