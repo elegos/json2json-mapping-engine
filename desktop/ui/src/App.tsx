@@ -115,6 +115,7 @@ export function App() {
   const treeRef = useRef<FunctionalFile | null>(null);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [filterText, setFilterText] = useState("");
+  const filterInput = useRef<HTMLInputElement>(null);
   const [view, setView] = useState<"rules" | "lookups" | "paths" | "project">("rules");
   // mapper.toml: the form's descriptors, the file's values, the draft being edited
   const [configSchema, setConfigSchema] = useState<ConfigSchema | null>(null);
@@ -332,6 +333,26 @@ export function App() {
     },
     [project],
   );
+
+  // typing outside an editor goes to the filter: its text is what the user means to enter
+  const rulesShown = tree !== null && view === "rules";
+  useEffect(() => {
+    if (!rulesShown) return;
+    const onType = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.altKey || e.metaKey || e.isComposing || e.key.length !== 1) return;
+      const input = filterInput.current;
+      if (!input || question || document.activeElement === input) return;
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select, [contenteditable='true'], .cm-editor")) return;
+      if (e.key === " " && !filterText.trim()) return; // Space on a cell is the cell's
+      // before the grid sees it (it would start editing the cell); the character then lands in
+      // the field that has just been focused
+      e.stopPropagation();
+      input.focus();
+    };
+    window.addEventListener("keydown", onType, true);
+    return () => window.removeEventListener("keydown", onType, true);
+  }, [rulesShown, question, filterText]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -886,6 +907,7 @@ export function App() {
               <button onClick={() => void addRule("loop")}>+ Loop</button>
               <button onClick={() => void deleteRule()}>Delete</button>
               <input
+                ref={filterInput}
                 className="rule-filter"
                 type="search"
                 placeholder="Filter by rule id or target"
