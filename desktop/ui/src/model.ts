@@ -116,25 +116,52 @@ export function flatten(
 }
 
 /**
- * The rows whose rule id or Target contains `text` (case-insensitive), with the containers
- * they sit in (to keep the tree readable) and, for a matching container, its rules.
+ * The rows that match `text` (case-insensitive), with the containers they sit in (to keep the
+ * tree readable) and, for a matching container, all the rules inside it.
+ *
+ * `text` is a rule id or part of a Target (`name`), or a dotted path of Targets from the
+ * outside in (`customer.name`, `lines.sku`): each part must be contained in the name (or id) of
+ * a rule on the way down, in that order, and the last one in the rule itself. Parts need not be
+ * adjacent (`channel.name` also finds `Channel.Customer.Name`). An empty last part
+ * (`customer.`) matches everything inside `customer`.
  */
 export function filterRows(rows: Row[], text: string): Row[] {
   const needle = text.trim().toLowerCase();
   if (!needle) return rows;
-  const matches = (row: Row) =>
-    (row.rule.id ?? "").toLowerCase().includes(needle) ||
-    nameOf(row.rule).toLowerCase().includes(needle);
+  const parts = needle.split(".").map((p) => p.trim());
+  const byPath = new Map(rows.map((row) => [row.path, row]));
+  const labels = (row: Row) => [
+    (row.rule.id ?? "").toLowerCase(),
+    nameOf(row.rule).toLowerCase().replace(/\[\*\]$/, ""),
+  ];
+  const fits = (row: Row, part: string) => labels(row).some((label) => label.includes(part));
+  /** The containers a row is in, outermost first: `rules[2].rules[0]` is inside `rules[2]`. */
+  const ancestors = (row: Row): Row[] => {
+    const found: Row[] = [];
+    let parent = row.path;
+    while (parent.includes(".rules[")) {
+      parent = parent.slice(0, parent.lastIndexOf(".rules["));
+      const outer = byPath.get(parent);
+      if (outer) found.unshift(outer);
+    }
+    return found;
+  };
+  const matches = (row: Row): boolean => {
+    const last = parts[parts.length - 1];
+    if (last !== "" && !fits(row, last)) return false;
+    if (last === "" && parts.length === 1) return false;
+    let need = parts.length - 2; // the parts before the last, matched against the containers
+    const outer = ancestors(row);
+    for (let i = outer.length - 1; i >= 0 && need >= 0; i--) {
+      if (parts[need] === "" || fits(outer[i], parts[need])) need--;
+    }
+    return need < 0;
+  };
   const keep = new Set<string>();
   for (const row of rows) {
     if (!matches(row)) continue;
     keep.add(row.path);
-    // the containers it is in: `rules[2].rules[0]` is inside `rules[2]`
-    let parent = row.path;
-    while (parent.includes(".rules[")) {
-      parent = parent.slice(0, parent.lastIndexOf(".rules["));
-      keep.add(parent);
-    }
+    for (const outer of ancestors(row)) keep.add(outer.path);
     // and what a matching container holds
     for (const other of rows) if (other.path.startsWith(`${row.path}.rules[`)) keep.add(other.path);
   }

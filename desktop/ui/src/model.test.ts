@@ -298,3 +298,41 @@ describe("filterRows", () => {
     expect(filterRows(rows, "zzz")).toEqual([]);
   });
 });
+
+describe("filterRows with a dotted path", () => {
+  const tree: Rule[] = [
+    field("n", "Note", "$.n"),
+    {
+      kind: "object", id: "ch", description: null, output: "$.Channel", guard: null, source: null,
+      rules: [
+        {
+          kind: "object", id: "cu", description: null, output: "@.Customer", guard: null, source: null,
+          rules: [field("na", "Name", "@.n"), field("co", "Code", "@.c")],
+        },
+        field("nm", "Name", "@.m"),
+      ],
+    },
+    {
+      kind: "loop", id: "ln", description: null, source: "$.items[*]", output: "$.Lines[*]", label: null, filter: null,
+      rules: [field("sk", "Sku", "@.s"), field("nn", "Name", "@.n2")],
+    },
+  ];
+  const rows = flatten(tree);
+  const found = (text: string) => filterRows(rows, text).map((r) => nameOf(r.rule));
+
+  it("matches the last part against the rule and the earlier ones against its containers", () => {
+    expect(found("customer.name")).toEqual(["Channel", "Customer", "Name"]);
+    expect(found("channel.customer.name")).toEqual(["Channel", "Customer", "Name"]);
+    expect(found("lines.name")).toEqual(["Lines[*]", "Name"]);
+  });
+  it("lets the parts skip containers", () => {
+    expect(found("channel.name")).toEqual(["Channel", "Customer", "Name", "Name"]);
+  });
+  it("shows everything inside a container when the last part is empty", () => {
+    expect(found("customer.")).toEqual(["Channel", "Customer", "Name", "Code"]);
+  });
+  it("still shows the rules of a container that matches alone", () => {
+    expect(found("lines")).toEqual(["Lines[*]", "Sku", "Name"]);
+    expect(found("channel.zzz")).toEqual([]);
+  });
+});

@@ -128,4 +128,4 @@ button.primary:hover:not(:disabled) { background: #3468b3; }
   .ag-cell.ag-cell-inline-editing { background: Canvas !important; }
 }
 
-.rule-filter { margin-left: 8px; min-width: 220px; padding: 3px 8px; font: inherit; color: inherit; background: color-mix(in srgb, CanvasText 6%, Canvas); border: 1px solid color-mix(in srgb, CanvasText 22%, transparent); border-radius: 4px; }
+.rule-filter { margin-left: 8px; min-width: 300px; padding: 3px 8px; font: inherit; color: inherit; background: color-mix(in srgb, CanvasText 6%, Canvas); border: 1px solid color-mix(in srgb, CanvasText 22%, transparent); border-radius: 4px; }

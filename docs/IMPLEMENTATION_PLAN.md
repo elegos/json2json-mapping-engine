@@ -478,7 +478,9 @@ Sliced; each slice is usable on its own:
 - [x] **Row filter, no sorting.** The grid cannot be sorted (the order of the rules is the
       mapping's); a field after the toolbar filters the rows by rule id or Target (substring,
       any case), keeping the containers a match is in and the rules of a matching container, and
-      ignoring folding while it is in use. Esc clears it. Typing anywhere outside an editor or
+      ignoring folding while it is in use. A dotted text (`customer.name`, `channel.customer.name`)
+      is a path of Targets from the outside in (parts may skip containers; `customer.` = everything
+      inside). Esc clears it. Typing anywhere outside an editor or
       another field (no Ctrl / Alt / Meta) goes to the filter, so a cell no longer starts editing
       on a key press: it opens with a click or Enter / F2.
 - [x] **Unsaved changes and undo/redo.** Cells that differ from the saved file are bold (rules
