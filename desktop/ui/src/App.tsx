@@ -20,6 +20,10 @@ import { ProjectButton } from "./ProjectButton";
 import { Wizard } from "./Wizard";
 import { Guide } from "./Guide";
 import { HelpMenu } from "./HelpMenu";
+import { Tour } from "./Tour";
+import { TOURS } from "./tourSteps";
+import type { TourState } from "./tour";
+import type { Book } from "./guideModel";
 import { FunctionExplorer } from "./FunctionExplorer";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -48,6 +52,8 @@ import {
   schemasStatus,
   type SchemasStatus,
   initialProject,
+  tourProjectCleanup,
+  tourProjectPrepare,
   listFnFiles,
   type CommandReport,
   type PythonStatus,
@@ -166,6 +172,10 @@ export function App() {
   const [wizard, setWizard] = useState(false);
   const [guide, setGuide] = useState<string | null>(null);
   const [explorer, setExplorer] = useState(false);
+  const [tourRun, setTourRun] = useState<{ book: Book; index: number } | null>(null);
+  /** The temporary copy of the tutorial project while a tour runs. */
+  const [tourCopy, setTourCopy] = useState<string | null>(null);
+  const beforeTour = useRef<{ project: string | null; developerMode: boolean; showIds: boolean } | null>(null);
   const [wizardStartup, setWizardStartup] = useState(wizardAtStartup);
   const grid = useRef<AgGridReact<Row>>(null);
   const [question, setQuestion] = useState<{
@@ -320,7 +330,7 @@ export function App() {
     [project, forgetHistory],
   );
 
-  const openDir = useCallback(async (dir: string) => {
+  const openDir = useCallback(async (dir: string, remember = true) => {
     try {
       const found = await listFnFiles(dir);
       setProject(dir);
@@ -329,15 +339,18 @@ export function App() {
       setConfigSchema(null);
       setView("rules");
       setCollapsed(new Set());
-      setRecent((old) => {
-        const next = pushRecent(old, dir);
-        try {
-          localStorage.setItem("recentProjects", JSON.stringify(next));
-        } catch {
-          /* not persisted */
-        }
-        return next;
-      });
+      // the tutorial project is a throwaway copy: it never joins the recent projects
+      if (remember) {
+        setRecent((old) => {
+          const next = pushRecent(old, dir);
+          try {
+            localStorage.setItem("recentProjects", JSON.stringify(next));
+          } catch {
+            /* not persisted */
+          }
+          return next;
+        });
+      }
       setFiles(found);
       setCurrent(null);
       setTree(null);
@@ -718,6 +731,121 @@ export function App() {
       clearTimeout(timer);
     };
   }, [config]);
+
+  /** Puts the interface in the state a tour step needs, and waits for it to be drawn. */
+  const applyTour = useCallback(
+    async (state: TourState | undefined) => {
+      if (!state) return;
+      const frames = async (n = 3) => {
+        for (let i = 0; i < n; i++) await new Promise((r) => requestAnimationFrame(r));
+      };
+      if (state.developerMode !== undefined) setDeveloperMode(state.developerMode);
+      if (state.showIds !== undefined) setShowIds(state.showIds);
+      if (state.explorer !== undefined) setExplorer(state.explorer);
+      if (state.view === "project") await openProperties();
+      else if (state.view) setView(state.view);
+      setCollapsed(new Set());
+      await frames();
+      if (state.select !== undefined) {
+        const api = grid.current?.api;
+        const row = state.select
+          ? flatten(treeRef.current?.rules ?? []).find((r) => r.rule.id === state.select)
+          : undefined;
+        if (!row || !api) {
+          api?.deselectAll();
+          setSelectedPath(null);
+        } else {
+          api.forEachNode((node) => {
+            if (node.data?.path === row.path) {
+              node.setSelected(true);
+              api.ensureNodeVisible(node, "middle");
+            }
+          });
+          setSelectedPath(row.path);
+        }
+        await frames();
+      }
+    },
+    [openProperties, setDeveloperMode, setShowIds],
+  );
+  const applyTourRef = useRef(applyTour);
+  applyTourRef.current = applyTour;
+
+  const startTour = useCallback(
+    async (book: Book) => {
+      if (tourRun || !(await switchGuard())) return;
+      setGuide(null);
+      setWizard(false);
+      try {
+        const copy = await tourProjectPrepare();
+        beforeTour.current = { project, developerMode, showIds };
+        setTourCopy(copy);
+        await openDir(copy, false);
+        setTourRun({ book, index: 0 });
+      } catch (e) {
+        setStatus(String(e instanceof Error ? e.message : e));
+      }
+    },
+    [tourRun, switchGuard, project, developerMode, showIds, openDir],
+  );
+
+  const endTour = useCallback(async () => {
+    const before = beforeTour.current;
+    const copy = tourCopy;
+    setTourRun(null);
+    setExplorer(false);
+    if (before) {
+      setDeveloperMode(before.developerMode);
+      setShowIds(before.showIds);
+    }
+    if (before?.project) {
+      await openDir(before.project);
+    } else {
+      setProject(null);
+      setFiles([]);
+      setCurrent(null);
+      setTree(null);
+      setReport(null);
+      setStatus("");
+      setView("rules");
+    }
+    setTourCopy(null);
+    beforeTour.current = null;
+    if (copy) await tourProjectCleanup(copy).catch(() => {});
+  }, [tourCopy, openDir, setDeveloperMode, setShowIds]);
+
+  // the first time a project is open, and the first time Developer mode is on, a tour is offered
+  const offered = useRef(false);
+  useEffect(() => {
+    if (!project || tourCopy || tourRun || wizard || offered.current) return;
+    const key = developerMode ? "tourOffered.developer" : "tourOffered.functional";
+    let seen = true;
+    try {
+      seen = localStorage.getItem(key) === "1";
+    } catch {
+      /* not remembered: do not nag */
+    }
+    if (seen) return;
+    offered.current = true;
+    try {
+      localStorage.setItem(key, "1");
+    } catch {
+      /* not persisted */
+    }
+    void (async () => {
+      const choice = await ask(
+        developerMode
+          ? "Take a quick tour of the developer features? It runs on a sample project and keeps nothing."
+          : "Take a quick tour of the tool? It runs on a sample project and keeps nothing; the ? button offers it again.",
+        [
+          { id: "tour", label: "Take the tour", primary: true },
+          { id: "no", label: "Not now" },
+        ],
+      );
+      offered.current = false;
+      if (choice === "tour") void startTour(developerMode ? "developer" : "functional");
+    })();
+  }, [project, developerMode, tourCopy, tourRun, wizard, ask, startTour]);
 
   const selectedRow = () => grid.current?.api?.getSelectedRows()[0];
 
@@ -1231,13 +1359,22 @@ export function App() {
         <button disabled={!dirty || busy} onClick={() => void save()}>
           Save{dirty ? " ●" : ""}
         </button>
-        {COMMANDS.map((c) => (
-          <button key={c} disabled={!canBuild} onClick={() => run(c)}>
-            {c[0].toUpperCase() + c.slice(1)}
-          </button>
-        ))}
-        <HelpMenu onGuide={() => setGuide("functional")} onExplorer={() => setExplorer((on) => !on)} />
+        <span className="commands" data-tour="commands">
+          {COMMANDS.map((c) => (
+            <button key={c} disabled={!canBuild} onClick={() => run(c)}>
+              {c[0].toUpperCase() + c.slice(1)}
+            </button>
+          ))}
+        </span>
+        <HelpMenu
+          onGuide={() => setGuide("functional")}
+          onExplorer={() => setExplorer((on) => !on)}
+          onTour={(book) => void startTour(book)}
+        />
       </header>
+      {tourCopy && (
+        <div className="banner">Tutorial project: read-only, nothing here is kept.</div>
+      )}
       {python && !python.available && (
         <div className="banner">
           Read-only: {python.reason} Build, check and save are disabled.
@@ -1497,6 +1634,15 @@ export function App() {
           onClose={() => setWizard(false)}
         />
       )}
+      {tourRun && (
+        <Tour
+          tour={TOURS[tourRun.book]}
+          index={tourRun.index}
+          onIndex={(index) => setTourRun({ ...tourRun, index })}
+          onClose={() => void endTour()}
+          apply={(state) => applyTourRef.current(state)}
+        />
+      )}
       {guide !== null && <Guide
           start={guide}
           onClose={() => setGuide(null)}
@@ -1504,6 +1650,7 @@ export function App() {
             setGuide(null);
             setExplorer(true);
           }}
+          onTour={(book) => void startTour(book)}
         />}
       {question && (
         <Confirm

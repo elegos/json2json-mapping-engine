@@ -1,12 +1,14 @@
+import type { Book } from "./guideModel";
 import { useEffect, useRef, useState } from "react";
 
 interface Props {
   onGuide: () => void;
   onExplorer: () => void;
+  onTour: (book: Book) => void;
 }
 
 /** The "?" at the right of the toolbar: the guide and, later, the quick tutorials. */
-export function HelpMenu({ onGuide, onExplorer }: Props) {
+export function HelpMenu({ onGuide, onExplorer, onTour }: Props) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -19,7 +21,7 @@ export function HelpMenu({ onGuide, onExplorer }: Props) {
   }, [open]);
   return (
     <div className="split" ref={box}>
-      <button aria-label="Help" aria-expanded={open} title="Help" onClick={() => setOpen(!open)}>
+      <button data-tour="help" aria-label="Help" aria-expanded={open} title="Help" onClick={() => setOpen(!open)}>
         ?
       </button>
       {open && (
@@ -39,6 +41,22 @@ export function HelpMenu({ onGuide, onExplorer }: Props) {
             }}
           >
             Function explorer
+          </li>
+          <li
+            onClick={() => {
+              setOpen(false);
+              onTour("functional");
+            }}
+          >
+            Quick tour
+          </li>
+          <li
+            onClick={() => {
+              setOpen(false);
+              onTour("developer");
+            }}
+          >
+            Developer tour
           </li>
         </ul>
       )}

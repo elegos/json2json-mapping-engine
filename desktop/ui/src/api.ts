@@ -36,6 +36,12 @@ export async function chooseProject(
   return typeof dir === "string" ? dir : null;
 }
 
+/** A fresh copy of the tutorial project in a temporary folder (the tour runs on it). */
+export const tourProjectPrepare = () => invoke<string>("tour_project_prepare");
+
+/** Deletes a copy made by `tourProjectPrepare`. */
+export const tourProjectCleanup = (path: string) => invoke<void>("tour_project_cleanup", { path });
+
 export const listFnFiles = (project: string) => invoke<string[]>("list_fn_files", { project });
 
 export async function readFn(project: string, file: string): Promise<FunctionalFile> {
