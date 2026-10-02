@@ -542,14 +542,35 @@ Sliced; each slice is usable on its own:
         (the pane shows the reason).
 - [ ] **M6.3 — VCS.** Gitoxide save-as-commit, pull --rebase, semantic rule-level merge.
 - [ ] **M6.4 — LLM assist.** Validation suggestions, expression builder (Ollama / API).
-- [ ] **M6.5 — Schemas per mapping.** Choose, for each mapping of the project, its input and its
-      output JSON Schema (today they are found only by the name convention
-      `schemas/input|output/<stem>.json`, `schemas_for`). Changing a schema halfway through
-      forces the Targets and Sources to be validated again: the check re-runs on the whole mapping
-      and the grid flags what no longer fits (ARCHITECTURE.md, §Schema change management: no silent
-      drift). Open points: where the choice is kept (the `.fn.yaml` header or `mapper.toml`), a
-      picker in the UI with the schemas of the project (or a file from outside, copied in),
-      and what "rule validated" becomes for rules the new schema invalidates.
+- [ ] **M6.5 — Schemas per mapping.** Each mapping owns its input and output JSON Schema, chosen
+      in the tool; changing one forces the Targets and Sources to be validated again (the check
+      re-runs on the whole mapping and the grid flags what no longer fits: ARCHITECTURE.md,
+      §Schema change management, no silent drift).
+      - **Layout (decided).** `mappings/functional/<name>.fn.yaml`, and in `schemas/`, flat,
+        `<name>_input.schema.json` and `<name>_output.schema.json`. It replaces
+        `schemas/input|output/<name>.json` everywhere (repo, `desktop/fixtures`, schema generator,
+        build, `schemas_for`, tests, ARCHITECTURE.md): one layout, no fallback.
+      - **Loading.** The tool takes a JSON Schema from anywhere, copies it into `schemas/` under
+        the name above, and the mapping reads that copy. Replacing a schema is the same gesture.
+      - **Override.** A header key of the `.fn.yaml` (`schemas: {input: …, output: …}`) points to
+        a schema elsewhere; it wins over the convention. The tool never runs anything by itself
+        from it: it is for a project that manages its schemas differently (a larger repository).
+      - **Scaffolding from the output schema.** After loading an output schema the tool offers to
+        create the rules of all its possible objects in the mapping, with Source and Expression
+        empty. An existing mapping keeps its rules: only the missing ones are added, none is
+        changed or deleted (rules the schema no longer knows are reported by the check, as today).
+      - **Empty rules.** A rule with no Source and no Expression is drawn with a background of its
+        own (light theme: from white to a light grey; dark: a grey different from the base) and
+        a warning like "ignored until a Source is defined". The transpiler skips it: the output
+        has nothing for that field. For a `required` field of the output schema it is an error,
+        and the build stops; otherwise a warning only.
+      - **Schema status in the toolbar.** Inside a mapping it must be clear at once that the
+        input and output schemas are loaded: two status buttons, *Input schema* and *Output
+        schema*, each with a light, green when the schema is found and readable, red when it is
+        missing or does not parse (the tooltip gives the path, or the reason). Clicking one opens
+        the picker to load it, or to load another in its place.
+      - Still open: what "rule validated" becomes for rules the new schema invalidates; the
+        picker (the project's schemas, or a file from outside).
 - [ ] **M6.6 — Create and delete mappings.** Every session so far has used the `orders` fixture:
       the tool cannot make a new `.fn.yaml` (name, id, and the schemas of M6.5; an empty file
       that loads) nor delete one (with a confirmation; what depends on it: `build/`, `generated/`,
