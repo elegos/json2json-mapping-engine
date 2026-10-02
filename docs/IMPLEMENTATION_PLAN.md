@@ -717,6 +717,20 @@ Sliced; each slice is usable on its own:
       which open this editor. Until it exists the explorer shows the functions and says where
       the file is.
 
+- [ ] **M6.10 — Project-wide lookups.** A lookup table (a country → currency coding, say) that
+      does not change and is useful to several mappings: it can be flagged *Project wide*, lives
+      in the project instead of in one mapping, and any mapping of the project reads it as
+      `@label`, as it does a local lookup today. The Lookups view lists both kinds (project-wide
+      ones marked, with the mappings that use them), and a project-wide one is edited once.
+      - Still open: where it is stored (one file per table in the project, e.g.
+        `lookups/<label>.lookup.yaml`, or a single file); the label namespace (the anchor
+        namespace of a mapping is already shared by loops and lookups: a project-wide label
+        must not clash with a local one, and the check must say so); flagging an existing local
+        lookup (it moves to the project, after a confirmation; clearing the flag copies it back
+        into the mapping); how the build uses it (embedded as a constant in each mapping's
+        package, as today, or a shared package); what a change does to the rules that use it in
+        other mappings (validation decay, or a review flag); deleting one that mappings use.
+
 - [ ] **M6.8 — Golden data in the tool.** Manage the cases of `tests/golden/<mapping>/` from the
       UI, so that a functional user can check on their own machine that, given an input, the
       output is the one expected: list a mapping's cases; create, rename, delete; edit the input
