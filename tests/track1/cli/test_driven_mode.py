@@ -146,3 +146,21 @@ def test_a_schemas_section_points_the_mapping_at_a_schema_elsewhere(project: Pat
         json.dumps({"title": "O", "type": "object", "properties": {"id": {"type": "integer"}}})
     )
     assert "compiled: " in runner.invoke(app, ["build"]).output
+
+
+def test_build_stops_on_an_unfinished_rule_the_output_schema_requires(project: Path):
+    fn = project / "mappings/functional/order_summary.fn.yaml"
+    fn.write_text(fn.read_text() + "  - {kind: field, id: note, field: Note, type: str}\n")
+    (project / "schemas").mkdir(exist_ok=True)
+    out = {
+        "type": "object",
+        "properties": {"OrderId": {"type": "string"}, "Note": {"type": "string"}},
+    }
+    (project / "schemas/order_summary_output.schema.json").write_text(json.dumps(out))
+    assert runner.invoke(app, ["build"]).exit_code == 0  # optional: only a warning
+    out["required"] = ["Note"]
+    (project / "schemas/order_summary_output.schema.json").write_text(json.dumps(out))
+    result = runner.invoke(app, ["build"])
+    assert result.exit_code == 1
+    assert "not defined yet" in result.output
+    assert "required by the output schema" in result.output

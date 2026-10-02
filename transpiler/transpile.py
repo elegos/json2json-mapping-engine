@@ -38,7 +38,7 @@ import ast
 import re
 import textwrap
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -59,6 +59,7 @@ from transpiler.model import (
     ObjectRule,
     Rule,
     load_functional_file,
+    prune_unfinished,
 )
 from transpiler.paths import expand_paths
 from transpiler.selector import lower_selectors
@@ -745,6 +746,8 @@ def build_stage(
     `warnings`, when given, receives the non-fatal findings (unused `choices`,
     negative `multipleOf`, ...)."""
     assign_ids(file)
+    # a rule with nothing defined yet (no Source, no Expression) builds nothing
+    file = replace(file, rules=prune_unfinished(file.rules))
     # aliases / root override applied, selecting objects lowered to first-element loops
     b = _Builder(lower_selectors(expand_paths(file)), options, input_schema)
     b.build()
@@ -765,6 +768,7 @@ def auto_proposals(
     now (it is what a manual rule's override replaces), keyed by fully-qualified rule id; and,
     for the rules where that fails, the reason."""
     assign_ids(file)
+    file = replace(file, rules=prune_unfinished(file.rules))  # ids are set: they stay as they were
     b = _Builder(lower_selectors(expand_paths(file)), options or TranspileOptions(), input_schema)
     b.build()
     return b.proposals, b.proposal_errors

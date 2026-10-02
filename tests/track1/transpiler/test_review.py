@@ -215,3 +215,23 @@ def test_a_validation_set_in_the_same_edit_is_not_decayed_or_demoted(tmp_path: P
     fr(file, 0).validation.needs_review = False
     decayed, saved = save(file)
     assert decayed == [] and fr(saved, 0).validation.validated
+
+
+def test_review_ignores_unfinished_rules() -> None:
+    file = parse_functional(
+        {
+            "id": "t",
+            "rules": [
+                {"kind": "field", "id": "a", "field": "A", "type": "str"},
+                {
+                    "kind": "field",
+                    "id": "b",
+                    "field": "B",
+                    "type": "str",
+                    "transform": {"expression": "'x'"},
+                },
+            ],
+        },
+        "t",
+    )
+    assert review(file) == []

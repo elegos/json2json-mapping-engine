@@ -552,6 +552,7 @@ Sliced; each slice is usable on its own:
         build, `schemas_for`, tests, ARCHITECTURE.md): one layout, no fallback.
       - Done: the layout, in `compiler/schema_files.py` (one place for names and paths).
       - Done: the `schemas:` header key (`SchemasSection`), read by the check, the build and its cache key.
+      - Done: unfinished rules (`is_unfinished` / `prune_unfinished` in `transpiler/model.py`): the loader accepts them, the check warns (error + build stop when the output schema requires the field: `Issue.code = "unfinished"`, `cli/build.py::_refuse_unfinished`), the transpiler leaves them out, the grid draws them apart (`isUnfinished`).
       - **Loading.** The tool takes a JSON Schema from anywhere, copies it into `schemas/` under
         the name above, and the mapping reads that copy. Replacing a schema is the same gesture.
       - **Override.** A header key of the `.fn.yaml` (`schemas: {input: …, output: …}`) points to

@@ -14,6 +14,7 @@ from transpiler.model import (
     FieldRule,
     LoopRule,
     SchemasSection,
+    Transform,
     load_functional_file,
     parse_functional,
 )
@@ -142,6 +143,19 @@ def test_a_loop_without_a_source_is_flagged() -> None:
     from transpiler.edit import add_rule
 
     file = add_rule(load_functional_file(FN), None, None, "loop")
+    # nothing defined in it yet: ignored, not malformed
+    issues = check_functional(file)
+    assert [
+        (i.column, i.severity, i.message)
+        for i in issues
+        if i.rule == f"rules[{len(file.rules) - 1}]"
+    ] == [("source", "warning", "ignored until a Source is defined")]
+    # once a rule inside it does something, the missing Source is an error
+    loop = file.rules[-1]
+    assert isinstance(loop, LoopRule)
+    loop.rules.append(
+        FieldRule(id=None, field="X", type="str", source_path="@.x", transform=Transform("@.x"))
+    )
     issues = check_functional(file)
     assert any(i.column == "source" and "needs a source" in i.message for i in issues)
 
@@ -470,3 +484,33 @@ def test_schemas_for_follows_the_schemas_section(tmp_path: Path) -> None:
     assert schemas_for(tmp_path, "m") == ({"title": "convention"}, None)
     refs = SchemasSection(input="elsewhere.json", output="missing.json")
     assert schemas_for(tmp_path, "m", refs) == ({"title": "override"}, None)
+
+
+def _unfinished_issues(output_schema: dict | None) -> list[tuple[str, str, str]]:
+    raw = {
+        "id": "t",
+        "rules": [
+            {"kind": "field", "id": "a", "field": "A", "type": "str"},
+            {
+                "kind": "field",
+                "id": "b",
+                "field": "B",
+                "type": "str",
+                "transform": {"expression": "'x'"},
+            },
+        ],
+    }
+    file = parse_functional(raw, "t")
+    return [(i.rule, i.severity, i.message) for i in check_functional(file, None, output_schema)]
+
+
+def test_an_unfinished_rule_is_a_warning_unless_the_output_schema_requires_it() -> None:
+    assert _unfinished_issues(None) == [
+        ("rules[0]", "warning", "ignored until a Source is defined")
+    ]
+    optional = {"type": "object", "properties": {"A": {"type": "string"}, "B": {"type": "string"}}}
+    assert _unfinished_issues(optional)[0][1] == "warning"
+    required = {**optional, "required": ["A"]}
+    [(rule, severity, message)] = _unfinished_issues(required)
+    assert (rule, severity) == ("rules[0]", "error")
+    assert "required by the output schema" in message

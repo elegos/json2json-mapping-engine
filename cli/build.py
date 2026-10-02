@@ -30,9 +30,11 @@ from pathlib import Path
 from cli.config import MapperConfig
 from compiler.backends.base import Backend, CodeGenError, CompiledUnit
 from compiler.backends.registry import create_backend
+from compiler.function_registry import all_functions
 from compiler.pipeline import compile_unit, extract_mapping_id
 from compiler.schema_files import Kind, resolve_schema_path
 from compiler.schema_generator import SchemaTypes, resolve_schema_types
+from transpiler.check import check_functional, schemas_for
 from transpiler.model import FnYamlError, SchemasSection, load_functional_file
 from transpiler.stages import STAGES, run_stages
 from transpiler.transpile import TranspileOptions, transpile_file
@@ -96,6 +98,25 @@ def resolve_schema_for(mapping_stem: str, kind: Kind, refs: SchemasSection) -> S
     return resolve_schema_types(schema, _pascal_case(mapping_stem))
 
 
+def _refuse_unfinished(path: Path) -> None:
+    """A rule with nothing defined is left out of the build, but not when the output schema
+    requires what it would produce: that stops the build."""
+    try:
+        tree = load_functional_file(path)
+    except (FnYamlError, OSError):
+        return  # the transpiler reports it
+    stem = source_stem(path)
+    inp, out = schemas_for(Path("."), stem, tree.schemas)
+    stuck = [
+        i
+        for i in check_functional(tree, inp, out, all_functions(Path(".")))
+        if i.code == "unfinished"
+    ]
+    if stuck:
+        lines = "\n".join(f"  {i.rule}: {i.message}" for i in stuck)
+        raise BuildError(f"{path}: rules the output schema requires are not defined yet\n{lines}")
+
+
 def compute_hash(source: bytes, config_raw: dict, extra: list[bytes] | None = None) -> str:
     h = hashlib.sha256()
     h.update(source)
@@ -148,6 +169,7 @@ def transpile_functional(
     stem = source_stem(path)
     options = transpile_options(config)
     schema = resolve_schema_for(stem, "input", schema_refs(path))
+    _refuse_unfinished(path)
     try:
         if stage is None and not dump_stages:
             text = transpile_file(path, options, input_schema=schema, warnings=warnings)

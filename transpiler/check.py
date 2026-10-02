@@ -44,6 +44,7 @@ from transpiler.model import (
     ObjectRule,
     Rule,
     SchemasSection,
+    is_unfinished,
     load_rule,
 )
 from transpiler.paths import expand_paths
@@ -59,6 +60,7 @@ class Issue:
     column: str | None  # grid column id
     severity: str  # "error" | "warning"
     message: str
+    code: str = ""  # a kind the build acts on ("unfinished"), else empty
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -307,8 +309,10 @@ class _Checker:
             if isinstance(r, ObjectRule | LoopRule):
                 yield from self._all(r.rules)
 
-    def add(self, rule: str, column: str | None, message: str, severity: str = "error") -> None:
-        self.issues.append(Issue(rule, column, severity, message))
+    def add(
+        self, rule: str, column: str | None, message: str, severity: str = "error", code: str = ""
+    ) -> None:
+        self.issues.append(Issue(rule, column, severity, message, code))
 
     # -- form ------------------------------------------------------------------
 
@@ -455,6 +459,8 @@ class _Checker:
                 continue
             name = rule.field if isinstance(rule, FieldRule) else _basename(rule.output)
             covered.add(name)
+            if is_unfinished(rule):
+                self.unfinished(path, rule, name, out)
             if name in names:
                 self.add(path, "target", f"'{name}' is already a rule of this container")
             names.add(name)
@@ -467,6 +473,20 @@ class _Checker:
             if missing:
                 where = prefix.rsplit(".rules", 1)[0] if ".rules" in prefix else ""
                 self.add(where, "target", f"the output schema requires {', '.join(missing)}")
+
+    def unfinished(self, path: str, rule: Rule, name: str, out: Node) -> None:
+        """A rule with nothing defined: ignored by the build, so a warning, unless the output
+        schema requires what it would produce (an error: the build stops)."""
+        what = "a Source" if isinstance(rule, FieldRule | LoopRule) else "a rule with a Source"
+        if self.has_out and isinstance(out, dict) and name in self.out.required(out):
+            self.add(
+                path,
+                "source",
+                f"required by the output schema, but it still needs {what}",
+                code="unfinished",
+            )
+        else:
+            self.add(path, "source", f"ignored until {what} is defined", "warning")
 
     def field(self, path, rule: FieldRule, scope, out, in_root, items, labels) -> None:
         t = rule.transform
@@ -565,7 +585,7 @@ class _Checker:
             assert isinstance(rule, LoopRule)
             source, condition, label = rule.source, rule.filter, rule.label
         item: Node = UNKNOWN
-        if not source.strip():
+        if not source.strip() and not is_unfinished(rule):
             self.add(path, "source", "a loop needs a source")
         if self.has_in and source:
             base = in_root if source.startswith("$") else (items[-1] if items else in_root)

@@ -127,6 +127,33 @@ class LookupRule:
 Rule = FieldRule | ObjectRule | LoopRule | LookupRule
 
 
+def is_unfinished(rule: Rule) -> bool:
+    """A rule that does nothing yet: a field with no Source and no Expression (and no override),
+    a loop with no Source, or a container whose rules are all of that kind. The tool draws it
+    apart, the check warns, and the transpiler leaves it out until the user defines it."""
+    if isinstance(rule, FieldRule):
+        t = rule.transform
+        has_source = rule.has_constant or bool((rule.source_path or "").strip())
+        return t.status == "auto" and not (t.expression or "").strip() and not has_source
+    if isinstance(rule, LoopRule):
+        return not rule.source.strip() and all(is_unfinished(r) for r in rule.rules)
+    if isinstance(rule, ObjectRule):
+        return all(is_unfinished(r) for r in rule.rules)
+    return False
+
+
+def prune_unfinished(rules: list[Rule]) -> list[Rule]:
+    """`rules` without the unfinished ones, inside the containers too."""
+    kept: list[Rule] = []
+    for rule in rules:
+        if is_unfinished(rule):
+            continue
+        if isinstance(rule, ObjectRule | LoopRule):
+            rule = replace(rule, rules=prune_unfinished(rule.rules))
+        kept.append(rule)
+    return kept
+
+
 @dataclass
 class PathsSection:
     """The file's `paths:` section: what `$` stands for and the named path aliases.
@@ -310,9 +337,6 @@ def _load_field(where: str, raw: dict[str, Any]) -> FieldRule:
     _check_keys(f"{where}.source", s_raw, {"path", "constant"})
     if "path" in s_raw and "constant" in s_raw:
         raise _err(where, "'source' has both a path and a constant — pick one")
-    has_source = "path" in s_raw or "constant" in s_raw
-    if status == "auto" and not transform.expression and not has_source:
-        raise _err(where, "the rule has neither a source nor an expression")
     if "constant" in s_raw and isinstance(s_raw["constant"], dict | list):
         raise _err(where, "'source.constant' must be a scalar")
     allowed = raw.get("allowed")

@@ -789,9 +789,9 @@ def test_value_is_reserved() -> None:
         tr([sourced("a", "value = 1\nvalue", {"path": "$.id"})])
 
 
-def test_a_rule_needs_a_source_or_an_expression() -> None:
-    with pytest.raises(FnYamlError, match="neither a source nor an expression"):
-        model([{"id": "a", "kind": "field", "field": "F", "type": "str"}])
+def test_a_rule_may_be_unfinished_but_not_contradictory() -> None:
+    # no Source and no Expression is a rule not defined yet, not a malformed one
+    model([{"id": "a", "kind": "field", "field": "F", "type": "str"}])
     with pytest.raises(FnYamlError, match="both a path and a constant"):
         model([sourced("a", None, {"path": "$.id", "constant": 1})])
 
@@ -799,3 +799,11 @@ def test_a_rule_needs_a_source_or_an_expression() -> None:
 def test_value_is_left_alone_in_strings_and_attributes() -> None:
     text = tr([sourced("a", "concat('value', $.other.value)", {"path": "$.id"})])
     assert "'value'" in text and "root.other.value" in text
+
+
+def test_unfinished_rules_build_nothing() -> None:
+    empty = {"id": "e", "kind": "field", "field": "E", "type": "str"}
+    obj = {"id": "o", "kind": "object", "output": "Inner", "rules": [dict(empty, id="e2")]}
+    loop = {"id": "l", "kind": "loop", "source": "", "output": "Items", "rules": []}
+    done = sourced("a", None, {"path": "$.id"})
+    assert tr([done, empty, obj, loop]) == tr([done])

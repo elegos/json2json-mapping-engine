@@ -407,6 +407,14 @@ schemas:
 The schemas in the header are read for the check, the types and the build cache key (a change
 to the file rebuilds the mapping). The tool never executes anything from them.
 
+### Rules not defined yet
+
+A rule with no Source and no Expression (and no override), a loop with no Source, or a
+container whose rules are all of that kind, is *unfinished*: the file loads, the tool draws it
+apart, the check says "ignored until a Source is defined", and the transpiler builds nothing for
+it. When the output schema lists the field as `required`, it is an error and `mapper build`
+stops. They are what the tool creates from an output schema before the user fills them in.
+
 ### Schema change management
 
 When an input JSON Schema changes, the compiler regenerates the affected `.pyi` stubs
