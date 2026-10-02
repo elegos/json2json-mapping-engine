@@ -131,3 +131,25 @@ def test_serve_config_ops(project: Path) -> None:
     first, second = (json.loads(x) for x in out.getvalue().splitlines())
     assert first["ok"] and first["values"]["project"]["target"] == "plsql"
     assert second["ok"] and any(i["path"] == "project.mode" for i in second["issues"])
+
+
+def test_a_backend_limits_are_checked_with_its_own_words() -> None:
+    from cli.project_config import check
+
+    base = {"project": {"mode": "driven", "target": "plsql"}}
+
+    def issues(**section: object) -> dict[str, str]:
+        values = {**base, "target": {"plsql": {"schema": "OWNER", "error_code": -20000, **section}}}
+        return {i["path"]: i["message"] for i in check(values)}
+
+    assert issues(mapping_package_prefix="M_") == {}
+    assert issues(mapping_package_prefix="M_", error_code=-200000)["target.plsql.error_code"] == (
+        "must be between -20999 and -20000"
+    )
+    assert "target.plsql.error_code" in issues(mapping_package_prefix="M_", error_code=5)
+    bad_schema = issues(mapping_package_prefix="M_", schema="1 bad")
+    assert "Oracle identifier" in bad_schema["target.plsql.schema"]
+    assert (
+        "letters, digits"
+        in issues(mapping_package_prefix="a b")["target.plsql.mapping_package_prefix"]
+    )

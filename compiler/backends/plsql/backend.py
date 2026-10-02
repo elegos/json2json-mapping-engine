@@ -25,6 +25,12 @@ from compiler.scope_resolver import ScopeResolution
 DEFAULT_ERROR_CODE = -20000
 
 
+_IDENT = r"[A-Za-z][A-Za-z0-9_$#]*"
+_IDENT_HINT = "an Oracle identifier: letters, digits, _ $ #, starting with a letter"
+_PART = r"[A-Za-z0-9_$#]*"
+_PART_HINT = "letters, digits, _ $ # only"
+
+
 class PlsqlBackend(Backend):
     target: ClassVar[str] = "plsql"
     required_keys: ClassVar[tuple[str, ...]] = ("schema", "error_code")
@@ -37,13 +43,24 @@ class PlsqlBackend(Backend):
     }
 
     options: ClassVar[tuple[Option, ...]] = (
-        Option("schema", "string", "Owner of the generated packages", required=True),
+        Option(
+            "schema",
+            "string",
+            "Owner of the generated packages",
+            required=True,
+            max_length=128,
+            pattern=_IDENT,
+            pattern_hint=_IDENT_HINT,
+        ),
         Option(
             "error_code",
             "int",
             "Code of the RAISE_APPLICATION_ERROR raised by the raising entry point",
             required=True,
             suggest=-20000,
+            # the range Oracle reserves for RAISE_APPLICATION_ERROR
+            minimum=-20999,
+            maximum=-20000,
         ),
         Option(
             "mapping_package_prefix",
@@ -51,8 +68,16 @@ class PlsqlBackend(Backend):
             "Mapping package name = prefix + MAPPING ID + suffix (one of prefix / suffix, "
             "or the table below)",
             suggest="J2JME_MAP_",
+            pattern=_PART,
+            pattern_hint=_PART_HINT,
         ),
-        Option("mapping_package_suffix", "string", "See the prefix"),
+        Option(
+            "mapping_package_suffix",
+            "string",
+            "See the prefix",
+            pattern=_PART,
+            pattern_hint=_PART_HINT,
+        ),
         Option(
             "mapping_packages",
             "table",
@@ -62,12 +87,16 @@ class PlsqlBackend(Backend):
             "mapping_index_package",
             "string",
             "Extra package forwarding every entry point to the mapping's package",
+            pattern=_IDENT,
+            pattern_hint=_IDENT_HINT,
         ),
         Option(
             "functions_package",
             "string",
             "Shared package of the built-ins that are not 1:1 with PL/SQL",
             default="J2JME_FUNCTIONS",
+            pattern=_IDENT,
+            pattern_hint=_IDENT_HINT,
         ),
         Option(
             "export_rule_functions",
@@ -75,8 +104,22 @@ class PlsqlBackend(Backend):
             "List every fn_<mapping>_<rule> in its package spec too",
             default=False,
         ),
-        Option("fn_prefix", "string", "Prefix of generated procedure / function names", default=""),
-        Option("fn_suffix", "string", "Suffix of generated procedure / function names", default=""),
+        Option(
+            "fn_prefix",
+            "string",
+            "Prefix of generated procedure / function names",
+            default="",
+            pattern=_PART,
+            pattern_hint=_PART_HINT,
+        ),
+        Option(
+            "fn_suffix",
+            "string",
+            "Suffix of generated procedure / function names",
+            default="",
+            pattern=_PART,
+            pattern_hint=_PART_HINT,
+        ),
     )
 
     # `[target.plsql.test]`: the database the integration tests start (a container)

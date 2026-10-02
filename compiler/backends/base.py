@@ -18,6 +18,7 @@ adding a subpackage — nothing is registered by hand.
 from __future__ import annotations
 
 import ast
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, ClassVar, Literal
@@ -49,6 +50,13 @@ class Option:
     # what a new project proposes for a key that has no default (the user may change it); for a
     # key that must be given, or that a rule across keys makes necessary
     suggest: Any = None
+    # limits the value must respect; the form shows what `check_options` says about them
+    minimum: int | None = None  # `int` kind
+    maximum: int | None = None
+    min_length: int | None = None  # `string` kind
+    max_length: int | None = None
+    pattern: str | None = None  # `string` kind: the whole value matches this regular expression
+    pattern_hint: str = ""  # how to say the pattern in words ("letters, digits and _")
 
 
 def check_options(
@@ -93,15 +101,40 @@ def check_target_options(
     return problems
 
 
+def _out_of_range(option: Option, value: int) -> str | None:
+    low, high = option.minimum, option.maximum
+    if low is not None and high is not None and not low <= value <= high:
+        return f"must be between {low} and {high}"
+    if low is not None and value < low:
+        return f"must be at least {low}"
+    if high is not None and value > high:
+        return f"must be at most {high}"
+    return None
+
+
+def _wrong_text(option: Option, value: str) -> str | None:
+    if option.choices and value not in option.choices:
+        return f"must be one of {', '.join(option.choices)}"
+    if option.min_length is not None and len(value) < option.min_length:
+        return f"must have at least {option.min_length} characters"
+    if option.max_length is not None and len(value) > option.max_length:
+        return f"must have at most {option.max_length} characters"
+    if option.pattern is not None and not re.fullmatch(option.pattern, value):
+        return option.pattern_hint or f"must match {option.pattern}"
+    return None
+
+
 def _wrong_kind(option: Option, value: Any) -> str | None:
     if option.kind == "bool":
         return None if isinstance(value, bool) else "must be true or false"
     if option.kind == "int":
-        return (
-            None if isinstance(value, int) and not isinstance(value, bool) else "must be an integer"
-        )
+        if not isinstance(value, int) or isinstance(value, bool):
+            return "must be an integer"
+        return _out_of_range(option, value)
     if option.kind == "string":
-        return None if isinstance(value, str) else "must be a string"
+        if not isinstance(value, str):
+            return "must be a string"
+        return _wrong_text(option, value)
     if option.kind == "choice":
         if value in option.choices:
             return None

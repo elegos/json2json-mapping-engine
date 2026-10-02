@@ -105,7 +105,9 @@ def test_load_config_missing_file(tmp_path: Path):
 
 
 def test_default_choices_validated():
-    base = {"target": {"plsql": {"schema": "S", "mapping_package_prefix": "P_", "error_code": -1}}}
+    base = {
+        "target": {"plsql": {"schema": "S", "mapping_package_prefix": "P_", "error_code": -20000}}
+    }
     cfg = parse_config({**base, "compiler": {"default_choices": {"multipleOf": "truncate"}}})
     assert cfg.compiler.default_choices.multiple_of == "truncate"
     assert cfg.compiler.default_choices.format == "round"
