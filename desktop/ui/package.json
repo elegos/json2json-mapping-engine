@@ -21,6 +21,7 @@
     "@tauri-apps/plugin-dialog": "^2",
     "ag-grid-community": "^36",
     "ag-grid-react": "^36",
+    "marked": "^18.0.14",
     "react": "^19",
     "react-dom": "^19"
   },

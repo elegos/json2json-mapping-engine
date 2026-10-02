@@ -217,3 +217,46 @@ button.primary:hover:not(:disabled) { background: #3468b3; }
 .wizard-more { margin: 0 0 12px; }
 .wizard-more summary { cursor: pointer; margin-bottom: 8px; }
 .wizard-inline { display: block; opacity: 0.6; }
+
+/* guide */
+.guide { background: Canvas; color: CanvasText; border: 1px solid #8886; border-radius: 8px; box-shadow: 0 8px 28px #0008; width: min(1040px, 94vw); height: 88vh; display: flex; flex-direction: column; overflow: hidden; }
+.guide-bar { display: flex; gap: 8px; align-items: center; padding: 8px 12px; border-bottom: 1px solid #8884; }
+.guide-search { flex: 1; font: inherit; color: inherit; padding: 4px 8px; background: color-mix(in srgb, CanvasText 6%, Canvas); border: 1px solid color-mix(in srgb, CanvasText 22%, transparent); border-radius: 4px; }
+.guide-title { opacity: 0.6; }
+.guide-body { flex: 1; display: flex; min-height: 0; }
+.guide-toc { width: 260px; flex: none; overflow-y: auto; padding: 10px; border-right: 1px solid #8884; }
+.guide-toc section { margin-bottom: 12px; }
+.guide-toc small { display: block; opacity: 0.6; margin: 0 0 4px 4px; }
+.guide-toc ul { list-style: none; margin: 0; padding: 0 0 0 10px; }
+.guide-toc button { width: 100%; text-align: left; background: none; border: none; color: inherit; padding: 4px 8px; border-radius: 4px; cursor: pointer; font: inherit; }
+.guide-toc button:hover { background: #2a5a9f33; }
+.guide-toc button.book { font-weight: 600; }
+.guide-toc button.current { background: #2a5a9f66; }
+.guide-results button small { margin: 2px 0 0; }
+.guide-results .empty { opacity: 0.6; padding: 4px 8px; }
+.guide-page { flex: 1; overflow-y: auto; padding: 8px 28px 28px; }
+.guide-page article { max-width: 760px; line-height: 1.5; }
+.guide-page h1 { font-size: 24px; margin: 12px 0; }
+.guide-page h2 { font-size: 18px; margin: 22px 0 8px; }
+.guide-page h3 { font-size: 15px; margin: 16px 0 6px; }
+.guide-page code { background: color-mix(in srgb, CanvasText 10%, Canvas); padding: 1px 5px; border-radius: 3px; }
+.guide-page pre { background: color-mix(in srgb, CanvasText 8%, Canvas); padding: 10px 12px; border-radius: 6px; overflow-x: auto; }
+.guide-page pre code { background: none; padding: 0; }
+.guide-page table { border-collapse: collapse; margin: 10px 0; }
+.guide-page th, .guide-page td { border: 1px solid color-mix(in srgb, CanvasText 25%, transparent); padding: 4px 10px; text-align: left; }
+.guide-page a { color: #5a9bf0; }
+.guide-page blockquote { margin: 10px 0; padding: 4px 14px; border-left: 3px solid #b8860b; background: #b8860b22; }
+.guide-figure { margin: 16px 0; }
+.figure-stage { position: relative; line-height: 0; border: 1px solid #8886; border-radius: 4px; }
+.figure-stage img { width: 100%; display: block; }
+.figure-stage svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.figure-stage svg line { stroke: #e0402b; stroke-width: 2px; vector-effect: non-scaling-stroke; }
+.figure-stage svg marker path { fill: #e0402b; }
+.figure-pending { aspect-ratio: 16 / 9; display: flex; align-items: center; justify-content: center; line-height: 1.4; opacity: 0.6; background: color-mix(in srgb, CanvasText 6%, Canvas); }
+.callout-box { position: absolute; border: 2px solid #e0402b; border-radius: 3px; box-shadow: 0 0 0 1px #fff8; }
+.callout-badge { position: absolute; transform: translate(-50%, -50%); background: #e0402b; color: white; font: 700 12px/1 system-ui; width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+.figure-legend { margin: 8px 0 0; padding-left: 26px; font-size: 13px; }
+.figure-error { color: #d9534f; }
+@media (prefers-reduced-motion: no-preference) { .guide-page article { animation: guide-in 120ms ease-out; } }
+@keyframes guide-in { from { opacity: 0; } to { opacity: 1; } }
+.help-menu { left: auto; right: 0; min-width: 160px; }

@@ -18,6 +18,8 @@ import {
 } from "./projectConfig";
 import { ProjectButton } from "./ProjectButton";
 import { Wizard } from "./Wizard";
+import { Guide } from "./Guide";
+import { HelpMenu } from "./HelpMenu";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   changeStructure,
@@ -161,6 +163,7 @@ export function App() {
   const [importingGolden, setImportingGolden] = useState(false);
   const [recent, setRecent] = useState<string[]>(loadRecent);
   const [wizard, setWizard] = useState(false);
+  const [guide, setGuide] = useState<string | null>(null);
   const [wizardStartup, setWizardStartup] = useState(wizardAtStartup);
   const grid = useRef<AgGridReact<Row>>(null);
   const [question, setQuestion] = useState<{
@@ -1231,6 +1234,7 @@ export function App() {
             {c[0].toUpperCase() + c.slice(1)}
           </button>
         ))}
+        <HelpMenu onGuide={() => setGuide("functional")} />
       </header>
       {python && !python.available && (
         <div className="banner">
@@ -1459,6 +1463,7 @@ export function App() {
       </div>
       {wizard && (
         <Wizard
+          onHelp={() => setGuide("functional")}
           recent={recent}
           showAtStartup={wizardStartup}
           onShowAtStartup={(value) => {
@@ -1489,6 +1494,7 @@ export function App() {
           onClose={() => setWizard(false)}
         />
       )}
+      {guide !== null && <Guide start={guide} onClose={() => setGuide(null)} />}
       {question && (
         <Confirm
           message={question.message}

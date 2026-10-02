@@ -25,6 +25,7 @@ interface Props {
   /** A project was created (and may hold mappings): open it. */
   onCreated: (dir: string) => void;
   onClose: () => void;
+  onHelp: () => void;
 }
 
 type Step = "start" | "project" | "mappings";
@@ -41,6 +42,7 @@ export function Wizard({
   onForget,
   onCreated,
   onClose,
+  onHelp,
 }: Props) {
   const [step, setStep] = useState<Step>("start");
   const [dir, setDir] = useState("");
@@ -91,6 +93,7 @@ export function Wizard({
               setStep("project");
             }}
             onClose={onClose}
+            onHelp={onHelp}
           />
         )}
         {step === "project" && (
@@ -175,6 +178,7 @@ function StartPage(props: {
   onForget: (dir: string) => void;
   onNew: () => void;
   onClose: () => void;
+  onHelp: () => void;
 }) {
   const [missing, setMissing] = useState<ReadonlySet<string>>(new Set());
   useEffect(() => {
@@ -211,6 +215,7 @@ function StartPage(props: {
         <button className="primary" onClick={props.onNew}>
           New project…
         </button>
+        <button onClick={props.onHelp}>Help</button>
       </div>
       <div className="modal-buttons wizard-foot">
         <label className="modal-option">
