@@ -442,8 +442,10 @@ target language via `@override` declarations. Examples: `coalesce`, `round`, `co
 **Text, conversions, timestamps.** `replace(s, search [, replacement])` and
 `remove_prefix(s, prefix)` (a null text gives a null result); `regexp_replace(s, pattern [, replacement])`
 and `regexp_group(s, pattern, n)` (null when there is no match or no such group); `format_decimal(x, n)`
-(rounded half away from zero, all `n` decimals written: `"2.50"`); `to_number(x)` (a text is read as a
-number, null when empty, an error when it is not one) and `to_string(x)` (no exponent, whole numbers
+(rounded half away from zero, all `n` decimals written: `"2.50"`); `to_number(x)` (a text must be a plain decimal:
+sign, digits, a fraction after a dot, spaces around it ignored, up to 32 digits before the dot and 20
+after; an exponent, thousands separators, a decimal comma or any other text is an error, an empty text
+is null) and `to_string(x)` (no exponent, whole numbers
 without decimals); `to_utc(s)` and `rfc3339_normalize(s)` read an ISO-8601 or RFC3339 timestamp (no
 time is midnight, no offset is UTC, the fraction of a second is kept as written) and write it in UTC
 (`2026-10-03T07:30:00Z`), or with its offset kept (`2026-10-03T09:30:00+02:00`). `round(x)` without

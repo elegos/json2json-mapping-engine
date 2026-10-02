@@ -830,7 +830,7 @@ after M7: check that the GitHub pipeline behaves like the forgejo one (not check
 
 ---
 
-## ✅ More built-ins (done, except `decode`)
+## ✅ More built-ins (done; `decode` left out)
 
 `replace`, `regexp_replace`, `regexp_group`, `remove_prefix`, `format_decimal`, `to_number`, `to_string`,
 `to_utc`, `rfc3339_normalize`, and `round` with optional digits: reference implementations in
@@ -849,9 +849,10 @@ go, as the JSON element, to the functions package, which looks at what it is (nu
 boolean, list, object); of a typed expression, they are rendered by its type (`to_string_of_kind`,
 `to_number_of_kind`). Known to differ: an empty string is NULL in Oracle, so the cases avoid it;
 `JSON_VALUE` and `TO_CHAR(..., 'TM9')` are what the text and number reads rely on, and are the first
-suspects if track 2 fails. Not done: `decode(expr, s1, r1, ..., default)`
-(Oracle's switch, where two NULLs match), waiting for the decision whether it adds anything over
-`lookup` and `if_else`.
+suspects if track 2 fails. Left out for the moment, decided: `decode(expr, s1, r1, ..., default)` (Oracle's switch, where two NULLs
+match); `lookup` and `if_else` cover the rest. The limits of `to_number` (a plain decimal, up to 32 digits
+before the dot and 20 after; no exponent, separators or decimal comma) are in its description, which the
+explorer and the guide show.
 
 ## 🟨 Python backend (first slice done)
 

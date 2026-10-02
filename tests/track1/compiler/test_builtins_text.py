@@ -109,3 +109,26 @@ def test_plsql_renderings() -> None:
         assert name in LIBRARY_FUNCTIONS
     assert "SYS_EXTRACT_UTC" in LIBRARY_FUNCTIONS["to_utc"].body_text()
     assert "SYS_EXTRACT_UTC" not in LIBRARY_FUNCTIONS["rfc3339_normalize"].body_text()
+
+
+def test_the_limits_of_to_number_are_in_its_description() -> None:
+    """What the explorer and the guide show: the limits must be said, not found out."""
+    from compiler.function_registry import builtin_functions
+
+    doc = builtin_functions()["to_number"].doc
+    for limit in (
+        "plain decimal",
+        "exponent",
+        "thousands",
+        "decimal comma",
+        "32 digits",
+        "20",
+        "boolean",
+    ):
+        assert limit in doc, limit
+    for text in ("1e3", "1,200", "3,5", "$5", "12%", "", "-", "1.2.3"):
+        if text in ("",):
+            assert b.to_number(text) is None
+        else:
+            with pytest.raises(ValueError):
+                b.to_number(text)

@@ -181,7 +181,16 @@ def _decimal(x: Any) -> Decimal:
 
 
 def to_number(x: Any) -> float | None:
-    """`x` as a number: a text is read as one (null when empty, an error when it is not a number)."""
+    """`x` as a number. A number stays as it is. A text must be a plain decimal number:
+
+    - an optional sign, digits, and an optional fraction written with a dot (`-12`, `3.75`, `.5`);
+    - spaces around it are ignored; an empty text gives null;
+    - NOT accepted (an error, and the rule fails): an exponent (`1e3`), thousands separators
+      (`1,200`), a decimal comma (`3,5`), a currency or percent sign, any other text;
+    - at most 32 digits before the dot and 20 after it (the limit of the Oracle format the PL/SQL
+      backend reads with; Python has none, so stay within it);
+    - a boolean is an error, and a missing value gives null.
+    The text is read the same way whatever the database session's number settings are."""
     if x is None or isinstance(x, bool):
         if isinstance(x, bool):
             raise ValueError("a boolean is not a number")
@@ -198,8 +207,12 @@ def to_number(x: Any) -> float | None:
 
 
 def to_string(x: Any) -> str | None:
-    """`x` as text: numbers without an exponent, a whole number without decimals, booleans as
-    `true` / `false`, a list or an object as compact JSON."""
+    """`x` as text, whatever its type (the result is the same on every backend):
+
+    - a number is written in plain decimal, never with an exponent; a whole number without
+      decimals (`5`, not `5.0`), and a fraction with its leading zero (`0.5`);
+    - a boolean is `true` or `false`; a list or an object is compact JSON (`[1,"a"]`);
+    - a text stays as it is, and a missing value gives null."""
     if x is None or isinstance(x, str):
         return x
     if isinstance(x, bool):
