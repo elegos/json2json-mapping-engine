@@ -194,15 +194,17 @@ def transpile_functional(
     return text
 
 
-def compile_fresh(path: Path, config: MapperConfig) -> CompiledUnit:
+def compile_fresh(path: Path, config: MapperConfig, backend: Backend | None = None) -> CompiledUnit:
     """Compile `path` unconditionally — no cache lookup. Used by both the
     caching path (on a cache miss) and `mapper check` (which must never
     trust the cache, since the cache only tracks *source* hashes, not
     whether the committed output still matches)."""
-    return _compile_fresh(path, config, [])
+    return _compile_fresh(path, config, [], backend)
 
 
-def _compile_fresh(path: Path, config: MapperConfig, warnings: list[str]) -> CompiledUnit:
+def _compile_fresh(
+    path: Path, config: MapperConfig, warnings: list[str], backend: Backend | None = None
+) -> CompiledUnit:
     stem = source_stem(path)
     if is_functional(path):
         if config.project.mode != "driven":
@@ -210,7 +212,7 @@ def _compile_fresh(path: Path, config: MapperConfig, warnings: list[str]) -> Com
         source = transpile_functional(path, config, warnings=warnings)
     else:
         source = path.read_text()
-    backend = backend_for(config)
+    backend = backend or backend_for(config)
     refs = schema_refs(path)
     input_schema = resolve_schema_for(stem, "input", refs)
     output_schema = resolve_schema_for(stem, "output", refs)

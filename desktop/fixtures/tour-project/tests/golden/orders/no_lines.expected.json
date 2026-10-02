@@ -1,1 +1,8 @@
-{"OrderId": "A2", "Lines": [], "Currency": "EUR", "Warehouse": "FR"}
+{
+  "Lines": [],
+  "OrderId": "A2",
+  "Currency": "EUR",
+  "Warehouse": "FR",
+  "MapVersion": 27,
+  "Channel": null
+}

@@ -5,7 +5,7 @@ so that per-edit operations (Target / Source normalisation) cost a message, not 
 Python start-up. Requests: `{"id", "op", ...}`; answers `{"id", "ok", ...}`.
 
 Ops: `ping`; `complete` (`tree`, `project`, `stem`, `path`, `column`, `text`, `cursor`: what can be typed there, see `transpiler/complete.py`); `check` (`tree`, `project`, `stem`); `retarget` (`tree`, `path`, `value`); `set_source` (`tree`, `path`,
-`value`); `add_rule` (`tree`, `parent`, `index`, `kind`); `delete_rule` (`tree`, `path`); `proposal` (`tree`, `path`: the auto code, the override), `take_over` / `accept_proposal` / `keep_override` (`tree`, `path`), `set_override` (`tree`, `path`, `code`), see `transpiler/review.py`; `check` also answers `review` (overrides whose auto code moved); `schemas_status` (`tree`, `project`, `stem`: the input and output schema of a mapping, `ok` / `missing` / `invalid`), `schema_import` (`project`, `stem`, `kind`, `source`: copy a schema into the project as the mapping's own); `mapping_create` (`project`, `name`, `golden`?, `golden_to`?), `mapping_golden` (`project`, `name`: the cases already in `tests/golden/<name>/`), `mapping_removal` / `mapping_delete` (`project`, `name`, `golden`?: what deleting takes, then does it; with `golden` the golden cases too), `mapping_rename` (`project`, `name`, `new`, `file_id`?), see `cli/mappings.py`; `golden_cases` (`project`, `mapping`), `golden_import` (`project`, `mapping`, `name`, `input`, `expected`?, `errors`?: copy the files in under the standard names), `golden_rename` (`name`, `new`), `golden_delete` (`name`), `golden_read` (`name`: the text of each file of a case), `golden_write` (`name`, `role` input / expected / errors, `text`: checked, `null` removes the file), `golden_create` (`name`, `text`?: a case with only an input), see `cli/golden.py`; `scaffold` (`tree`, `project`, `stem`, `apply`: the empty rules the output schema adds, see `transpiler/scaffold.py`; with `apply` also the new `tree`); `config_read` (`project`), `config_check` (`values`), `config_write` (`project`, `values`): `mapper.toml`, see `cli/project_config.py`; `functions` (`project`?: the built-in and project functions, see `cli/functions.py`); `project_backends` (the backends and their options, as `config_read`'s `schema`), `project_create` (`project`, `target`, `options`?: a new `mapper.toml` and the project's folders), see `cli/project_create.py`. `tree` is the file as `mapper fn read` prints it; the answer carries the new
+`value`); `add_rule` (`tree`, `parent`, `index`, `kind`); `delete_rule` (`tree`, `path`); `proposal` (`tree`, `path`: the auto code, the override), `take_over` / `accept_proposal` / `keep_override` (`tree`, `path`), `set_override` (`tree`, `path`, `code`), see `transpiler/review.py`; `check` also answers `review` (overrides whose auto code moved); `schemas_status` (`tree`, `project`, `stem`: the input and output schema of a mapping, `ok` / `missing` / `invalid`), `schema_import` (`project`, `stem`, `kind`, `source`: copy a schema into the project as the mapping's own); `mapping_create` (`project`, `name`, `golden`?, `golden_to`?), `mapping_golden` (`project`, `name`: the cases already in `tests/golden/<name>/`), `mapping_removal` / `mapping_delete` (`project`, `name`, `golden`?: what deleting takes, then does it; with `golden` the golden cases too), `mapping_rename` (`project`, `name`, `new`, `file_id`?), see `cli/mappings.py`; `golden_cases` (`project`, `mapping`), `golden_import` (`project`, `mapping`, `name`, `input`, `expected`?, `errors`?: copy the files in under the standard names), `golden_rename` (`name`, `new`), `golden_delete` (`name`), `golden_read` (`name`: the text of each file of a case), `golden_write` (`name`, `role` input / expected / errors, `text`: checked, `null` removes the file), `golden_create` (`name`, `text`?: a case with only an input), see `cli/golden.py`; `golden_run` (`mapping`, `names`?: run the cases on the Python backend, pass / fail, output, rule errors, diff), `golden_record` (`name`: take the output now as the expected one), see `cli/golden_run.py`; `scaffold` (`tree`, `project`, `stem`, `apply`: the empty rules the output schema adds, see `transpiler/scaffold.py`; with `apply` also the new `tree`); `config_read` (`project`), `config_check` (`values`), `config_write` (`project`, `values`): `mapper.toml`, see `cli/project_config.py`; `functions` (`project`?: the built-in and project functions, see `cli/functions.py`); `project_backends` (the backends and their options, as `config_read`'s `schema`), `project_create` (`project`, `target`, `options`?: a new `mapper.toml` and the project's folders), see `cli/project_create.py`. `tree` is the file as `mapper fn read` prints it; the answer carries the new
 `tree`, or `error`.
 """
 
@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 from typing import Any, TextIO
 
-from cli import functions, golden, mappings, project_config, project_create
+from cli import functions, golden, golden_run, mappings, project_config, project_create
 from cli.config import MapperConfigError
 from compiler.function_registry import all_functions
 from compiler.schema_files import import_schema, schema_status
@@ -158,6 +158,19 @@ def handle(request: dict[str, Any]) -> dict[str, Any]:
             Path(request["project"]), request["mapping"], request["name"], request.get("text", "{}")
         )
         return {"ok": True}
+    if op == "golden_run":
+        names = request.get("names")
+        return {
+            "ok": True,
+            "results": golden_run.run_cases(
+                Path(request["project"]), request["mapping"], names if names else None
+            ),
+        }
+    if op == "golden_record":
+        return {
+            "ok": True,
+            **golden_run.record_case(Path(request["project"]), request["mapping"], request["name"]),
+        }
     if op == "golden_rename":
         golden.rename_case(
             Path(request["project"]), request["mapping"], request["name"], request["new"]
