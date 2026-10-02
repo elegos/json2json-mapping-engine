@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { GoldenCase, GoldenResult } from "./api";
-import { diffLines, tally, verdict, whyFailed } from "./goldenResult";
+import { diffLines, falsePositiveNote, maybeFalsePositive, tally, verdict, whyFailed } from "./goldenResult";
 import { GoldenEditor } from "./GoldenEditor";
 
 interface Props {
@@ -233,7 +233,11 @@ function ResultDetail(props: { result: GoldenResult; busy: boolean; onRecord: ()
               {r.errors.map((e) => (
                 <tr key={e.rule}>
                   <td className="golden-name">{e.rule}</td>
-                  <td>{e.cause}</td>
+                  <td>
+                    {e.cause}
+                    {e.expected && <span className="muted"> — expected</span>}
+                    {maybeFalsePositive(e, r.target) && <div className="golden-doubt">{falsePositiveNote(r.target)}</div>}
+                  </td>
                 </tr>
               ))}
             </tbody>

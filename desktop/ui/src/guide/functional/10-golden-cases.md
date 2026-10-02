@@ -57,6 +57,22 @@ them first. Each case gets a result:
 Click a result to see why: which rules reported an error and the cause, and the output, or its
 difference from the expected one (green lines are what the mapping gave, red what was expected).
 
+## Where a failure is
+
+A rule that reports an error, and that the case did not expect to fail, is **marked on its row** in
+the Rules view (red, with the cause in the tooltip): you see which part of the mapping failed
+without reading technical names. A case that *expects* a rule to fail does not mark it. The marks
+are of the saved mapping that was run: editing and saving it, or opening another mapping, clears them.
+
+A loop or an object is marked as a whole: its fields are computed together, so the mark says which
+case failed and why, not which field.
+
+> **Regular expressions.** The cases run on Python's engine, whatever the project's backend is. A
+> pattern is written in the dialect of the backend (Oracle's, for instance), so when a rule that
+> uses `regexp_replace` or `regexp_group` fails on a project that is not on Python, the mark is
+> amber and the tool says it **may be a false positive**: the pattern might be fine for the
+> backend and not for Python. Check it in both before changing it.
+
 **Record as expected…** makes the output of a case, and the rules that failed, its expected
 result. Look at the output first: recording what is wrong makes the case pass for the wrong
 reason. It replaces the expected files of that case.

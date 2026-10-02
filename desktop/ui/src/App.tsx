@@ -7,6 +7,7 @@ import { Lookups } from "./Lookups";
 import { Paths } from "./Paths";
 import { ProjectProperties } from "./ProjectProperties";
 import { Golden } from "./Golden";
+import { goldenDiagnostics } from "./goldenResult";
 import { GoldenImport } from "./GoldenImport";
 import { nameProblem } from "./mappings";
 import { PromptDialog, type PromptField } from "./PromptDialog";
@@ -175,6 +176,8 @@ export function App() {
   /** The golden case editor holds changes not saved. */
   const [goldenDirty, setGoldenDirty] = useState(false);
   const goldenDirtyRef = useRef(false);
+  /** The latest run of each golden case: the rules that failed are marked on the grid. */
+  const [goldenRuns, setGoldenRuns] = useState<Record<string, GoldenResult>>({});
   goldenDirtyRef.current = goldenDirty;
   const [recent, setRecent] = useState<string[]>(loadRecent);
   const [wizard, setWizard] = useState(false);
@@ -1033,6 +1036,11 @@ export function App() {
 
   /** Runs golden cases of the open mapping; the saved file is what runs, so unsaved changes are
    * saved first (or the run is given up). */
+  // the marks are of the file as it was run: another file, or a saved change, makes them stale
+  useEffect(() => {
+    setGoldenRuns({});
+  }, [saved, current]);
+
   const runGolden = useCallback(
     async (names: string[] | null): Promise<GoldenResult[] | null> => {
       if (!project || !current) return null;
@@ -1044,7 +1052,9 @@ export function App() {
         if (choice !== "save" || !(await saveRef.current())) return null;
       }
       try {
-        return await goldenRun(project, mappingName(current), names ?? undefined);
+        const got = await goldenRun(project, mappingName(current), names ?? undefined);
+        setGoldenRuns((old) => ({ ...old, ...Object.fromEntries(got.map((r) => [r.name, r])) }));
+        return got;
       } catch (e) {
         setStatus(String(e instanceof Error ? e.message : e));
         return null;
@@ -1197,10 +1207,14 @@ export function App() {
   const diagnostics = useMemo(
     () =>
       diagnosticsByRule(
-        [...live, ...(current && report ? report.diagnostics : [])],
+        [
+          ...live,
+          ...(current && report ? report.diagnostics : []),
+          ...(current ? goldenDiagnostics(Object.values(goldenRuns), current) : []),
+        ],
         current ?? "",
       ),
-    [current, report, live],
+    [current, report, live, goldenRuns],
   );
 
   const selectedRule = tree && selectedPath ? ruleAt(tree, selectedPath) : undefined;

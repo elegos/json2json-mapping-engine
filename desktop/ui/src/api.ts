@@ -229,10 +229,23 @@ export interface GoldenResult {
   name: string;
   passed: boolean | null;
   output: unknown;
-  errors: { rule: string; cause: string }[];
+  errors: GoldenError[];
   expected_errors: string[] | null;
   diff: string;
   message: string;
+  /** The project's backend: the cases run on Python's whatever it is. */
+  target: string;
+}
+
+/** A rule that reported an error in a run. `path` is its row in the grid (null for a `.map.py`),
+ * `expected` says the case expects it to fail, `regex` that it (or a rule inside it) uses a
+ * regular expression. */
+export interface GoldenError {
+  rule: string;
+  cause: string;
+  path: string | null;
+  regex: boolean;
+  expected: boolean;
 }
 
 /** Runs cases of a mapping on the Python backend (all of them without names). The saved file of

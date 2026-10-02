@@ -334,3 +334,4 @@ span.result-badge { cursor: default; }
 .golden-diff { margin: 0; padding: 8px 10px; background: color-mix(in srgb, CanvasText 6%, Canvas); border-radius: 4px; max-height: 40vh; overflow: auto; font-size: 12.5px; }
 .golden-diff .add { background: #2e9e4f33; }
 .golden-diff .del { background: #d9534f33; }
+.golden-doubt { color: #d19a2a; font-size: 12.5px; margin-top: 2px; }
