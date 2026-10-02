@@ -147,6 +147,17 @@ export async function chooseSchemaFile(kind: SchemaKind, defaultPath?: string): 
 export const importSchema = (project: string, stem: string, kind: SchemaKind, source: string) =>
   reviewRequest<SchemaStatus>({ op: "schema_import", project, stem, kind, source });
 
+/** The empty rules the mapping's output schema adds (one per property not covered yet).
+ * With `apply` the answer also carries the tree with them in. */
+export async function scaffoldRules(
+  tree: FunctionalFile,
+  project: string,
+  stem: string,
+  apply: boolean,
+): Promise<{ added: number; skipped: string[]; tree?: FunctionalFile }> {
+  return reviewRequest({ op: "scaffold", tree, project, stem, apply });
+}
+
 /** What the split pane of a rule shows. */
 export interface Proposal {
   /** What the transpiler generates now from the Source and expression. */

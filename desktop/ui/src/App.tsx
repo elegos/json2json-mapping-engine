@@ -26,6 +26,7 @@ import {
   editTree,
   importSchema,
   type SchemaKind,
+  scaffoldRules,
   schemasStatus,
   type SchemasStatus,
   initialProject,
@@ -619,18 +620,46 @@ export function App() {
       try {
         const source = await chooseSchemaFile(kind, project);
         if (!source) return;
-        await importSchema(project, mappingName(current), kind, source);
+        const stem = mappingName(current);
+        await importSchema(project, stem, kind, source);
+        let next = open;
         if (open.schemas[kind]) {
           remember(open, "schemas");
+          next = { ...open, schemas: { ...open.schemas, [kind]: null } };
           setTree((old) => (old ? { ...old, schemas: { ...old.schemas, [kind]: null } } : old));
         }
         setSchemaTick((n) => n + 1);
         setStatus("");
+        // a new output schema: offer the rules it describes, empty, for the user to fill in
+        if (kind === "output") {
+          const found = await scaffoldRules(next, project, stem, false);
+          if (found.added > 0) {
+            const left =
+              found.skipped.length > 0
+                ? ` ${found.skipped.length} cannot be laid out (${found.skipped.slice(0, 3).join("; ")}${found.skipped.length > 3 ? "; …" : ""}).`
+                : "";
+            const choice = await ask(
+              `Create ${found.added} empty rule${found.added === 1 ? "" : "s"} from the output schema? ` +
+                `They are ignored until a Source is defined.${left}`,
+              [
+                { id: "create", label: "Create the rules", primary: true },
+                { id: "no", label: "Not now" },
+              ],
+            );
+            if (choice === "create") {
+              const made = await scaffoldRules(next, project, stem, true);
+              if (made.tree) {
+                remember(next, "scaffold");
+                setTree(made.tree);
+              }
+            }
+          }
+        }
       } catch (e) {
         setStatus(String(e instanceof Error ? e.message : e));
       }
     },
-    [project, current, remember],
+    [project, current, remember, ask],
   );
 
   // what differs from the saved file, per row path ("*" = a new rule)
