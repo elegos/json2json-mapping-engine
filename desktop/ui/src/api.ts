@@ -223,6 +223,30 @@ export const goldenImport = (
   files: { input: string; expected: string | null; errors: string | null },
 ) => reviewRequest({ op: "golden_import", project, mapping, name, ...files });
 
+/** The text of each file of a case, as on disk (null where the file is not there). */
+export const goldenRead = async (project: string, mapping: string, name: string) =>
+  (
+    await reviewRequest<{ files: Record<"input" | "expected" | "errors", string | null> }>({
+      op: "golden_read",
+      project,
+      mapping,
+      name,
+    })
+  ).files;
+
+/** Saves one file of a case (checked first); `text` null removes it. */
+export const goldenWrite = (
+  project: string,
+  mapping: string,
+  name: string,
+  role: "input" | "expected" | "errors",
+  text: string | null,
+) => reviewRequest({ op: "golden_write", project, mapping, name, role, text });
+
+/** A new case holding only an input (`{}` unless given). */
+export const goldenCreate = (project: string, mapping: string, name: string, text?: string) =>
+  reviewRequest({ op: "golden_create", project, mapping, name, text });
+
 export const goldenRename = (project: string, mapping: string, name: string, to: string) =>
   reviewRequest({ op: "golden_rename", project, mapping, name, new: to });
 

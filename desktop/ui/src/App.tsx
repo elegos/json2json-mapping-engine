@@ -37,6 +37,7 @@ import {
   chooseSchemaFile,
   editTree,
   goldenCases,
+  goldenCreate,
   goldenDelete,
   goldenImport,
   goldenRename,
@@ -168,6 +169,10 @@ export function App() {
   // the golden cases of the open mapping; `importingGolden` is the import dialog being open
   const [cases, setCases] = useState<GoldenCase[]>([]);
   const [importingGolden, setImportingGolden] = useState(false);
+  /** The golden case editor holds changes not saved. */
+  const [goldenDirty, setGoldenDirty] = useState(false);
+  const goldenDirtyRef = useRef(false);
+  goldenDirtyRef.current = goldenDirty;
   const [recent, setRecent] = useState<string[]>(loadRecent);
   const [wizard, setWizard] = useState(false);
   const [guide, setGuide] = useState<string | null>(null);
@@ -280,19 +285,30 @@ export function App() {
     [],
   );
 
+  /** True when the golden case editor has nothing unsaved, or the user agrees to lose it. */
+  const confirmGoldenLeave = useCallback(async (): Promise<boolean> => {
+    if (!goldenDirtyRef.current) return true;
+    const choice = await ask("The golden case has changes you have not saved. Discard them?", [
+      { id: "discard", label: "Discard" },
+      { id: "cancel", label: "Cancel", primary: true },
+    ]);
+    if (choice === "discard") setGoldenDirty(false);
+    return choice === "discard";
+  }, [ask]);
+
   /** True when it is fine to go on: nothing unsaved, or the user saved / chose to discard. */
   const guardUnsaved = useCallback(
     async (message: string, discardLabel: string): Promise<boolean> => {
-      if (!dirtyRef.current) return true;
+      if (!dirtyRef.current) return confirmGoldenLeave();
       const choice = await ask(message, [
         { id: "save", label: "Save", primary: true },
         { id: "discard", label: discardLabel },
         { id: "cancel", label: "Cancel" },
       ]);
       if (choice === "save") return saveRef.current();
-      return choice === "discard";
+      return choice === "discard" && (await confirmGoldenLeave());
     },
-    [ask],
+    [ask, confirmGoldenLeave],
   );
   const guardRef = useRef(guardUnsaved);
   guardRef.current = guardUnsaved;
@@ -301,7 +317,7 @@ export function App() {
   useEffect(() => {
     const window = getCurrentWindow();
     const unlisten = window.onCloseRequested(async (event) => {
-      if (!dirtyRef.current) return;
+      if (!dirtyRef.current && !goldenDirtyRef.current) return;
       event.preventDefault();
       const ok = await guardRef.current(
         "Save the document? If you close without saving you will lose your changes.",
@@ -989,9 +1005,32 @@ export function App() {
     [project, current, loadCases],
   );
 
+  const newCase = useCallback(async () => {
+    if (!project || !current) return;
+    const taken = cases.map((c) => c.name);
+    const got = await askValues(
+      "New golden case",
+      [{ key: "name", label: "Case name", value: "", hint: "It starts with an empty input, {}: fill it in the editor." }],
+      "Create",
+      (v) =>
+        /^[A-Za-z0-9_][A-Za-z0-9_-]*$/.test(v.name.trim())
+          ? taken.includes(v.name.trim())
+            ? `There is already a case called ${v.name.trim()}.`
+            : null
+          : "Letters, digits, _ and -.",
+    );
+    if (!got) return;
+    try {
+      await goldenCreate(project, mappingName(current), got.name.trim());
+      await loadCases();
+    } catch (e) {
+      setStatus(String(e instanceof Error ? e.message : e));
+    }
+  }, [project, current, cases, askValues, loadCases]);
+
   const renameCase = useCallback(
     async (name: string) => {
-      if (!project || !current) return;
+      if (!project || !current || !(await confirmGoldenLeave())) return;
       const others = cases.map((c) => c.name).filter((n) => n !== name);
       const got = await askValues(
         "Rename golden case",
@@ -1012,12 +1051,12 @@ export function App() {
         setStatus(String(e instanceof Error ? e.message : e));
       }
     },
-    [project, current, cases, askValues, loadCases],
+    [project, current, cases, askValues, loadCases, confirmGoldenLeave],
   );
 
   const deleteCase = useCallback(
     async (name: string) => {
-      if (!project || !current) return;
+      if (!project || !current || !(await confirmGoldenLeave())) return;
       const mapping = mappingName(current);
       const choice = await ask(
         `Delete the golden case '${name}' of ${mapping}? Its input, expected output and expected errors files are removed.`,
@@ -1436,7 +1475,7 @@ export function App() {
                 Paths
               </button>
               <button className={view === "golden" ? "tab active" : "tab"} onClick={() => setView("golden")}>
-                Golden
+                Golden{goldenDirty ? " ●" : ""}
               </button>
               {/* the properties are a page of their own: a tab while they are open, or while they hold
                   changes not saved yet (so it is clear that mapper.toml is among them); gone once the
@@ -1460,14 +1499,23 @@ export function App() {
               }}
             />
           )}
-          {tree && current && view === "golden" && (
-            <Golden
-              mapping={mappingName(current)}
-              cases={cases}
-              onImport={() => setImportingGolden(true)}
-              onRename={(name) => void renameCase(name)}
-              onDelete={(name) => void deleteCase(name)}
-            />
+          {/* kept while the mapping is open, so a draft survives a visit to another view */}
+          {tree && current && (
+            <div style={view === "golden" ? undefined : { display: "none" }}>
+              <Golden
+                key={`${project}|${current}`}
+                project={project ?? ""}
+                mapping={mappingName(current)}
+                cases={cases}
+                onImport={() => setImportingGolden(true)}
+                onNew={() => void newCase()}
+                onDirty={setGoldenDirty}
+                onSaved={() => void loadCases()}
+                confirmLeave={confirmGoldenLeave}
+                onRename={(name) => void renameCase(name)}
+                onDelete={(name) => void deleteCase(name)}
+              />
+            </div>
           )}
           {tree && view === "paths" && (
             <Paths

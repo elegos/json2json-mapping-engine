@@ -9,6 +9,14 @@
  },
  {
   "n": 2,
+  "x": 24,
+  "y": 14.8,
+  "w": 6.6,
+  "h": 3,
+  "text": "New case: starts with an empty input, to fill in the editor."
+ },
+ {
+  "n": 3,
   "x": 15.1,
   "y": 18.9,
   "w": 37.6,

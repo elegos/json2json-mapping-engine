@@ -67,7 +67,9 @@ const golden: TourStep = {
   id: "golden",
   title: "Golden cases",
   label: "the golden cases",
-  text: "Examples of an input and the output it must give. They are what protects the mapping when it changes.",
+  text:
+    "Examples of an input and the output it must give. They are what protects the mapping when it changes. " +
+    "Import cases you have, or create one and write its input, expected output and expected errors in the editor.",
   target: [".tabs", ".golden"],
   side: "bottom",
   state: { view: "golden" },

@@ -46,7 +46,23 @@ export const SHOTS = [
     setup: (p) => tab(p, "Golden"),
     callouts: [
       { sel: ".golden button", first: true, text: "Import a case: an input, the output expected for it and, optionally, the rules expected to report an error." },
+      { sel: ".golden-bar button:nth-child(2)", text: "New case: starts with an empty input, to fill in the editor." },
       { sel: ".golden table", text: "The cases of the mapping and the files each one has; a case can be renamed (✎) or deleted (✕)." },
+    ],
+  },
+  {
+    name: "golden-editor",
+    setup: async (p) => {
+      await tab(p, "Golden");
+      await p.click('.golden-table button.link:text-is("two_lines")');
+      await p.waitForSelector(".golden-editor .cm-content");
+    },
+    callouts: [
+      { sel: ".golden-table button.link", first: true, text: "Click the name of a case to edit its files." },
+      { sel: ".golden-editor .tabs", text: "The three files of the case: the input, the expected output and the expected errors. A dot marks a change not saved yet." },
+      { sel: ".golden-json", text: "The file, as JSON." },
+      { sel: ".golden-tools", text: "Whether the JSON is valid; Format indents it; Remove this file takes the optional files away." },
+      { sel: ".golden-editor header", text: "Save writes the changed files; Revert goes back to the saved ones." },
     ],
   },
   {

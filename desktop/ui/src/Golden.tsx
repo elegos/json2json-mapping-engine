@@ -1,16 +1,46 @@
+import { useEffect, useState } from "react";
 import type { GoldenCase } from "./api";
+import { GoldenEditor } from "./GoldenEditor";
 
 interface Props {
+  project: string;
   mapping: string;
   cases: GoldenCase[];
   onImport: () => void;
+  onNew: () => void;
+  /** Something unsaved in the editor. */
+  onDirty: (dirty: boolean) => void;
+  /** A file of a case was saved: reload the list. */
+  onSaved: () => void;
+  /** True to leave the case being edited (nothing unsaved, or the user agreed to lose it). */
+  confirmLeave: () => Promise<boolean>;
   onRename: (name: string) => void;
   onDelete: (name: string) => void;
 }
 
 /** The golden cases of the open mapping: `tests/golden/<mapping>/<case>.input.json` with an
  * optional expected output and expected rule errors. What is loaded here is what CI runs. */
-export function Golden({ mapping, cases, onImport, onRename, onDelete }: Props) {
+export function Golden({
+  project,
+  mapping,
+  cases,
+  onImport,
+  onNew,
+  onDirty,
+  onSaved,
+  confirmLeave,
+  onRename,
+  onDelete,
+}: Props) {
+  const [editing, setEditing] = useState<string | null>(null);
+  // a case renamed or deleted is no longer the one in the editor
+  useEffect(() => {
+    if (editing && !cases.some((c) => c.name === editing)) setEditing(null);
+  }, [cases, editing]);
+  const edit = async (name: string) => {
+    if (name !== editing && editing !== null && !(await confirmLeave())) return;
+    setEditing(name);
+  };
   return (
     <div className="golden">
       <p className="config-help golden-help">
@@ -21,6 +51,7 @@ export function Golden({ mapping, cases, onImport, onRename, onDelete }: Props) 
       </p>
       <div className="golden-bar">
         <button onClick={onImport}>Import a case…</button>
+        <button onClick={onNew}>New case…</button>
         <button disabled title="Needs the Python backend (not available yet)">
           ▶ Execute all…
         </button>
@@ -40,8 +71,12 @@ export function Golden({ mapping, cases, onImport, onRename, onDelete }: Props) 
           </thead>
           <tbody>
             {cases.map((c) => (
-              <tr key={c.name}>
-                <td className="golden-name">{c.name}</td>
+              <tr key={c.name} className={c.name === editing ? "current" : undefined}>
+                <td className="golden-name">
+                  <button className="link" title="Edit this case" onClick={() => void edit(c.name)}>
+                    {c.name}
+                  </button>
+                </td>
                 <td>✓</td>
                 <td>{c.expected ? "✓" : <span className="golden-none">none</span>}</td>
                 <td>{c.errors ? "✓" : <span className="golden-none">none</span>}</td>
@@ -60,6 +95,18 @@ export function Golden({ mapping, cases, onImport, onRename, onDelete }: Props) 
             ))}
           </tbody>
         </table>
+      )}
+      {editing && (
+        <GoldenEditor
+          project={project}
+          mapping={mapping}
+          name={editing}
+          onDirty={onDirty}
+          onSaved={onSaved}
+          onClose={async () => {
+            if (await confirmLeave()) setEditing(null);
+          }}
+        />
       )}
     </div>
   );

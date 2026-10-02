@@ -767,7 +767,14 @@ Sliced; each slice is usable on its own:
         `<case>.expected.json`, `<case>.expected_errors.json` (the names `discover_cases` reads;
         constants in `compiler/backends/integration.py`). Files are checked before anything is
         written (JSON; errors a list of rule ids; the case must not exist). A case can be
-        renamed or deleted. Still to do: the JSON editor, *record*, running, PASS / FAIL, the diff.
+        renamed or deleted.
+      - Done (second slice): the case editor (`GoldenEditor.tsx`, `goldenEdit.ts`; ops `golden_read` /
+        `golden_write` / `golden_create`, `cli/golden.py`). *New case…* makes a case with an empty
+        input; its name opens the three files in JSON editors (valid / not valid, *Format*, *Add one* /
+        *Remove this file* for the optional ones, *Save* refuses what is not JSON or, for the errors,
+        not a list of rule ids, *Revert*). A draft survives a visit to another view; leaving the case,
+        switching mapping or closing the window with unsaved changes asks first. Walked through by
+        `ui/shots/golden-check.mjs`. Still to do: *record*, running, PASS / FAIL, the diff.
       - Buttons in place, disabled until the Python backend exists: ▶ on each case (run it) and
         *▶ Execute all…* next to *Import a case…*. To do after the Python backend: running one case
         or all, how the results are shown (PASS / FAIL per case, the output diff, the per-rule

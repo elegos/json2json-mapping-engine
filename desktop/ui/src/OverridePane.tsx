@@ -108,7 +108,7 @@ export function OverridePane({ tree, path, rule, target, flag, onResolve, comple
               viewRef={codeView}
               className="code-editor multi"
               singleLine={false}
-              highlightPython
+              language="python"
               autoFocus={focusNext.current}
               completer={completer}
               value={rule.transform.code_override ?? ""}

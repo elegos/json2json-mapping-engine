@@ -1,0 +1,42 @@
+[
+ {
+  "n": 1,
+  "x": 15.1,
+  "y": 23.1,
+  "w": 7.6,
+  "h": 2.1,
+  "text": "Click the name of a case to edit its files."
+ },
+ {
+  "n": 2,
+  "x": 16,
+  "y": 42.6,
+  "w": 62.5,
+  "h": 3.7,
+  "text": "The three files of the case: the input, the expected output and the expected errors. A dot marks a change not saved yet."
+ },
+ {
+  "n": 3,
+  "x": 16,
+  "y": 49.7,
+  "w": 62.6,
+  "h": 24.7,
+  "text": "The file, as JSON."
+ },
+ {
+  "n": 4,
+  "x": 16,
+  "y": 75,
+  "w": 62.5,
+  "h": 3,
+  "text": "Whether the JSON is valid; Format indents it; Remove this file takes the optional files away."
+ },
+ {
+  "n": 5,
+  "x": 16,
+  "y": 36.8,
+  "w": 62.5,
+  "h": 4.9,
+  "text": "Save writes the changed files; Revert goes back to the saved ones."
+ }
+]

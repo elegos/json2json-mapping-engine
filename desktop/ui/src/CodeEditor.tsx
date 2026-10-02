@@ -6,6 +6,7 @@ import {
   startCompletion,
 } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import { json } from "@codemirror/lang-json";
 import { python } from "@codemirror/lang-python";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { Annotation, EditorState, Prec } from "@codemirror/state";
@@ -52,8 +53,8 @@ interface Props {
   completer?: Completer;
   /** A single line commits on Enter; a multi-line editor does not. */
   singleLine?: boolean;
-  /** Python syntax colours (the developer dialect of a code override). */
-  highlightPython?: boolean;
+  /** Syntax colours: Python (the developer dialect of a code override) or JSON (a golden case). */
+  language?: "python" | "json";
   onChange: (value: string) => void;
   /** Enter (single line) with no menu open. */
   onCommit?: () => void;
@@ -76,7 +77,7 @@ export function CodeEditor({
   value,
   completer,
   singleLine = true,
-  highlightPython = false,
+  language,
   onChange,
   onCommit,
   onCancel,
@@ -156,7 +157,7 @@ export function CodeEditor({
           }
         }),
         EditorView.lineWrapping,
-        highlightPython ? [python(), syntaxHighlighting(PYTHON_COLOURS)] : [],
+        language ? [language === "json" ? json() : python(), syntaxHighlighting(PYTHON_COLOURS)] : [],
         EditorView.domEventHandlers({
           blur: (_event, editor) => {
             // a menu click keeps the focus; wait to see where it went
