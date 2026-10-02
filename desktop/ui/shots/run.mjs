@@ -35,11 +35,27 @@ async function boxes(page, selector, first, view) {
   const list = [selector].flat();
   return page.evaluate(
     ({ list, first, w, h }) => {
+      // the part of the element that can be seen: what a scrolling ancestor clips is left out
+      const visibleRect = (el) => {
+        let { left, top, right, bottom } = el.getBoundingClientRect();
+        for (let p = el.parentElement; p; p = p.parentElement) {
+          const o = getComputedStyle(p);
+          if (o.overflowX === "visible" && o.overflowY === "visible") continue;
+          const r = p.getBoundingClientRect();
+          left = Math.max(left, r.left);
+          top = Math.max(top, r.top);
+          right = Math.min(right, r.right);
+          bottom = Math.min(bottom, r.bottom);
+        }
+        right = Math.min(right, w);
+        bottom = Math.min(bottom, h);
+        return right > left && bottom > top ? { left, top, right, bottom } : null;
+      };
       const rects = list.flatMap((sel) =>
         (first ? [document.querySelector(sel)].filter(Boolean) : [...document.querySelectorAll(sel)]).map(
-          (el) => el.getBoundingClientRect(),
+          (el) => visibleRect(el),
         ),
-      );
+      ).filter(Boolean);
       if (!rects.length) return null;
       const left = Math.min(...rects.map((r) => r.left));
       const top = Math.min(...rects.map((r) => r.top));
