@@ -1213,8 +1213,8 @@ export function App() {
         <ProjectButton recent={recent} onOpen={openProject} onPick={async (d) => {
             if (await switchGuard()) await openDir(d);
           }} />
-        <button title="Start: recent projects, new project" onClick={() => setWizard(true)}>
-          ?
+        <button title="Start: recent projects, new project" aria-label="Start wizard" onClick={() => setWizard(true)}>
+          🧙‍♂️
         </button>
         <MiddleEllipsis className="project" text={project ?? "no project"} />
         <button className="history" title="Undo (Ctrl + Z)" disabled={!canUndo || busy} onClick={undo}>
