@@ -577,7 +577,7 @@ Sliced; each slice is usable on its own:
       - Still open: what "rule validated" becomes for rules the new schema invalidates; a picker
         among the project's own schemas (only a file from outside can be loaded so far); a
         command to lay out the rules again from the schema, outside the load.
-- [ ] **M6.6 — Create and delete mappings.** Every session so far has used the `orders` fixture:
+- [x] **M6.6 — Create, rename and delete mappings.** Every session so far has used the `orders` fixture:
       the tool cannot make a new `.fn.yaml` (name, id, and the schemas of M6.5; an empty file
       that loads) nor delete one (with a confirmation; what depends on it: `build/`, `generated/`,
       the golden cases). Also rename, and the unsaved-changes guard that already exists for
@@ -585,6 +585,16 @@ Sliced; each slice is usable on its own:
       Renaming the `.fn.yaml` renames its schema files too (`<name>_input.schema.json`,
       `<name>_output.schema.json`), and a `schemas:` override that pointed at them. The tool shows the
       mapping's name, never the file name.
+      - Decided: a new mapping is `id`, `name`, `rules: []` (the loader accepts no rules; building
+        it fails with "mapping '<id>' is empty"). Delete removes the `.fn.yaml`, its two schema
+        files and what was derived (`build/transpiled`, `build/cache`, `generated/stubs`,
+        `generated/dataclasses`), and lists them in the confirmation; the golden cases stay, and the
+        compiled packages go at the next build. Rename moves the files and the golden folder; the
+        file's `id` (it names the PL/SQL package) follows the name when it was the old name, and the
+        dialog lets the user set it by hand.
+      - Done: `cli/mappings.py` (ops `mapping_create`, `mapping_removal`, `mapping_delete`,
+        `mapping_rename` of `mapper serve`) and, in the left list, *+ New mapping…* and, on the
+        open mapping, rename (✎) and delete (✕).
 - [ ] **M6.7 — In-app guide and function explorer.** A help panel in the tool: what each part
       does, the syntax of Target (`A.B`, `Lines[*]`), Source (`$`, `@`, `@label`, constants,
       selectors `list[cond]`, aliases), Expression (`value`, anchors, blocks, `Null`, bare `return`,
