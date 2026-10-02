@@ -29,6 +29,7 @@ import {
   importSchema,
   mappingCreate,
   mappingDelete,
+  mappingGolden,
   mappingRemoval,
   mappingRename,
   type SchemaKind,
@@ -350,20 +351,62 @@ export function App() {
   const newMapping = useCallback(async () => {
     if (!project || !(await switchGuard())) return;
     const taken = files.map(mappingName);
-    const got = await askValues(
-      "New mapping",
-      [{ key: "name", label: "Name", value: "", hint: "It names the file, its schemas and the PL/SQL package." }],
-      "Create",
-      (v) => nameProblem(v.name.trim(), taken),
-    );
-    if (!got) return;
+    let name = "";
     try {
-      await mappingCreate(project, got.name.trim());
-      await reloadFiles(got.name.trim());
+      for (;;) {
+        const got = await askValues(
+          "New mapping",
+          [{ key: "name", label: "Name", value: name, hint: "It names the file, its schemas and the PL/SQL package." }],
+          "Create",
+          (v) => nameProblem(v.name.trim(), taken),
+        );
+        if (!got) return;
+        name = got.name.trim();
+        // a mapping deleted earlier leaves its golden cases: they are not taken over unasked
+        const golden = await mappingGolden(project, name);
+        let how: "keep" | "rename" | "delete" | undefined;
+        let to: string | undefined;
+        if (golden.files > 0) {
+          const choice = await ask(
+            `${golden.path}/ already holds ${golden.files} file${golden.files === 1 ? "" : "s"} (golden cases of a mapping that was called ${name}). What should happen to them?`,
+            [
+              { id: "keep", label: "Use them for the new mapping" },
+              { id: "rename", label: "Rename the folder…" },
+              { id: "delete", label: "Delete them" },
+              { id: "name", label: "Choose another name", primary: true },
+            ],
+          );
+          if (choice === "name") continue;
+          if (choice === "rename") {
+            const moved = await askValues(
+              "Rename the golden folder",
+              [{ key: "to", label: `New name of ${golden.path}`, value: golden.suggest }],
+              "Rename",
+              (v) => (/^[A-Za-z0-9_][A-Za-z0-9_.-]*$/.test(v.to.trim()) ? null : "Letters, digits, _ . and -, no slashes."),
+            );
+            if (!moved) continue;
+            to = moved.to.trim();
+          }
+          if (choice === "delete") {
+            const sure = await ask(
+              `Delete ${golden.path}/ with its ${golden.files} file${golden.files === 1 ? "" : "s"}? They stay in git history if they were committed.`,
+              [
+                { id: "delete", label: "Delete" },
+                { id: "cancel", label: "Cancel", primary: true },
+              ],
+            );
+            if (sure !== "delete") continue;
+          }
+          how = choice as "keep" | "rename" | "delete";
+        }
+        await mappingCreate(project, name, how, to);
+        await reloadFiles(name);
+        return;
+      }
     } catch (e) {
       setStatus(String(e instanceof Error ? e.message : e));
     }
-  }, [project, files, switchGuard, askValues, reloadFiles]);
+  }, [project, files, switchGuard, askValues, ask, reloadFiles]);
 
   const renameCurrent = useCallback(async () => {
     if (!project || !current || !tree || !(await switchGuard())) return;

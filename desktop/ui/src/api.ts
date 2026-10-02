@@ -159,8 +159,18 @@ export async function scaffoldRules(
 }
 
 /** Creating, deleting and renaming a mapping (the files are the Python worker's business). */
-export const mappingCreate = (project: string, name: string) =>
-  reviewRequest<{ file: string }>({ op: "mapping_create", project, name });
+/** `golden` says what becomes of cases already in `tests/golden/<name>/` (see `mappingGolden`):
+ * keep them, move them to `tests/golden/<goldenTo>/`, or delete them. */
+export const mappingCreate = (
+  project: string,
+  name: string,
+  golden?: "keep" | "rename" | "delete",
+  goldenTo?: string,
+) => reviewRequest<{ file: string }>({ op: "mapping_create", project, name, golden, golden_to: goldenTo });
+
+/** The golden cases a mapping of this name would find: how many files, and a free folder name. */
+export const mappingGolden = (project: string, name: string) =>
+  reviewRequest<{ path: string; files: number; suggest: string }>({ op: "mapping_golden", project, name });
 
 /** What deleting the mapping removes (project-relative paths), for the confirmation. */
 export const mappingRemoval = (project: string, name: string) =>
