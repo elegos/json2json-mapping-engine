@@ -66,6 +66,24 @@ export const SHOTS = [
     ],
   },
   {
+    name: "golden-run",
+    setup: async (p) => {
+      await tab(p, "Golden");
+      await p.click('.golden-bar button:has-text("Execute all")');
+      await p.waitForSelector(".golden-summary");
+      await p.click('.golden-table tr:has-text("failed_member") .result-badge');
+      await p.waitForSelector(".golden-result");
+    },
+    callouts: [
+      { sel: ".golden-bar button:nth-child(3)", text: "Execute all runs every case; the ▶ of a row runs just that one." },
+      { sel: ".golden-summary", text: "How many cases passed." },
+      { sel: ".golden-table th:nth-child(5), .golden-table td:nth-child(5)", text: "The result of each case: PASS, FAIL, or output only when the case has no expected output. Click it for the details." },
+      { sel: ".golden-result > header", text: "The case, its verdict and Record as expected…, which makes the current output the expected one." },
+      { sel: ".golden-errors", text: "The rules that reported an error, and why. Here the case expects exactly that." },
+      { sel: ".golden-diff", text: "The output, or its difference from the expected one when they differ." },
+    ],
+  },
+  {
     name: "developer",
     viewport: { width: 1900, height: 900 },
     setup: async (p) => {

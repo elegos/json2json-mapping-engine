@@ -223,6 +223,27 @@ export const goldenImport = (
   files: { input: string; expected: string | null; errors: string | null },
 ) => reviewRequest({ op: "golden_import", project, mapping, name, ...files });
 
+/** What running a golden case gave. `passed` is null when the case has no expected output
+ * (the output is only shown). */
+export interface GoldenResult {
+  name: string;
+  passed: boolean | null;
+  output: unknown;
+  errors: { rule: string; cause: string }[];
+  expected_errors: string[] | null;
+  diff: string;
+  message: string;
+}
+
+/** Runs cases of a mapping on the Python backend (all of them without names). The saved file of
+ * the mapping is what runs. */
+export const goldenRun = async (project: string, mapping: string, names?: string[]) =>
+  (await reviewRequest<{ results: GoldenResult[] }>({ op: "golden_run", project, mapping, names })).results;
+
+/** Makes the output the mapping gives now the expected result of the case. */
+export const goldenRecord = (project: string, mapping: string, name: string) =>
+  reviewRequest<{ output: unknown; errors: string[] }>({ op: "golden_record", project, mapping, name });
+
 /** The text of each file of a case, as on disk (null where the file is not there). */
 export const goldenRead = async (project: string, mapping: string, name: string) =>
   (

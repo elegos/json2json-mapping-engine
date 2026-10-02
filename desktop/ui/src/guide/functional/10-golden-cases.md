@@ -38,8 +38,28 @@ it. The expected output and the expected errors are optional: add one when you n
 **Save** writes the files you changed, and refuses a file that is not valid. Leaving the case with
 changes not saved asks first.
 
-The same cases are what the developers' tests and the automatic build run, so what you keep here
-is what protects the mapping.
+## Running the cases
 
-Running the cases from the tool, and seeing which pass, is not there yet: for now they are run with
-`mapper test`, and the Run buttons of the view are disabled.
+```figure
+{"src": "golden-run.png", "alt": "The results of running the golden cases"}
+```
+
+**Execute all** runs every case, and the ▶ of a row runs that one. The cases run on the saved
+mapping, with no database: if the mapping has changes you have not saved, the tool offers to save
+them first. Each case gets a result:
+
+| Result | Meaning |
+|---|---|
+| **PASS** | The output is the expected one, and the rules that reported an error are the ones expected. |
+| **FAIL** | The output differs, or other rules failed (or did not fail) than expected. |
+| **output only** | The case has no expected output: you see what the mapping gives, nothing is judged. |
+
+Click a result to see why: which rules reported an error and the cause, and the output, or its
+difference from the expected one (green lines are what the mapping gave, red what was expected).
+
+**Record as expected…** makes the output of a case, and the rules that failed, its expected
+result. Look at the output first: recording what is wrong makes the case pass for the wrong
+reason. It replaces the expected files of that case.
+
+The same cases are what the developers' tests and the automatic build run, on every backend, so
+what you keep here is what protects the mapping.

@@ -314,3 +314,23 @@ button.primary:hover:not(:disabled) { background: #3468b3; }
 .golden-tools { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
 .golden-problem { color: #d9534f; margin: 4px 0 0; }
 .golden-absent { padding: 12px 0; }
+
+/* golden runs */
+.golden-running { align-self: center; }
+.golden-summary { align-self: center; display: flex; gap: 10px; }
+.golden-summary .pass { color: #2e9e4f; }
+.golden-summary .fail { color: #d9534f; }
+.result-badge { font: 600 11px/1 system-ui; padding: 3px 8px; border-radius: 10px; border: 1px solid transparent; cursor: pointer; }
+span.result-badge { cursor: default; }
+.result-badge.pass { background: #2e9e4f33; color: #3fbf64; border-color: #2e9e4f; }
+.result-badge.fail { background: #d9534f33; color: #ff7a75; border-color: #d9534f; }
+.result-badge.shown { background: #8883; border-color: #8886; }
+.golden-result { margin-top: 16px; border: 1px solid #8884; border-radius: 6px; padding: 8px 12px 12px; max-width: 900px; }
+.golden-result > header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.golden-result .grow { flex: 1; }
+.golden-result h4 { margin: 12px 0 4px; font-size: 13px; }
+.golden-why { margin: 4px 0; padding-left: 20px; color: #ff7a75; }
+.golden-errors td { padding: 2px 16px 2px 0; vertical-align: top; }
+.golden-diff { margin: 0; padding: 8px 10px; background: color-mix(in srgb, CanvasText 6%, Canvas); border-radius: 4px; max-height: 40vh; overflow: auto; font-size: 12.5px; }
+.golden-diff .add { background: #2e9e4f33; }
+.golden-diff .del { background: #d9534f33; }

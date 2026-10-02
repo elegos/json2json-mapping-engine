@@ -780,7 +780,18 @@ Sliced; each slice is usable on its own:
         *Remove this file* for the optional ones, *Save* refuses what is not JSON or, for the errors,
         not a list of rule ids, *Revert*). A draft survives a visit to another view; leaving the case,
         switching mapping or closing the window with unsaved changes asks first. Walked through by
-        `ui/shots/golden-check.mjs`. Still to do: *record*, running, PASS / FAIL, the diff.
+        `ui/shots/golden-check.mjs`.
+      - Done (third slice): *Execute all* and the ▶ of a row run the cases on the Python backend
+        (ops `golden_run` / `golden_record`, `cli/golden_run.py`; the saved mapping is compiled
+        afresh, the project's target does not matter, and unsaved changes are saved first or the
+        run is given up). Each case gets PASS / FAIL / *output only* (no expected output) in a
+        *Result* column, a tally, and a detail panel: why it failed, the rules that reported an
+        error with their cause, the diff (or the output); *Record as expected…* (after a
+        confirmation) takes the output, and the rules that failed, as the expected result. A
+        result is dropped when the case's files change. Walked through by
+        `ui/shots/golden-run-check.mjs`. Still to do: the per-rule errors on the grid rows (the
+        rule ids of a run are the transpiled functions' names; they have to be mapped back to
+        rows); the output of a run shown next to the input (the *Extra mile* of M6).
       - Buttons in place, disabled until the Python backend exists: ▶ on each case (run it) and
         *▶ Execute all…* next to *Import a case…*. To do after the Python backend: running one case
         or all, how the results are shown (PASS / FAIL per case, the output diff, the per-rule
@@ -819,13 +830,29 @@ after M7: check that the GitHub pipeline behaves like the forgejo one (not check
 
 ---
 
-## ⬜ Python backend (queued, after M6)
+## 🟨 Python backend (first slice done)
 
 A backend of its own (`compiler/backends/python/`, `[project] target = "python"`), lightweight:
 it compiles a mapping to a Python module (rule functions, `map_<id>` / `map_<id>_safe`
 twins, the same error report) and needs no database or container. It is what makes the
 desktop tool's preview and error highlighting possible, and it is a second implementation that
 tests the first.
+
+**Done (first slice).** `compiler/backends/python/`: a mapping becomes `map_<id>.py` with
+`map_<id>(source)` (raises `MappingError` when rules failed) and `map_<id>_safe(source)` (gives
+`(output, rule errors)`), next to a shared `j2jme_runtime.py` that holds the run-time rules and the
+built-ins (the reference implementations of `compiler/builtins.py`, `parse_date` with the Oracle
+format tokens); a generated module imports nothing of the engine. The rules settled in the runtime:
+a path through the input gives null where something is missing (never an error); arithmetic on a
+null is null and an ordering comparison with a null is false (as in SQL); a failing rule is
+reported once under its name and leaves its field out, the others go on; a bare `return` leaves a
+field out, `return Null` or a null value puts a null; a whole number is written as an integer
+(5, not 5.0). The four golden mappings and all their cases pass on it (track 1, no container); `mapper
+build` / `check` / `test --integration` work with `[project] target = "python"`
+(`Backend.artifact_suffix`). Option `[target.python] python` (the interpreter version) is
+declared and not used yet. Still to do, as listed below: project `fn/*.fn` functions in the
+module, `@parallel`, the target interpreter handling, the conformance run against PL/SQL, and the
+points where the two could differ, once written down (rounding, null against empty string, dates).
 
 **The rule that governs it: results are backend-independent.** The same input must give the
 same output, and the same rule errors, whichever backend compiled the mapping. Consequences to

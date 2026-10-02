@@ -40,6 +40,9 @@ import {
   goldenCreate,
   goldenDelete,
   goldenImport,
+  goldenRecord,
+  goldenRun,
+  type GoldenResult,
   goldenRename,
   type GoldenCase,
   importSchema,
@@ -1028,6 +1031,51 @@ export function App() {
     }
   }, [project, current, cases, askValues, loadCases]);
 
+  /** Runs golden cases of the open mapping; the saved file is what runs, so unsaved changes are
+   * saved first (or the run is given up). */
+  const runGolden = useCallback(
+    async (names: string[] | null): Promise<GoldenResult[] | null> => {
+      if (!project || !current) return null;
+      if (dirtyRef.current) {
+        const choice = await ask("The mapping has changes not saved, and the cases run on the saved file.", [
+          { id: "save", label: "Save and run", primary: true },
+          { id: "cancel", label: "Cancel" },
+        ]);
+        if (choice !== "save" || !(await saveRef.current())) return null;
+      }
+      try {
+        return await goldenRun(project, mappingName(current), names ?? undefined);
+      } catch (e) {
+        setStatus(String(e instanceof Error ? e.message : e));
+        return null;
+      }
+    },
+    [project, current, ask],
+  );
+
+  const recordGolden = useCallback(
+    async (name: string): Promise<boolean> => {
+      if (!project || !current) return false;
+      const choice = await ask(
+        `Make what the mapping gives now the expected result of ${name}? ` +
+          "Its expected output, and its expected errors, are replaced by this output and the rules that failed.",
+        [
+          { id: "record", label: "Record", primary: true },
+          { id: "cancel", label: "Cancel" },
+        ],
+      );
+      if (choice !== "record") return false;
+      try {
+        await goldenRecord(project, mappingName(current), name);
+        return true;
+      } catch (e) {
+        setStatus(String(e instanceof Error ? e.message : e));
+        return false;
+      }
+    },
+    [project, current, ask],
+  );
+
   const renameCase = useCallback(
     async (name: string) => {
       if (!project || !current || !(await confirmGoldenLeave())) return;
@@ -1511,6 +1559,8 @@ export function App() {
                 onNew={() => void newCase()}
                 onDirty={setGoldenDirty}
                 onSaved={() => void loadCases()}
+                onRun={runGolden}
+                onRecord={recordGolden}
                 confirmLeave={confirmGoldenLeave}
                 onRename={(name) => void renameCase(name)}
                 onDelete={(name) => void deleteCase(name)}

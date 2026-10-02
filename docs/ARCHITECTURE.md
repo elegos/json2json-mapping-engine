@@ -864,6 +864,10 @@ self-describing, not silent:
 }
 ```
 
+**The Python target** (`compiler/backends/python/`) raises `MappingError`, as below, from `map_<id>`,
+and its `map_<id>_safe` gives `(output, rule errors)`; see the Python backend in the implementation plan
+for the run-time rules it keeps.
+
 **Other targets.** The PL/SQL strategy above (reserved code + JSON payload) is specific
 to that backend. A Python target would instead raise a dedicated `MappingError`
 exception carrying `mapping_id` and the accumulated per-rule causes (chained via
