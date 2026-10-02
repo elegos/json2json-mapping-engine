@@ -200,6 +200,10 @@ class _Schemas:
         return out
 
 
+# the schema walker, for the tools that read a schema the way the check does
+SchemaView = _Schemas
+
+
 class _TableName(str):
     """Prints as its own name: the anchor resolver `repr`s a lookup into the expression."""
 
