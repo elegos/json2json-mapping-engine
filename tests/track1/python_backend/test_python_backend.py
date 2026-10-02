@@ -153,3 +153,41 @@ def test_the_builtins_run_with_their_reference_semantics(tmp_path: Path) -> None
     )
     assert errors == []
     assert out == {"D": "2026-10-03", "Total": 7, "Top": 5, "N": 2, "R": 2.3, "C": "A-", "K": "A"}
+
+
+def test_the_text_and_timestamp_builtins_run_in_a_generated_module(tmp_path: Path) -> None:
+    module = _load(
+        tmp_path,
+        "from __mapping__ import *\n"
+        "def a(root: Any) -> str:\n    return replace(root.s, '-', '')\n"
+        "def b(root: Any) -> str:\n    return regexp_replace(root.s, '[0-9]+', '#')\n"
+        "def c(root: Any) -> str | None:\n    return regexp_group(root.s, '([a-z]+)-([0-9]+)', 2)\n"
+        "def d(root: Any) -> str:\n    return remove_prefix(root.s, 'ab')\n"
+        "def e(root: Any) -> str:\n    return format_decimal(root.n, 2)\n"
+        "def f(root: Any) -> number | None:\n    return to_number(root.t)\n"
+        "def g(root: Any) -> str:\n    return to_string(root.n)\n"
+        "def h(root: Any) -> str:\n    return to_utc(root.ts)\n"
+        "def i(root: Any) -> str:\n    return rfc3339_normalize(root.ts)\n"
+        "def j(root: Any) -> str | None:\n    return replace(root.missing, 'x')\n"
+        "out.A = a(root)\nout.B = b(root)\nout.C = c(root)\nout.D = d(root)\nout.E = e(root)\n"
+        "out.F = f(root)\nout.G = g(root)\nout.H = h(root)\nout.I = i(root)\nout.J = j(root)\n",
+    )
+    out, errors = module.map_m_safe(
+        {"s": "ab-12", "n": 2.5, "t": "7", "ts": "2026-10-03T09:30:00+02:00"}
+    )
+    assert errors == []
+    assert out == {
+        "A": "ab12",
+        "B": "ab-#",
+        "C": "12",
+        "D": "-12",
+        "E": "2.50",
+        "F": 7,
+        "G": "2.5",
+        "H": "2026-10-03T07:30:00Z",
+        "I": "2026-10-03T09:30:00+02:00",
+        "J": None,
+    }
+    # a text that is not a number is that rule's failure, the others are not touched
+    out, errors = module.map_m_safe({"s": "x", "t": "abc", "n": 1, "ts": "2026-10-03T09:30:00Z"})
+    assert [e["rule"] for e in errors] == ["f"] and out["A"] == "x" and "F" not in out

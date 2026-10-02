@@ -439,7 +439,7 @@ def test_a_call_with_the_wrong_number_of_arguments_is_an_error() -> None:
     )
     assert _call_issues("split_first(value, ',')") == []
     assert _call_issues("concat(value, 'a', 'b')") == []  # variadic
-    assert _call_issues("round(1.5)")[0].startswith("round() takes 2")
+    assert _call_issues("round(1.5, 1, 2)")[0].startswith("round() takes")
 
 
 def test_a_code_override_error_is_on_the_status_column() -> None:

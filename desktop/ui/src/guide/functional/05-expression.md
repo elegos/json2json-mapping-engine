@@ -24,6 +24,19 @@ Anchors work as in the Source: `$.defaults.price`, `@.qty`, `@line.price`.
 | Read a date | `parse_date(@.dt, "YYYY-MM-DD")` |
 | Recode with a table | `lookup(@.code, {A: 1, B: 2})` |
 
+| Remove a prefix | `remove_prefix(@.code, "ID-")` |
+| Replace a text | `replace(@.name, "-", " ")` (leave out the replacement to remove it) |
+| Replace by pattern | `regexp_replace(@.phone, "[^0-9]", "")` |
+| Take a part by pattern | `regexp_group(@.ref, "([A-Z]+)-([0-9]+)", 2)` |
+| Always two decimals, as text | `format_decimal(@.amount, 2)` |
+| A text as a number, and back | `to_number(@.qty)`, `to_string(@.id)` |
+| A timestamp in UTC | `to_utc(@.created)` (or `rfc3339_normalize` to keep the offset) |
+
+> **Patterns** (`regexp_replace`, `regexp_group`) are written in the dialect of the backend the
+> project uses (Python or Oracle). The tool does not translate them: making them valid for the
+> chosen backend is up to the project, and it is the one case where two backends can give different
+> results.
+
 The functions are the ones the project has: the tool's own and those a developer adds. Typing in
 the cell suggests them, with a short description of each.
 

@@ -16,8 +16,10 @@ those by hand, the signature here is for completion and documentation.
 from __future__ import annotations
 
 import builtins as _py
+import json
+import re
 from collections.abc import Mapping
-from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal
+from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 
 from compiler.function_registry import special
@@ -31,8 +33,8 @@ def _column(items: list[Any], field: str) -> list[Any]:
     return [i[field] if field else i for i in items]
 
 
-def round(x: float, digits: int) -> float:  # noqa: A001
-    """`x` rounded to `digits` decimals (half away from zero)."""
+def round(x: float, digits: int = 0) -> float:  # noqa: A001
+    """`x` rounded to `digits` decimals (half away from zero); to a whole number without `digits`."""
     return _quantize(x, digits, ROUND_HALF_UP)
 
 
@@ -113,3 +115,154 @@ def avg(items: list[Any], field: str = "") -> Any:
     """The average of the `field` of the elements of a list."""
     values = _column(items, field)
     return _py.sum(values) / _py.len(values)
+
+
+# -- text ---------------------------------------------------------------------------
+# A null text gives a null result, as in SQL.
+
+
+def replace(source: str, search: str, replacement: str = "") -> str:
+    """`source` with every `search` replaced by `replacement` (removed when there is none)."""
+    if source is None:
+        return None  # type: ignore[return-value]
+    if not search:
+        return source
+    return source.replace(search, replacement or "")
+
+
+def regexp_replace(source: str, pattern: str, replacement: str = "") -> str:
+    """`source` with every match of `pattern` replaced by `replacement` (`\\1` is the first group); the
+    matches are removed when there is no replacement. The pattern is in the dialect of the backend
+    that runs the mapping (Python's `re`, Oracle's `REGEXP_*`): keeping to what the target accepts is
+    the project's responsibility, and the one place where backends are not interchangeable."""
+    if source is None:
+        return None  # type: ignore[return-value]
+    return re.sub(pattern, replacement or "", source)
+
+
+def regexp_group(source: str, pattern: str, nth: int) -> str | None:
+    """The `nth` group of the first match of `pattern` in `source` (0 is the whole match);
+    null when there is no match or no such group. The pattern is in the dialect of the backend that
+    runs the mapping, as for `regexp_replace`."""
+    if source is None:
+        return None
+    match = re.search(pattern, source)
+    if match is None or nth > match.re.groups:
+        return None
+    return match.group(nth)
+
+
+def remove_prefix(source: str, prefix: str) -> str:
+    """`source` without `prefix` at its start; unchanged when it does not start with it."""
+    if source is None:
+        return None  # type: ignore[return-value]
+    return source[len(prefix) :] if prefix and source.startswith(prefix) else source
+
+
+# -- numbers and conversions ------------------------------------------------------------
+
+
+def format_decimal(x: float, n: int) -> str:
+    """`x` rounded (half away from zero) to `n` decimals and written with all of them,
+    trailing zeros included: `format_decimal(2.5, 2)` is `"2.50"`."""
+    if x is None:
+        return None  # type: ignore[return-value]
+    if n < 0:
+        raise ValueError("the number of decimals cannot be negative")
+    text = format(_decimal(x).quantize(Decimal(1).scaleb(-n), rounding=ROUND_HALF_UP), "f")
+    return text[1:] if text.startswith("-") and not text.strip("-0.") else text
+
+
+def _decimal(x: Any) -> Decimal:
+    try:
+        return Decimal(str(x).strip())
+    except InvalidOperation:
+        raise ValueError(f"not a number: {x!r}") from None
+
+
+def to_number(x: Any) -> float | None:
+    """`x` as a number: a text is read as one (null when empty, an error when it is not a number)."""
+    if x is None or isinstance(x, bool):
+        if isinstance(x, bool):
+            raise ValueError("a boolean is not a number")
+        return None
+    if isinstance(x, int | float):
+        return x
+    text = str(x).strip()
+    if not text:
+        return None
+    value = _decimal(text)
+    return (
+        int(value)
+        if value == value.to_integral_value() and re.fullmatch(r"[+-]?\d+", text)
+        else float(value)
+    )
+
+
+def to_string(x: Any) -> str | None:
+    """`x` as text: numbers without an exponent, a whole number without decimals, booleans as
+    `true` / `false`, a list or an object as compact JSON."""
+    if x is None or isinstance(x, str):
+        return x
+    if isinstance(x, bool):
+        return "true" if x else "false"
+    if isinstance(x, int):
+        return str(x)
+    if isinstance(x, float):
+        value = Decimal(str(x))
+        return str(int(value)) if value == value.to_integral_value() else format(value, "f")
+    return json.dumps(x, separators=(",", ":"), ensure_ascii=False)
+
+
+# -- timestamps -----------------------------------------------------------------------------
+
+_TIMESTAMP = re.compile(
+    r"(\d{4})-(\d{2})-(\d{2})"
+    r"(?:[Tt ](\d{2}):(\d{2})(?::(\d{2})(?:[.,](\d{1,9}))?)?\s*(Z|z|[+-]\d{2}(?::?\d{2})?)?)?"
+)
+
+
+def _timestamp(text: str) -> tuple[Any, str, int]:
+    """(the local date and time to the second, the fraction as written, the offset in minutes)
+    of an ISO-8601 / RFC3339 timestamp; no time is midnight and no offset is UTC."""
+    from datetime import datetime
+
+    match = _TIMESTAMP.fullmatch(text.strip())
+    if match is None:
+        raise ValueError(f"not an ISO-8601 / RFC3339 timestamp: {text!r}")
+    year, month, day, hour, minute, second, fraction, zone = match.groups()
+    local = datetime(
+        int(year), int(month), int(day), int(hour or 0), int(minute or 0), int(second or 0)
+    )
+    offset = 0
+    if zone and zone not in ("Z", "z"):
+        digits = zone[1:].replace(":", "")
+        offset = (int(digits[:2]) * 60 + int(digits[2:] or 0)) * (-1 if zone[0] == "-" else 1)
+    return local, fraction or "", offset
+
+
+def to_utc(source: str) -> str:
+    """An ISO-8601 or RFC3339 timestamp as ISO-8601 in UTC, `2026-10-03T07:30:00Z`; the fraction
+    of a second is kept as written."""
+    if source is None:
+        return None  # type: ignore[return-value]
+    from datetime import timedelta
+
+    local, fraction, offset = _timestamp(source)
+    utc = local - timedelta(minutes=offset)
+    return utc.strftime("%Y-%m-%dT%H:%M:%S") + (f".{fraction}" if fraction else "") + "Z"
+
+
+def rfc3339_normalize(source: str) -> str:
+    """An ISO-8601 or RFC3339 timestamp written as RFC3339, the JSON date-time: `T` between date
+    and time, seconds always, the offset as `Z` or `+HH:MM` (UTC when it has none). The instant and
+    its offset are kept; `to_utc` also moves it to UTC."""
+    if source is None:
+        return None  # type: ignore[return-value]
+    local, fraction, offset = _timestamp(source)
+    zone = (
+        "Z"
+        if offset == 0
+        else f"{'-' if offset < 0 else '+'}{abs(offset) // 60:02d}:{abs(offset) % 60:02d}"
+    )
+    return local.strftime("%Y-%m-%dT%H:%M:%S") + (f".{fraction}" if fraction else "") + zone

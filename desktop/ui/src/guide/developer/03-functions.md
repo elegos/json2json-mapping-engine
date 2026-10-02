@@ -25,6 +25,14 @@ only difference is how the arguments are written: anchors (`@.qty`, `$.rate`) in
 {"src": "functions.png", "alt": "The function explorer"}
 ```
 
+## Regular expressions
+
+`regexp_replace` and `regexp_group` take a pattern in the dialect of the backend that runs the
+mapping: Python's `re`, or Oracle's `REGEXP_*`. The tool does not translate it. Look-around, named
+and non-capturing groups, for example, exist in Python and not in Oracle. When a project may change
+backend, keep to the common part (classes, groups, anchors, alternation, the usual quantifiers).
+This is the documented exception to "the same input gives the same output on every backend".
+
 ## Writing a function
 
 A `.fn` file holds functions in the same restricted Python subset as the rest. They work on typed

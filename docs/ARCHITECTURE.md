@@ -439,6 +439,23 @@ without any configuration. Each built-in has an implementation for every support
 target language via `@override` declarations. Examples: `coalesce`, `round`, `concat`,
 `if_else`, `split_first`, `split_nth`, `lookup`, `parse_date`.
 
+**Text, conversions, timestamps.** `replace(s, search [, replacement])` and
+`remove_prefix(s, prefix)` (a null text gives a null result); `regexp_replace(s, pattern [, replacement])`
+and `regexp_group(s, pattern, n)` (null when there is no match or no such group); `format_decimal(x, n)`
+(rounded half away from zero, all `n` decimals written: `"2.50"`); `to_number(x)` (a text is read as a
+number, null when empty, an error when it is not one) and `to_string(x)` (no exponent, whole numbers
+without decimals); `to_utc(s)` and `rfc3339_normalize(s)` read an ISO-8601 or RFC3339 timestamp (no
+time is midnight, no offset is UTC, the fraction of a second is kept as written) and write it in UTC
+(`2026-10-03T07:30:00Z`), or with its offset kept (`2026-10-03T09:30:00+02:00`). `round(x)` without
+digits rounds to a whole number.
+
+**Regular expressions are the one place where backends are not interchangeable.** The pattern of
+`regexp_replace` and `regexp_group` is written in the dialect of the backend that runs the mapping
+(Python's `re` for the Python backend, Oracle's `REGEXP_*` for PL/SQL); the tool does not translate
+between them. Keeping to what the chosen target accepts, and to the common part of the dialects when
+a project may change backend, is the project's responsibility. This is a documented exception to the
+rule that the same input gives the same output whichever backend compiled the mapping.
+
 **Aggregation** — `max`, `min`, `sum`, `avg`, `count` reduce an array to a scalar:
 `max($.myList.numAttr)` (`$.myList[]`/`$.myList[*]` are accepted as equivalent, more
 explicit spellings of the same thing). Unlike the built-ins above, these have no

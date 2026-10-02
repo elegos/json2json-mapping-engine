@@ -830,6 +830,21 @@ after M7: check that the GitHub pipeline behaves like the forgejo one (not check
 
 ---
 
+## ✅ More built-ins (done, except `decode`)
+
+`replace`, `regexp_replace`, `regexp_group`, `remove_prefix`, `format_decimal`, `to_number`, `to_string`,
+`to_utc`, `rfc3339_normalize`, and `round` with optional digits: reference implementations in
+`compiler/builtins.py` (what the Python backend runs), PL/SQL renderings in
+`compiler/backends/plsql/builtins.py` (inline templates, and the functions package for the ones that
+are statements). Decided: lowercase names; `split_nth` stays (no `split_part`); regular expressions are
+in the dialect of the chosen backend, the project's responsibility (a documented exception to
+backend independence). **The PL/SQL renderings were checked as generated text only, not against an
+Oracle instance**: the date and number conversions in particular (`to_string` expects a number,
+`to_number` a text; `TO_NUMBER` depends on the session's decimal separator; an empty string is NULL)
+want golden cases run by the PL/SQL integration tests. Not done: `decode(expr, s1, r1, ..., default)`
+(Oracle's switch, where two NULLs match), waiting for the decision whether it adds anything over
+`lookup` and `if_else`.
+
 ## 🟨 Python backend (first slice done)
 
 A backend of its own (`compiler/backends/python/`, `[project] target = "python"`), lightweight:

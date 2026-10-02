@@ -185,6 +185,15 @@ _BUILTIN_ARG_EXPECTED: dict[str, list[str | None]] = {
     "lookup": ["VARCHAR2", "OBJECT", "VARCHAR2"],
     "parse_date": ["VARCHAR2", "VARCHAR2"],
     "count": ["ARRAY"],
+    "replace": ["VARCHAR2", "VARCHAR2", "VARCHAR2"],
+    "regexp_replace": ["VARCHAR2", "VARCHAR2", "VARCHAR2"],
+    "regexp_group": ["VARCHAR2", "VARCHAR2", "NUMBER"],
+    "remove_prefix": ["VARCHAR2", "VARCHAR2"],
+    "format_decimal": ["NUMBER", "NUMBER"],
+    "to_number": ["VARCHAR2"],
+    "to_string": ["NUMBER"],
+    "to_utc": ["VARCHAR2"],
+    "rfc3339_normalize": ["VARCHAR2"],
 }
 
 # Conservative target for the *entries* JSON, leaving margin under the

@@ -143,6 +143,101 @@ def _parse_date_py(s: str, fmt: str) -> date:
     return datetime.strptime(s, py_fmt).date()
 
 
+# -- text, numbers, conversions, timestamps ----------------------------------------------
+# The regular expressions of `regexp_replace` / `regexp_group` are Oracle's (REGEXP_*): the
+# project writes them in the dialect of its backend.
+
+
+def _optional_last(template2: str, template3: str) -> Callable[[list[str]], str]:
+    """A rendering for a function whose last argument may be left out."""
+
+    def render(arg_exprs: list[str]) -> str:
+        return (template2 if len(arg_exprs) == 2 else template3).format(*arg_exprs)
+
+    return render
+
+
+def _round_plsql(arg_exprs: list[str]) -> str:
+    return f"ROUND({', '.join(arg_exprs)})"
+
+
+def _remove_prefix_plsql(arg_exprs: list[str]) -> str:
+    s, prefix = arg_exprs
+    return (
+        f"(CASE WHEN {prefix} IS NOT NULL AND SUBSTR({s}, 1, LENGTH({prefix})) = {prefix} "
+        f"THEN SUBSTR({s}, LENGTH({prefix}) + 1) ELSE {s} END)"
+    )
+
+
+_NLS_DOT = "'NLS_NUMERIC_CHARACTERS=''.,'''"
+
+
+def _format_decimal_plsql(arg_exprs: list[str]) -> str:
+    x, n = arg_exprs
+    fmt = f"'FM999999999999999999990' || CASE WHEN {n} > 0 THEN '.' || RPAD('0', {n}, '0') END"
+    return f"TRIM(TO_CHAR(ROUND({x}, {n}), {fmt}, {_NLS_DOT}))"
+
+
+def _to_string_plsql(arg_exprs: list[str]) -> str:
+    return f"TO_CHAR({arg_exprs[0]}, 'TM9')"
+
+
+_FORMAT_DECIMAL_BODY = f"""\
+IF p_x IS NULL THEN
+        RETURN NULL;
+    END IF;
+    IF p_n < 0 THEN
+        RAISE_APPLICATION_ERROR(-20999, 'the number of decimals cannot be negative');
+    END IF;
+    RETURN {_format_decimal_plsql(["p_x", "p_n"])};"""
+
+# A timestamp is read from its pieces; no time is midnight, no offset is UTC. `to_utc` moves the
+# instant to UTC, `rfc3339_normalize` keeps its offset.
+_TIMESTAMP_PIECES = r"""DECLARE
+        v_date VARCHAR2(10) := REGEXP_SUBSTR(p_s, '^\s*(\d{4}-\d{2}-\d{2})', 1, 1, NULL, 1);
+        v_time VARCHAR2(8);
+        v_frac VARCHAR2(9);
+        v_zone VARCHAR2(10);
+    BEGIN
+        IF p_s IS NULL THEN
+            RETURN NULL;
+        END IF;
+        IF v_date IS NULL THEN
+            RAISE_APPLICATION_ERROR(-20999, 'not an ISO-8601 / RFC3339 timestamp: ' || p_s);
+        END IF;
+        v_time := NVL(REGEXP_SUBSTR(p_s, '[T ](\d{2}:\d{2}(:\d{2})?)', 1, 1, 'i', 1), '00:00');
+        IF LENGTH(v_time) = 5 THEN
+            v_time := v_time || ':00';
+        END IF;
+        v_frac := REGEXP_SUBSTR(p_s, '\d{2}:\d{2}:\d{2}[.,](\d{1,9})', 1, 1, NULL, 1);
+        v_zone := REGEXP_SUBSTR(p_s,
+            '\d{2}:\d{2}(:\d{2}([.,]\d{1,9})?)?\s*(Z|[+-]\d{2}(:?\d{2})?)\s*$', 1, 1, 'i', 3);
+        v_zone := CASE
+            WHEN v_zone IS NULL OR UPPER(v_zone) = 'Z' THEN '+00:00'
+            WHEN LENGTH(v_zone) = 3 THEN v_zone || ':00'
+            WHEN LENGTH(v_zone) = 5 THEN SUBSTR(v_zone, 1, 3) || ':' || SUBSTR(v_zone, 4)
+            ELSE v_zone END;
+        v_date := TO_CHAR(TO_DATE(v_date, 'YYYY-MM-DD'), 'YYYY-MM-DD'); -- an invalid date raises
+"""
+
+_TO_UTC_BODY = (
+    _TIMESTAMP_PIECES
+    + """\
+        RETURN TO_CHAR(SYS_EXTRACT_UTC(TO_TIMESTAMP_TZ(v_date || 'T' || v_time || v_zone,
+                'YYYY-MM-DD"T"HH24:MI:SSTZH:TZM')), 'YYYY-MM-DD"T"HH24:MI:SS')
+            || CASE WHEN v_frac IS NOT NULL THEN '.' || v_frac END || 'Z';
+    END;"""
+)
+
+_RFC3339_BODY = (
+    _TIMESTAMP_PIECES
+    + """\
+        RETURN v_date || 'T' || v_time || CASE WHEN v_frac IS NOT NULL THEN '.' || v_frac END
+            || CASE WHEN v_zone = '+00:00' THEN 'Z' ELSE v_zone END;
+    END;"""
+)
+
+
 BUILTIN_FUNCTIONS: dict[str, FunctionImpl] = {
     "coalesce": FunctionImpl(
         name="coalesce",
@@ -150,7 +245,7 @@ BUILTIN_FUNCTIONS: dict[str, FunctionImpl] = {
     ),
     "round": FunctionImpl(
         name="round",
-        target_templates={"plsql": "ROUND({0}, {1})"},
+        target_templates={"plsql": _round_plsql},
     ),
     "trunc": FunctionImpl(
         name="trunc",
@@ -180,6 +275,31 @@ BUILTIN_FUNCTIONS: dict[str, FunctionImpl] = {
         name="parse_date",
         target_templates={"plsql": "TO_DATE({0}, {1})"},
     ),
+    "replace": FunctionImpl(
+        name="replace",
+        target_templates={"plsql": _optional_last("REPLACE({0}, {1})", "REPLACE({0}, {1}, {2})")},
+    ),
+    "regexp_replace": FunctionImpl(
+        name="regexp_replace",
+        target_templates={
+            "plsql": _optional_last("REGEXP_REPLACE({0}, {1})", "REGEXP_REPLACE({0}, {1}, {2})")
+        },
+    ),
+    "regexp_group": FunctionImpl(
+        name="regexp_group",
+        target_templates={"plsql": "REGEXP_SUBSTR({0}, {1}, 1, 1, NULL, {2})"},
+    ),
+    "remove_prefix": FunctionImpl(
+        name="remove_prefix", target_templates={"plsql": _remove_prefix_plsql}
+    ),
+    "format_decimal": FunctionImpl(
+        name="format_decimal", target_templates={"plsql": _format_decimal_plsql}
+    ),
+    "to_number": FunctionImpl(name="to_number", target_templates={"plsql": "TO_NUMBER({0})"}),
+    "to_string": FunctionImpl(name="to_string", target_templates={"plsql": _to_string_plsql}),
+    # these two live in the functions package only (statements, not one expression)
+    "to_utc": FunctionImpl(name="to_utc", target_templates={"plsql": "NULL"}),
+    "rfc3339_normalize": FunctionImpl(name="rfc3339_normalize", target_templates={"plsql": "NULL"}),
     "count": FunctionImpl(
         # Trivial (no accumulator needed) — max/min/sum/avg need a native
         # loop and are lowered specially by the Code Generator
@@ -256,6 +376,27 @@ LIBRARY_FUNCTIONS: dict[str, LibraryFunction] = {
         "VARCHAR2",
         ["p_s", "p_sep", "p_n"],
         _split_nth_plsql,
+    ),
+    "remove_prefix": LibraryFunction(
+        "p_s IN VARCHAR2, p_prefix IN VARCHAR2",
+        "VARCHAR2",
+        ["p_s", "p_prefix"],
+        _remove_prefix_plsql,
+    ),
+    "format_decimal": LibraryFunction(
+        "p_x IN NUMBER, p_n IN NUMBER",
+        "VARCHAR2",
+        ["p_x", "p_n"],
+        _format_decimal_plsql,
+        body=_FORMAT_DECIMAL_BODY,
+    ),
+    # a number as text, with the leading zero Oracle's plain TO_CHAR drops (`.5`)
+    "to_string": LibraryFunction("p_n IN NUMBER", "VARCHAR2", ["p_n"], _to_string_plsql),
+    "to_utc": LibraryFunction(
+        "p_s IN VARCHAR2", "VARCHAR2", ["p_s"], lambda a: "NULL", body=_TO_UTC_BODY
+    ),
+    "rfc3339_normalize": LibraryFunction(
+        "p_s IN VARCHAR2", "VARCHAR2", ["p_s"], lambda a: "NULL", body=_RFC3339_BODY
     ),
     # 2 or 3 arguments: the default is the third, NULL when absent
     "lookup": LibraryFunction(
