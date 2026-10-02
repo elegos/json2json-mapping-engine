@@ -5,7 +5,7 @@ so that per-edit operations (Target / Source normalisation) cost a message, not 
 Python start-up. Requests: `{"id", "op", ...}`; answers `{"id", "ok", ...}`.
 
 Ops: `ping`; `complete` (`tree`, `project`, `stem`, `path`, `column`, `text`, `cursor`: what can be typed there, see `transpiler/complete.py`); `check` (`tree`, `project`, `stem`); `retarget` (`tree`, `path`, `value`); `set_source` (`tree`, `path`,
-`value`); `add_rule` (`tree`, `parent`, `index`, `kind`); `delete_rule` (`tree`, `path`); `proposal` (`tree`, `path`: the auto code, the override), `take_over` / `accept_proposal` / `keep_override` (`tree`, `path`), `set_override` (`tree`, `path`, `code`), see `transpiler/review.py`; `check` also answers `review` (overrides whose auto code moved); `schemas_status` (`tree`, `project`, `stem`: the input and output schema of a mapping, `ok` / `missing` / `invalid`), `schema_import` (`project`, `stem`, `kind`, `source`: copy a schema into the project as the mapping's own); `scaffold` (`tree`, `project`, `stem`, `apply`: the empty rules the output schema adds, see `transpiler/scaffold.py`; with `apply` also the new `tree`); `config_read` (`project`), `config_check` (`values`), `config_write` (`project`, `values`): `mapper.toml`, see `cli/project_config.py`. `tree` is the file as `mapper fn read` prints it; the answer carries the new
+`value`); `add_rule` (`tree`, `parent`, `index`, `kind`); `delete_rule` (`tree`, `path`); `proposal` (`tree`, `path`: the auto code, the override), `take_over` / `accept_proposal` / `keep_override` (`tree`, `path`), `set_override` (`tree`, `path`, `code`), see `transpiler/review.py`; `check` also answers `review` (overrides whose auto code moved); `schemas_status` (`tree`, `project`, `stem`: the input and output schema of a mapping, `ok` / `missing` / `invalid`), `schema_import` (`project`, `stem`, `kind`, `source`: copy a schema into the project as the mapping's own); `mapping_create` (`project`, `name`), `mapping_removal` / `mapping_delete` (`project`, `name`: what deleting takes, then does it), `mapping_rename` (`project`, `name`, `new`, `file_id`?), see `cli/mappings.py`; `scaffold` (`tree`, `project`, `stem`, `apply`: the empty rules the output schema adds, see `transpiler/scaffold.py`; with `apply` also the new `tree`); `config_read` (`project`), `config_check` (`values`), `config_write` (`project`, `values`): `mapper.toml`, see `cli/project_config.py`. `tree` is the file as `mapper fn read` prints it; the answer carries the new
 `tree`, or `error`.
 """
 
@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 from typing import Any, TextIO
 
-from cli import project_config
+from cli import mappings, project_config
 from cli.config import MapperConfigError
 from compiler.function_registry import all_functions
 from compiler.schema_files import import_schema, schema_status
@@ -91,6 +91,26 @@ def handle(request: dict[str, Any]) -> dict[str, Any]:
         project = Path(request["project"])
         import_schema(project, request["stem"], request["kind"], Path(request["source"]))
         return {"ok": True, **schema_status(project, request["stem"], request["kind"])}
+    if op == "mapping_create":
+        return {
+            "ok": True,
+            "file": mappings.create_mapping(Path(request["project"]), request["name"]),
+        }
+    if op == "mapping_removal":
+        return {
+            "ok": True,
+            "files": mappings.removal_plan(Path(request["project"]), request["name"]),
+        }
+    if op == "mapping_delete":
+        return {
+            "ok": True,
+            "files": mappings.delete_mapping(Path(request["project"]), request["name"]),
+        }
+    if op == "mapping_rename":
+        done = mappings.rename_mapping(
+            Path(request["project"]), request["name"], request["new"], request.get("file_id")
+        )
+        return {"ok": True, **done}
     if op == "scaffold":
         file = functional_from_dict(request["tree"])
         _, out = schemas_for(Path(request["project"]), request["stem"], file.schemas)

@@ -73,7 +73,7 @@ def test_fn_read_prints_the_tree() -> None:
 
 def test_fn_read_reports_a_bad_file(tmp_path: Path) -> None:
     bad = tmp_path / "bad.fn.yaml"
-    bad.write_text("rules: []\n")
+    bad.write_text("rules: 3\n")
     result = runner.invoke(app, ["fn", "read", str(bad)])
     assert result.exit_code == 1
     assert json.loads(result.stdout)["ok"] is False

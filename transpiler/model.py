@@ -490,8 +490,10 @@ def parse_functional(raw: Any, default_id: str, path: Path | None = None) -> Fun
     if not isinstance(file_id, str) or not _IDENT.match(file_id):
         raise _err(where, f"invalid file id {file_id!r}")
     rules_raw = raw.get("rules")
-    if not isinstance(rules_raw, list) or not rules_raw:
-        raise _err(where, "'rules' must be a non-empty list")
+    if rules_raw is None:
+        rules_raw = []  # a mapping just created has none; building it says so
+    if not isinstance(rules_raw, list):
+        raise _err(where, "'rules' must be a list")
     rules = [_load_rule(f"rules[{i}]", r) for i, r in enumerate(rules_raw)]
     qualify_paths(rules)
     paths = _load_paths(where, raw.get("paths"), rules)

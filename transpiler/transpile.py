@@ -748,6 +748,10 @@ def build_stage(
     assign_ids(file)
     # a rule with nothing defined yet (no Source, no Expression) builds nothing
     file = replace(file, rules=prune_unfinished(file.rules))
+    if not file.rules:
+        raise FnYamlError(
+            f"mapping '{file.id}' is empty: no rule has a Source or an Expression yet"
+        )
     # aliases / root override applied, selecting objects lowered to first-element loops
     b = _Builder(lower_selectors(expand_paths(file)), options, input_schema)
     b.build()
