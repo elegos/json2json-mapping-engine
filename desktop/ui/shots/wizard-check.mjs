@@ -29,6 +29,13 @@ const dir = join(mkdtempSync(join(tmpdir(), "j2jme-wizard-")), "demo");
 await page.fill('.wizard input[spellcheck="false"]', dir);
 await page.fill('.wizard label:has(span:text-is("schema *")) input', "OWNER");
 // the backend proposes the error code and the package prefix: only the schema is typed
+// the backend's own limits: a code outside Oracle's range is reported at once
+const code = page.locator('.wizard label:has(span:text-is("error_code *")) input');
+await code.fill("-200000");
+await page.waitForSelector('.wizard .wizard-error:has-text("between -20999 and -20000")');
+console.log("out of range:", await page.textContent(".wizard label:has(span:text-is('error_code *')) small"), "| Create enabled:", await page.isEnabled('.wizard button:has-text("Create project")'));
+await code.fill("-20500");
+await page.waitForFunction(() => !document.querySelector(".wizard .wizard-error"));
 await page.click('.wizard button:has-text("Create project")');
 await page.waitForSelector('.wizard h3:has-text("add mappings")');
 await page.fill('.wizard label:has-text("Mapping name") input', "orders");

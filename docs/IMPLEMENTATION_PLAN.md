@@ -723,7 +723,12 @@ Sliced; each slice is usable on its own:
       - Decided: the wizard stays lean: it asks only for the keys a backend requires without a
         default (the others are under *More options*). A backend can propose a value for a key it
         cannot default (`Option.suggest`: plsql's error code and package prefix): the form shows
-        it filled in, and `project_create` writes it, so a project loads at once; at the end it offers to
+        it filled in, and `project_create` writes it, so a project loads at once. A backend also
+        declares limits on its options (`minimum` / `maximum`, `min_length` / `max_length`,
+        `pattern` with a `pattern_hint`, `choices` of a string: plsql's error code between -20999
+        and -20000, Oracle identifiers); the check says so in the backend's words, the Project
+        properties and the wizard show it under the field as it is typed, and *Create project*
+        waits. At the end it offers to
         open the Project properties, saying that they are behind the *Project properties…* button.
         Done, and walked through by `ui/shots/wizard-check.mjs`.
       - Still open: the tutorial project is found next to the executable or in the checkout, but

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   chooseProject,
   chooseSchemaFile,
+  configCheck,
   importSchema,
   listFnFiles,
   mappingCreate,
@@ -12,7 +13,7 @@ import {
   writeFn,
 } from "./api";
 import { nameProblem } from "./mappings";
-import type { ConfigOption, ConfigSchema } from "./projectConfig";
+import type { ConfigIssue, ConfigOption, ConfigSchema } from "./projectConfig";
 import { WIZARD_TEXTS as T } from "./wizardTexts";
 
 interface Props {
@@ -70,6 +71,33 @@ export function Wizard({
     [schema],
   );
 
+  // what the backend says about the values typed so far (its own limits and rules)
+  const [issues, setIssues] = useState<ConfigIssue[]>([]);
+  const targetOptions = schema?.targets[target];
+  useEffect(() => {
+    if (!target || !targetOptions || step !== "project") return;
+    let stale = false;
+    const timer = setTimeout(() => {
+      const values = { project: { mode: "driven", target }, target: { [target]: optionValues(targetOptions, options) } };
+      configCheck(values).then(
+        (found) => !stale && setIssues(found),
+        () => {},
+      );
+    }, 150);
+    return () => {
+      stale = true;
+      clearTimeout(timer);
+    };
+  }, [step, target, targetOptions, options]);
+  const prefix = `target.${target}.`;
+  const problems: Record<string, string> = {};
+  for (const i of issues) {
+    // "required" is shown by the asterisk, and the button waits for it anyway
+    if (i.path.startsWith(prefix) && i.message !== "required") problems[i.path.slice(prefix.length)] = i.message;
+  }
+  const general = issues.filter((i) => i.path === "");
+  const blocked = Object.keys(problems).length > 0 || general.length > 0;
+
   return (
     <div className="modal-backdrop" onClick={step === "start" ? onClose : undefined}>
       <div
@@ -126,8 +154,14 @@ export function Wizard({
             <BackendOptions
               options={schema?.targets[target] ?? []}
               values={options}
+              problems={problems}
               onChange={setOptions}
             />
+            {general.map((i, k) => (
+              <p key={k} className="wizard-error">
+                {i.message}
+              </p>
+            ))}
             {error && <p className="wizard-error">{error}</p>}
             <div className="modal-buttons">
               <button onClick={() => setStep("start")} disabled={busy}>
@@ -135,7 +169,7 @@ export function Wizard({
               </button>
               <button
                 className="primary"
-                disabled={busy || !dir.trim() || !target || missingRequired(schema?.targets[target] ?? [], options)}
+                disabled={busy || blocked || !dir.trim() || !target || missingRequired(schema?.targets[target] ?? [], options)}
                 onClick={async () => {
                   setBusy(true);
                   setError("");
@@ -270,6 +304,8 @@ function missingRequired(options: ConfigOption[], values: Typed) {
 function BackendOptions(props: {
   options: ConfigOption[];
   values: Record<string, string | boolean>;
+  /** What the check says about a key, by key. */
+  problems: Record<string, string>;
   onChange: (values: Record<string, string | boolean>) => void;
 }) {
   const editable = props.options.filter((o) => o.kind !== "table");
@@ -306,7 +342,11 @@ function BackendOptions(props: {
           onChange={(e) => props.onChange({ ...props.values, [o.key]: e.target.value })}
         />
       )}
-      <small>{o.help}</small>
+      {props.problems[o.key] ? (
+        <small className="wizard-error">{props.problems[o.key]}</small>
+      ) : (
+        <small>{o.help}</small>
+      )}
     </label>
   );
   return (

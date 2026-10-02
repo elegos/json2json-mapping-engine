@@ -11,6 +11,13 @@ export interface ConfigOption {
   choices: string[];
   /** What a new project proposes for a key with no default (the user may change it). */
   suggest?: unknown;
+  /** Limits the backend declares; the check reports a value outside them. */
+  minimum?: number | null;
+  maximum?: number | null;
+  min_length?: number | null;
+  max_length?: number | null;
+  pattern?: string | null;
+  pattern_hint?: string;
 }
 
 export interface ConfigSection {
