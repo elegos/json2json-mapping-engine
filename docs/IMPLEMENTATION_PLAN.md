@@ -393,7 +393,7 @@ and never re-implements build logic.
 
 Sliced; each slice is usable on its own:
 
-- [ ] **M6.1 — shell, grid, save.** Open a project; list `mappings/functional/*.fn.yaml`;
+- [x] **M6.1 — shell, grid, save.** Open a project; list `mappings/functional/*.fn.yaml`;
       editable rule grid; save; Build / Check / Test buttons showing `mapper` output.
       No git, no LLM.
       - [x] `--json` on `transpile` / `compile` / `build` / `check`: one document
@@ -413,7 +413,7 @@ Sliced; each slice is usable on its own:
             rounds with screencasts and screenshots (editor closing on click, editor contrast,
             no sorting and the filter field, dual fuzzy search, icons, window title, the
             Project properties tab). Last change (`1e511ef`, tab named and closed with the
-            page) checked with `tsc` only, not yet seen in the window.
+            checked in the window by the user.
 - [x] **Target / Source editing** (`transpiler/edit.py`, served by `mapper serve` to the
       grid so edits are instant): `OrderId` → `$.OrderId`; `A.B` creates the object `A` and
       moves the field under it; `Lines.A.B` on a declared loop puts `A` in every element;
@@ -497,7 +497,7 @@ Sliced; each slice is usable on its own:
       another field (no Ctrl / Alt / Meta) goes to the filter, so a cell no longer starts editing
       on a key press: it opens with a click or Enter / F2.
 - [x] **Unsaved changes and undo/redo.** Cells that differ from the saved file are bold (rules
-      matched by id, else by path; a rule with no saved counterpart is bold whole); the file
+      matched by id, else by path; a rule with no saved counterpart is bold whole); the mapping's
       name in the list gets a `*`. Undo / redo (↶ ↷, Ctrl+Z / Ctrl+Y) keep snapshots of the
       rules and the `mapper.toml` draft; quick successive edits of one field are one step;
       history is dropped on switching file or project and kept across Save. Inside a text
