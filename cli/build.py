@@ -13,7 +13,7 @@ Two modes (`mapper.toml` `[project] mode`):
 architecture doc (a gap noted when the Type Checker was built: "the
 architecture doc does not specify how a `.map.py` file declares which
 schema pair it targets"). Resolved here, simply: `mappings/<name>.map.py`
-picks up `schemas/input/<name>.json` and `schemas/output/<name>.json` if
+picks up `schemas/<name>_input.schema.json` and `schemas/<name>_output.schema.json` if
 they exist, independently (either, both, or neither) — convention over
 configuration, easy to override later with an explicit mapping table in
 `mapper.toml` if that ever proves insufficient.
@@ -31,6 +31,7 @@ from cli.config import MapperConfig
 from compiler.backends.base import Backend, CodeGenError, CompiledUnit
 from compiler.backends.registry import create_backend
 from compiler.pipeline import compile_unit, extract_mapping_id
+from compiler.schema_files import SCHEMAS_DIR, Kind, schema_path
 from compiler.schema_generator import SchemaTypes, resolve_schema_types
 from transpiler.model import FnYamlError, load_functional_file
 from transpiler.stages import STAGES, run_stages
@@ -39,8 +40,6 @@ from transpiler.transpile import TranspileOptions, transpile_file
 MAPPINGS_DIR = Path("mappings")
 FUNCTIONAL_DIR = Path("mappings/functional")
 BUILD_TRANSPILED_DIR = Path("build/transpiled")
-SCHEMAS_INPUT_DIR = Path("schemas/input")
-SCHEMAS_OUTPUT_DIR = Path("schemas/output")
 BUILD_CACHE_DIR = Path("build/cache")
 BUILD_COMPILED_DIR = Path("build/compiled")
 
@@ -73,11 +72,11 @@ def discover_mappings(config: MapperConfig | None = None) -> list[Path]:
     return sorted(MAPPINGS_DIR.glob("*.map.py"))
 
 
-def resolve_schema_for(mapping_stem: str, schema_dir: Path) -> SchemaTypes | None:
-    schema_path = schema_dir / f"{mapping_stem}.json"
-    if not schema_path.is_file():
+def resolve_schema_for(mapping_stem: str, kind: Kind) -> SchemaTypes | None:
+    path = schema_path(SCHEMAS_DIR, mapping_stem, kind)
+    if not path.is_file():
         return None
-    schema = json.loads(schema_path.read_text())
+    schema = json.loads(path.read_text())
     return resolve_schema_types(schema, _pascal_case(mapping_stem))
 
 
@@ -94,7 +93,7 @@ def _schema_bytes(stem: str) -> list[bytes]:
     """Schemas a mapping is checked/typed against — part of its cache key."""
     return [
         p.read_bytes()
-        for p in (SCHEMAS_INPUT_DIR / f"{stem}.json", SCHEMAS_OUTPUT_DIR / f"{stem}.json")
+        for p in (schema_path(SCHEMAS_DIR, stem, "input"), schema_path(SCHEMAS_DIR, stem, "output"))
         if p.is_file()
     ]
 
@@ -132,7 +131,7 @@ def transpile_functional(
     reaches the last stage."""
     stem = source_stem(path)
     options = transpile_options(config)
-    schema = resolve_schema_for(stem, SCHEMAS_INPUT_DIR)
+    schema = resolve_schema_for(stem, "input")
     try:
         if stage is None and not dump_stages:
             text = transpile_file(path, options, input_schema=schema, warnings=warnings)
@@ -174,8 +173,8 @@ def _compile_fresh(path: Path, config: MapperConfig, warnings: list[str]) -> Com
     else:
         source = path.read_text()
     backend = backend_for(config)
-    input_schema = resolve_schema_for(stem, SCHEMAS_INPUT_DIR)
-    output_schema = resolve_schema_for(stem, SCHEMAS_OUTPUT_DIR)
+    input_schema = resolve_schema_for(stem, "input")
+    output_schema = resolve_schema_for(stem, "output")
     return compile_unit(
         source,
         default_mapping_id=stem,

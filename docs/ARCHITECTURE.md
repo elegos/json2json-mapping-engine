@@ -384,8 +384,8 @@ succeed without type checking — the mapping is authored blind, and correctness
 verified only at runtime against actual data.
 
 ```
-schemas/input/order_event.json   →   generated/stubs/order_event.pyi
-schemas/output/order_line.json   →   generated/dataclasses/order_line.py
+schemas/order_event_input.schema.json   →   generated/stubs/order_event.pyi
+schemas/order_line_output.schema.json   →   generated/dataclasses/order_line.py
 ```
 
 Generated files are checked into the repository and must not be edited manually.
@@ -870,9 +870,8 @@ json2json-mapper/
 │   └── stages.py          ← stage artifacts (--stage, --dump-stages, --cached)
 ├── runtime/               ← static IDE stubs (non-generated)
 │   └── __mapping__.pyi    ← placeholder; real stub is generated into build/python/stubs/
-├── schemas/
-│   ├── input/             ← input JSON Schemas (source of truth)
-│   └── output/            ← output JSON Schemas (source of truth)
+├── schemas/               ← JSON Schemas (source of truth), flat, one pair per mapping:
+│                            <name>_input.schema.json, <name>_output.schema.json
 ├── generated/             ← checked-in, never edited manually
 │   ├── stubs/             ← .pyi files from input schemas
 │   └── dataclasses/       ← .py @dataclass files from output schemas

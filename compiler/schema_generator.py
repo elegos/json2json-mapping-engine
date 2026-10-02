@@ -1,9 +1,9 @@
 """JSON Schema → generated Python artifacts (docs/ARCHITECTURE.md, §Type system,
 §Input type contract, §Output type contract).
 
-Input schemas (`schemas/input/*.json`) produce `.pyi` stubs in
+Input schemas (`schemas/<name>_input.schema.json`) produce `.pyi` stubs in
 `generated/stubs/` — read-only type surfaces for `root`/`src`.
-Output schemas (`schemas/output/*.json`) produce `@dataclass` modules in
+Output schemas (`schemas/<name>_output.schema.json`) produce `@dataclass` modules in
 `generated/dataclasses/` — the writable, validated surface for `out`.
 
 String sizing for the PL/SQL backend (`maxLength` <= 4000 → VARCHAR2(n CHAR),
@@ -19,6 +19,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from compiler.schema_files import schema_path, schema_stems
 
 JsonSchema = dict[str, Any]
 
@@ -245,29 +247,31 @@ def generate_output_dataclasses(
     return header + imports + body
 
 
-def generate_input_schemas(input_dir: Path, out_dir: Path) -> list[Path]:
-    """Batch entry point: schemas/input/*.json -> generated/stubs/*.pyi"""
+def generate_input_schemas(schemas_dir: Path, out_dir: Path) -> list[Path]:
+    """Batch entry point: schemas/<name>_input.schema.json -> generated/stubs/<name>.pyi"""
     written = []
     out_dir.mkdir(parents=True, exist_ok=True)
-    for schema_path in sorted(input_dir.glob("*.json")):
-        schema = json.loads(schema_path.read_text())
-        root_name = _pascal_case(schema_path.stem)
-        stub = generate_input_stub(schema, root_name, source=str(schema_path))
-        out_path = out_dir / f"{schema_path.stem}.pyi"
+    for stem in schema_stems(schemas_dir, "input"):
+        schema_file = schema_path(schemas_dir, stem, "input")
+        schema = json.loads(schema_file.read_text())
+        root_name = _pascal_case(stem)
+        stub = generate_input_stub(schema, root_name, source=str(schema_file))
+        out_path = out_dir / f"{stem}.pyi"
         out_path.write_text(stub)
         written.append(out_path)
     return written
 
 
-def generate_output_schemas(output_dir: Path, out_dir: Path) -> list[Path]:
-    """Batch entry point: schemas/output/*.json -> generated/dataclasses/*.py"""
+def generate_output_schemas(schemas_dir: Path, out_dir: Path) -> list[Path]:
+    """Batch entry point: schemas/<name>_output.schema.json -> generated/dataclasses/<name>.py"""
     written = []
     out_dir.mkdir(parents=True, exist_ok=True)
-    for schema_path in sorted(output_dir.glob("*.json")):
-        schema = json.loads(schema_path.read_text())
-        root_name = _pascal_case(schema_path.stem)
-        module = generate_output_dataclasses(schema, root_name, source=str(schema_path))
-        out_path = out_dir / f"{schema_path.stem}.py"
+    for stem in schema_stems(schemas_dir, "output"):
+        schema_file = schema_path(schemas_dir, stem, "output")
+        schema = json.loads(schema_file.read_text())
+        root_name = _pascal_case(stem)
+        module = generate_output_dataclasses(schema, root_name, source=str(schema_file))
+        out_path = out_dir / f"{stem}.py"
         out_path.write_text(module)
         written.append(out_path)
     return written

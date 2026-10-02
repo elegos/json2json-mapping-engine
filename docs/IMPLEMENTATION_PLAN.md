@@ -550,6 +550,7 @@ Sliced; each slice is usable on its own:
         `<name>_input.schema.json` and `<name>_output.schema.json`. It replaces
         `schemas/input|output/<name>.json` everywhere (repo, `desktop/fixtures`, schema generator,
         build, `schemas_for`, tests, ARCHITECTURE.md): one layout, no fallback.
+      - Done: the layout, in `compiler/schema_files.py` (one place for names and paths).
       - **Loading.** The tool takes a JSON Schema from anywhere, copies it into `schemas/` under
         the name above, and the mapping reads that copy. Replacing a schema is the same gesture.
       - **Override.** A header key of the `.fn.yaml` (`schemas: {input: …, output: …}`) points to

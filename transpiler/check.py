@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from compiler.function_registry import FunctionInfo
+from compiler.schema_files import SCHEMAS_DIR, Kind, schema_path
 from transpiler.anchors import (
     AnchorScope,
     LoopRef,
@@ -661,10 +662,11 @@ def check_functional(
 
 def schemas_for(project: Path, stem: str) -> tuple[Schema | None, Schema | None]:
     """The input / output schemas of `mappings/.../<stem>.fn.yaml` by convention
-    (`schemas/input|output/<stem>.json`); None where a file is missing or unreadable."""
+    (`schemas/<stem>_input.schema.json`, `..._output...`); None where a file is missing or
+    unreadable."""
 
-    def load(kind: str) -> Schema | None:
-        path = project / "schemas" / kind / f"{stem}.json"
+    def load(kind: Kind) -> Schema | None:
+        path = schema_path(project / SCHEMAS_DIR, stem, kind)
         try:
             data = json.loads(path.read_text())
         except (OSError, ValueError):

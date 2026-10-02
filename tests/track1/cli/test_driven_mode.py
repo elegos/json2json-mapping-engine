@@ -66,13 +66,13 @@ def test_functional_error_is_reported_with_file_and_rule(project: Path):
 
 
 def test_schema_change_invalidates_the_cache(project: Path):
-    (project / "schemas/input").mkdir(parents=True)
-    (project / "schemas/input/order_summary.json").write_text(
+    (project / "schemas").mkdir(parents=True)
+    (project / "schemas/order_summary_input.schema.json").write_text(
         json.dumps({"title": "O", "type": "object", "properties": {"id": {"type": "string"}}})
     )
     assert "compiled: " in runner.invoke(app, ["build"]).output
     assert "up-to-date: " in runner.invoke(app, ["build"]).output
-    (project / "schemas/input/order_summary.json").write_text(
+    (project / "schemas/order_summary_input.schema.json").write_text(
         json.dumps({"title": "O", "type": "object", "properties": {"id": {"type": "integer"}}})
     )
     assert "compiled: " in runner.invoke(app, ["build"]).output

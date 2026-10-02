@@ -56,13 +56,14 @@ ORDER_MAPPING = (
 @pytest.fixture
 def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     (tmp_path / "mappings").mkdir()
-    (tmp_path / "schemas" / "input").mkdir(parents=True)
-    (tmp_path / "schemas" / "output").mkdir(parents=True)
+    (tmp_path / "schemas").mkdir()
     (tmp_path / "mapper.toml").write_text(MAPPER_TOML)
     (tmp_path / "mappings" / "ping.map.py").write_text(PING_MAPPING)
     (tmp_path / "mappings" / "order_event.map.py").write_text(ORDER_MAPPING)
-    (tmp_path / "schemas" / "input" / "order_event.json").write_text(json.dumps(ORDER_INPUT_SCHEMA))
-    (tmp_path / "schemas" / "output" / "order_event.json").write_text(
+    (tmp_path / "schemas" / "order_event_input.schema.json").write_text(
+        json.dumps(ORDER_INPUT_SCHEMA)
+    )
+    (tmp_path / "schemas" / "order_event_output.schema.json").write_text(
         json.dumps(ORDER_OUTPUT_SCHEMA)
     )
     monkeypatch.chdir(tmp_path)

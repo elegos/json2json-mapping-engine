@@ -34,10 +34,9 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from compiler.function_registry import FunctionInfo, all_functions
+from compiler.schema_files import SCHEMAS_DIR
 from compiler.schema_generator import generate_input_schemas, generate_output_schemas
 
-SCHEMAS_INPUT_DIR = Path("schemas/input")
-SCHEMAS_OUTPUT_DIR = Path("schemas/output")
 STUBS_OUT_DIR = Path("generated/stubs")
 DATACLASSES_OUT_DIR = Path("generated/dataclasses")
 MAPPING_STUB_PATH = Path("build/python/stubs/__mapping__.pyi")
@@ -83,8 +82,8 @@ def function_stubs(functions: Mapping[str, FunctionInfo]) -> str:
 
 
 def generate_stubs() -> dict[str, int]:
-    written_in = generate_input_schemas(SCHEMAS_INPUT_DIR, STUBS_OUT_DIR)
-    written_out = generate_output_schemas(SCHEMAS_OUTPUT_DIR, DATACLASSES_OUT_DIR)
+    written_in = generate_input_schemas(SCHEMAS_DIR, STUBS_OUT_DIR)
+    written_out = generate_output_schemas(SCHEMAS_DIR, DATACLASSES_OUT_DIR)
     MAPPING_STUB_PATH.parent.mkdir(parents=True, exist_ok=True)
     MAPPING_STUB_PATH.write_text(
         _MAPPING_STUB_TEXT + "\n" + function_stubs(all_functions(Path(".")))
