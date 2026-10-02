@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { clampStep, padRect, placeCard, type Placement, type Rect, type TourDef, type TourState } from "./tour";
+import {
+  clampStep,
+  padRect,
+  placeCard,
+  type Placement,
+  type Rect,
+  type TourDef,
+  type TourState,
+  unionRect,
+} from "./tour";
 
 interface Props {
   tour: TourDef;
@@ -39,7 +48,7 @@ export function Tour({ tour, index, onIndex, onClose, apply }: Props) {
   const [target, setTarget] = useState<Rect | null>(null);
   const [placement, setPlacement] = useState<Placement | null>(null);
   const [ready, setReady] = useState(false);
-  const element = useRef<Element | null>(null);
+  const elements = useRef<Element[]>([]);
 
   // load the step's state, then frame its target
   useEffect(() => {
@@ -47,11 +56,14 @@ export function Tour({ tour, index, onIndex, onClose, apply }: Props) {
     setReady(false);
     void (async () => {
       await apply(step.state);
-      const el = step.target ? await find(step.target, signal) : null;
+      const wanted = step.target ? [step.target].flat() : [];
+      const found = (await Promise.all(wanted.map((sel) => find(sel, signal)))).filter(
+        (el): el is Element => el !== null,
+      );
       if (signal.stale) return;
-      element.current = el;
-      el?.scrollIntoView({ block: "nearest", inline: "nearest" });
-      setTarget(el ? rectOf(el) : null);
+      elements.current = found;
+      found[0]?.scrollIntoView({ block: "nearest", inline: "nearest" });
+      setTarget(unionRect(found.map(rectOf)));
       setReady(true);
     })();
     return () => {
@@ -63,7 +75,7 @@ export function Tour({ tour, index, onIndex, onClose, apply }: Props) {
 
   // the window may be resized (or the part move) while a step is shown
   useEffect(() => {
-    const follow = () => element.current && setTarget(rectOf(element.current));
+    const follow = () => setTarget(unionRect(elements.current.map(rectOf)));
     window.addEventListener("resize", follow);
     return () => window.removeEventListener("resize", follow);
   }, []);

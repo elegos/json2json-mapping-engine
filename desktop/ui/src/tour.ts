@@ -21,8 +21,9 @@ export interface TourStep {
   title: string;
   /** A short paragraph; a blank line starts another. */
   text: string;
-  /** CSS selector of the part to highlight; without it the card sits in the middle. */
-  target?: string;
+  /** CSS selector of the part to highlight (several: the frame takes them all in); without
+   * it the card sits in the middle. */
+  target?: string | string[];
   /** What the highlighted part is, for those who cannot see the frame around it. */
   label?: string;
   /** Preferred side of the target for the card. */
@@ -130,3 +131,13 @@ export const padRect = (r: Rect, by: number): Rect => ({
   width: r.width + 2 * by,
   height: r.height + 2 * by,
 });
+
+/** The smallest rectangle holding all of `rects`, or null when there are none. */
+export function unionRect(rects: Rect[]): Rect | null {
+  if (rects.length === 0) return null;
+  const left = Math.min(...rects.map((r) => r.left));
+  const top = Math.min(...rects.map((r) => r.top));
+  const right = Math.max(...rects.map((r) => r.left + r.width));
+  const bottom = Math.max(...rects.map((r) => r.top + r.height));
+  return { left, top, width: right - left, height: bottom - top };
+}

@@ -33,14 +33,15 @@ export const FUNCTIONAL_TOUR: TourDef = {
       side: "right",
     },
     {
-      id: "tabs",
-      title: "Views of a mapping",
-      label: "the views of the mapping",
+      id: "rules",
+      title: "Rules",
+      label: "the Rules view",
       text:
-        "Rules is the grid. Lookups holds the tables of codes, Paths the shortcuts for long paths, " +
-        "and Golden the examples that prove the mapping gives the right output.",
-      target: ".tabs",
+        "The mapping is a grid of rules, one row for each part of the output document. " +
+        "The tabs above it switch between the views of a mapping: Rules, Lookups, Paths and Golden. They are all yours to use, so we look at each.",
+      target: [".tabs", ".ag-root-wrapper"],
       side: "bottom",
+      state: rules,
     },
     {
       id: "target",
@@ -91,17 +92,6 @@ export const FUNCTIONAL_TOUR: TourDef = {
       state: { ...rules, select: "lines" },
     },
     {
-      id: "lookups",
-      title: "Lookups",
-      label: "the lookup tables",
-      text:
-        "A lookup is a table of codes and what they stand for, such as country to currency. " +
-        "Its label is how expressions name it: the Currency rule of this mapping uses @countryCurrency, with N/A when the country is not in the table.",
-      target: ".lookups",
-      side: "bottom",
-      state: { ...rules, view: "lookups" },
-    },
-    {
       id: "schemas",
       title: "Schemas",
       label: "the schema status buttons",
@@ -113,6 +103,37 @@ export const FUNCTIONAL_TOUR: TourDef = {
       state: rules,
     },
     {
+      id: "lookups",
+      title: "Lookups",
+      label: "the lookup tables",
+      text:
+        "A lookup is a table of codes and what they stand for, such as country to currency. " +
+        "Its label is how expressions name it: the Currency rule of this mapping uses @countryCurrency, with N/A when the country is not in the table.",
+      target: [".tabs", ".lookups"],
+      side: "bottom",
+      state: { ...rules, view: "lookups" },
+    },
+    {
+      id: "paths",
+      title: "Paths",
+      label: "the Paths view",
+      text:
+        "Shortcuts for long paths. An alias is a short name for a path of the input, used as @name.field: here metadata stands for $.metadata, " +
+        "so the Channel rule reads @metadata.source. “$ means” changes what $ stands for, when the data you map sits under a fixed part of the document.",
+      target: [".tabs", ".paths"],
+      side: "bottom",
+      state: { ...rules, view: "paths" },
+    },
+    {
+      id: "golden",
+      title: "Golden cases",
+      label: "the golden cases",
+      text: "Examples of an input and the output it must give. They are what protects the mapping when it changes.",
+      target: [".tabs", ".golden"],
+      side: "bottom",
+      state: { ...rules, view: "golden" },
+    },
+    {
       id: "check",
       title: "Save and check",
       label: "the Save and Check buttons",
@@ -121,15 +142,6 @@ export const FUNCTIONAL_TOUR: TourDef = {
         "Check tells you what is missing or wrong, and marks the rows concerned.",
       target: '[data-tour="actions"]',
       side: "bottom",
-    },
-    {
-      id: "golden",
-      title: "Golden cases",
-      label: "the golden cases",
-      text: "Examples of an input and the output it must give. They are what protects the mapping when it changes.",
-      target: ".golden",
-      side: "bottom",
-      state: { ...rules, view: "golden" },
     },
     {
       id: "help",

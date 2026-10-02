@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clampStep, padRect, placeCard } from "./tour";
+import { clampStep, padRect, placeCard, unionRect } from "./tour";
 
 const view = { width: 1000, height: 700 };
 const card = { width: 300, height: 150 };
@@ -42,5 +42,15 @@ describe("tour geometry", () => {
       width: 28,
       height: 28,
     });
+  });
+
+  it("frames several parts with one rectangle", () => {
+    expect(unionRect([])).toBeNull();
+    expect(
+      unionRect([
+        { left: 10, top: 10, width: 100, height: 20 },
+        { left: 20, top: 40, width: 50, height: 200 },
+      ]),
+    ).toEqual({ left: 10, top: 10, width: 100, height: 230 });
   });
 });
