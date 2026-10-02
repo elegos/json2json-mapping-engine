@@ -155,3 +155,36 @@ def test_serve_mapping_ops(project: Path) -> None:
     answers = [json.loads(line) for line in out.getvalue().splitlines()]
     assert [a["ok"] for a in answers] == [True, True, True, True, False]
     assert answers[2]["files"] == ["mappings/functional/invoices.fn.yaml"]
+
+
+def test_creating_over_leftover_golden_cases_needs_a_decision(project: Path) -> None:
+    from cli.mappings import golden_state
+
+    _touch(project, "tests/golden/orders/a.input.json", "tests/golden/orders/a.expected.json")
+    state = golden_state(project, "orders")
+    assert (state["path"], state["files"], state["suggest"]) == (
+        "tests/golden/orders",
+        2,
+        "orders_old",
+    )
+    with pytest.raises(FnYamlError, match="not empty"):
+        create_mapping(project, "orders")
+    assert not (project / "mappings/functional/orders.fn.yaml").exists()  # nothing was made
+
+    create_mapping(project, "orders", golden="keep")
+    assert (project / "tests/golden/orders/a.input.json").exists()
+
+    delete_mapping(project, "orders")
+    create_mapping(project, "orders", golden="rename", golden_to="orders_old")
+    assert (project / "tests/golden/orders_old/a.input.json").exists()
+    assert not (project / "tests/golden/orders").exists()
+
+    delete_mapping(project, "orders")
+    _touch(project, "tests/golden/orders/b.input.json")
+    with pytest.raises(FnYamlError, match="already exists"):
+        create_mapping(project, "orders", golden="rename", golden_to="orders_old")
+    with pytest.raises(FnYamlError, match="not a valid folder name"):
+        create_mapping(project, "orders", golden="rename", golden_to="a/b")
+    create_mapping(project, "orders", golden="delete")
+    assert not (project / "tests/golden/orders").exists()
+    assert (project / "tests/golden/orders_old/a.input.json").exists()  # the other folder is safe

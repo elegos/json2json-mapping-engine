@@ -5,6 +5,7 @@ and, if the project has them, its golden cases (`tests/golden/<name>/`)."""
 
 from __future__ import annotations
 
+import re
 import shutil
 from dataclasses import replace
 from pathlib import Path
@@ -56,12 +57,51 @@ def _shown(project: Path, paths: list[Path]) -> list[str]:
     return [str(p.relative_to(project)) for p in paths]
 
 
-def create_mapping(project: Path, name: str) -> str:
-    """A new, empty mapping; it loads, and building it says it is empty. Returns its path."""
+def _files_in(folder: Path) -> int:
+    return sum(1 for p in folder.rglob("*") if p.is_file()) if folder.is_dir() else 0
+
+
+def golden_state(project: Path, name: str) -> dict[str, object]:
+    """What `tests/golden/<name>/` holds (a mapping deleted earlier leaves its cases), and a
+    free folder name to move them to."""
+    folder = project / GOLDEN / name
+    suggest, n = f"{name}_old", 1
+    while (project / GOLDEN / suggest).exists():
+        n += 1
+        suggest = f"{name}_old{n}"
+    return {
+        "path": str(folder.relative_to(project)),
+        "files": _files_in(folder),
+        "suggest": suggest,
+    }
+
+
+def create_mapping(
+    project: Path, name: str, golden: str | None = None, golden_to: str | None = None
+) -> str:
+    """A new, empty mapping; it loads, and building it says it is empty. Returns its path.
+
+    When `tests/golden/<name>/` already holds cases, `golden` must say what becomes of them:
+    `keep` (they are the new mapping's), `rename` (moved to `tests/golden/<golden_to>/`) or
+    `delete`."""
     _check_name(name)
     path = fn_path(project, name)
     if path.exists():
         raise FnYamlError(f"there is already a mapping called {name!r}")
+    folder = project / GOLDEN / name
+    if _files_in(folder):
+        if golden not in ("keep", "rename", "delete"):
+            raise FnYamlError(
+                f"{GOLDEN / name} is not empty: say whether to keep, rename or delete its cases"
+            )
+        if golden == "rename":
+            if not golden_to or not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]*", golden_to):
+                raise FnYamlError(f"{golden_to!r} is not a valid folder name")
+            if (project / GOLDEN / golden_to).exists():
+                raise FnYamlError(f"{GOLDEN / golden_to} already exists")
+            folder.rename(project / GOLDEN / golden_to)
+        elif golden == "delete":
+            shutil.rmtree(folder)
     path.parent.mkdir(parents=True, exist_ok=True)
     write_functional(path, FunctionalFile(name=name, id=name, rules=[], path=path))
     return str(path.relative_to(project))
