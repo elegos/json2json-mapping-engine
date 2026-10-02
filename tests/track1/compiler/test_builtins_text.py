@@ -6,7 +6,12 @@ from __future__ import annotations
 import pytest
 
 from compiler import builtins as b
-from compiler.backends.plsql.builtins import BUILTIN_FUNCTIONS, LIBRARY_FUNCTIONS
+from compiler.backends.plsql.builtins import (
+    BUILTIN_FUNCTIONS,
+    LIBRARY_FUNCTIONS,
+    to_number_of_kind,
+    to_string_of_kind,
+)
 
 
 def test_replace_and_remove_prefix() -> None:
@@ -89,8 +94,16 @@ def test_plsql_renderings() -> None:
     assert plsql("regexp_replace", "s", "'a+'") == "REGEXP_REPLACE(s, 'a+')"
     assert plsql("regexp_group", "s", "'(a)'", "1") == "REGEXP_SUBSTR(s, '(a)', 1, 1, NULL, 1)"
     assert plsql("round", "x") == "ROUND(x)" and plsql("round", "x", "2") == "ROUND(x, 2)"
-    assert plsql("to_number", "s") == "TO_NUMBER(s)"
+    assert plsql("to_number", "s").startswith("TO_NUMBER(TRIM(s), '9999")
     assert "'TM9'" in plsql("to_string", "n")
+    # conversions follow the type of what they are given: idempotent whatever it is
+    assert to_string_of_kind("VARCHAR2", "x") == "x"
+    assert to_string_of_kind("NUMBER", "x").startswith("TO_CHAR(x, 'TM9'")
+    assert "'true'" in to_string_of_kind("BOOLEAN", "x")
+    assert to_string_of_kind("OBJECT", "x") == "x.to_String"
+    assert to_number_of_kind("NUMBER", "x") == "x"
+    with pytest.raises(ValueError, match="boolean"):
+        to_number_of_kind("BOOLEAN", "x")
     # the ones that are statements are in the functions package
     for name in ("remove_prefix", "format_decimal", "to_string", "to_utc", "rfc3339_normalize"):
         assert name in LIBRARY_FUNCTIONS

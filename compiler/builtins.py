@@ -191,12 +191,10 @@ def to_number(x: Any) -> float | None:
     text = str(x).strip()
     if not text:
         return None
-    value = _decimal(text)
-    return (
-        int(value)
-        if value == value.to_integral_value() and re.fullmatch(r"[+-]?\d+", text)
-        else float(value)
-    )
+    if not re.fullmatch(r"[+-]?(\d+(\.\d*)?|\.\d+)", text):
+        raise ValueError(f"not a number: {x!r}")  # a plain decimal: no exponent, no separators
+    value = Decimal(text)
+    return int(value) if re.fullmatch(r"[+-]?\d+", text) else float(value)
 
 
 def to_string(x: Any) -> str | None:

@@ -15,7 +15,12 @@ from compiler.backends.python.backend import PythonBackend
 from compiler.pipeline import compile_unit
 
 ROOT = Path(__file__).resolve().parents[3]
-GOLDEN_MAPPINGS = ["orders", "positions", "selection", "truthiness"]
+# every mapping with golden cases: the shared contract the PL/SQL backend runs in track 2 (Oracle)
+GOLDEN_MAPPINGS = sorted(
+    d.name
+    for d in (ROOT / "tests/golden").iterdir()
+    if (ROOT / "mappings" / f"{d.name}.map.py").exists()
+)
 
 
 def _compile(source: str, mapping_id: str = "m") -> tuple[PythonBackend, Any]:
@@ -57,7 +62,8 @@ def test_every_golden_case_passes_on_the_python_backend() -> None:
         log=lambda _m: None,
     )
     results = backend.run_integration(context)
-    assert len(results) == len(discover_cases(ROOT / "tests/golden")) >= 8
+    assert len(results) == len(discover_cases(ROOT / "tests/golden")) >= 11
+    assert "builtins_text" in GOLDEN_MAPPINGS
     failed = [
         f"{r.case.mapping}/{r.case.name}: {r.message}\n{r.diff}"
         for r in results
@@ -191,3 +197,14 @@ def test_the_text_and_timestamp_builtins_run_in_a_generated_module(tmp_path: Pat
     # a text that is not a number is that rule's failure, the others are not touched
     out, errors = module.map_m_safe({"s": "x", "t": "abc", "n": 1, "ts": "2026-10-03T09:30:00Z"})
     assert [e["rule"] for e in errors] == ["f"] and out["A"] == "x" and "F" not in out
+
+
+@pytest.mark.parametrize("name", GOLDEN_MAPPINGS)
+def test_every_golden_mapping_also_compiles_to_plsql(name: str) -> None:
+    """What track 1 can say about the PL/SQL side of a golden mapping: it compiles (that it gives the
+    same results is for track 2, on an Oracle database)."""
+    from compiler.backends.plsql.backend import PlsqlBackend
+
+    backend = PlsqlBackend({"schema": "S", "error_code": -20000, "mapping_package_prefix": "M_"})
+    unit = compile_unit((ROOT / "mappings" / f"{name}.map.py").read_text(), name, backend)
+    assert backend.assemble([unit])

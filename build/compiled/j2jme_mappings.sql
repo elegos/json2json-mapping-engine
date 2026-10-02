@@ -1,4 +1,15 @@
 CREATE OR REPLACE PACKAGE MAPPING_OWNER.J2JME_MAPPINGS AS
+    PROCEDURE map_builtins_text (
+        p_src IN  CLOB,
+        p_out OUT CLOB
+    );
+
+    PROCEDURE map_builtins_text_safe (
+        p_src IN  CLOB,
+        p_out OUT CLOB,
+        p_err OUT CLOB
+    );
+
     PROCEDURE map_orders (
         p_src IN  CLOB,
         p_out OUT CLOB
@@ -48,6 +59,23 @@ END J2JME_MAPPINGS;
 /
 
 CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAPPINGS AS
+    PROCEDURE map_builtins_text (
+        p_src IN  CLOB,
+        p_out OUT CLOB
+    ) AS
+    BEGIN
+        MAPPING_OWNER.J2JME_MAP_BUILTINS_TEXT.map_builtins_text(p_src, p_out);
+    END map_builtins_text;
+
+    PROCEDURE map_builtins_text_safe (
+        p_src IN  CLOB,
+        p_out OUT CLOB,
+        p_err OUT CLOB
+    ) AS
+    BEGIN
+        MAPPING_OWNER.J2JME_MAP_BUILTINS_TEXT.map_builtins_text_safe(p_src, p_out, p_err);
+    END map_builtins_text_safe;
+
     PROCEDURE map_orders (
         p_src IN  CLOB,
         p_out OUT CLOB

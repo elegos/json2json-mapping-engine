@@ -108,7 +108,12 @@ from dataclasses import asdict, dataclass, field
 
 from compiler.annotations import AnnotationError, resolve_dsl_type
 from compiler.backends.base import CodeGenError, CompiledUnit
-from compiler.backends.plsql.builtins import BUILTIN_FUNCTIONS, LIBRARY_FUNCTIONS
+from compiler.backends.plsql.builtins import (
+    BUILTIN_FUNCTIONS,
+    LIBRARY_FUNCTIONS,
+    to_number_of_kind,
+    to_string_of_kind,
+)
 from compiler.backends.plsql.naming import PlsqlNaming
 from compiler.function_linker import FunctionLinker
 from compiler.loop_fusion import (
@@ -634,18 +639,42 @@ class _ExprTranslator:
             return f"({value} IS NOT NULL AND {value}.get_size > 0)"
         return f"({value} IS NOT NULL)"  # text ('' is NULL in Oracle), dates
 
-    def _truthy_of_document_value(self, node: ast.expr) -> str:
-        """`root.a.b` tested without knowing its JSON type: the element goes to the shared
-        `truthy` function, which looks at what it is."""
+    def _document_element(self, node: ast.expr) -> str:
+        """`root.a.b` as the JSON element itself, whatever its type (a value that goes to a
+        shared function which looks at what it is)."""
         base, segments = _access_chain(node)
         code = self.translate(base, None)
         for seg, following in zip(segments, segments[1:], strict=False):
             code = _step(code, seg, "Array" if isinstance(following, int) else "Object")
-        element = f"{code}.get({_segment(segments[-1])})"
+        return f"{code}.get({_segment(segments[-1])})"
+
+    def _truthy_of_document_value(self, node: ast.expr) -> str:
+        """`root.a.b` tested without knowing its JSON type: the element goes to the shared
+        `truthy` function, which looks at what it is."""
+        element = self._document_element(node)
         library = self.library_name("truthy") if self.library_name else None
         if library is None:
             raise CodeGenError("the shared functions package is not available for `truthy`")
         return f"{library}({element})"
+
+    def _convert(self, name: str, arg: ast.expr) -> str:
+        """`to_string` / `to_number` of one argument, the same whatever its JSON or PL/SQL type
+        (docs/ARCHITECTURE.md, §Built-in functions): a value read from the document goes, as the
+        element, to the shared function that looks at what it is; a typed value is converted by
+        its type."""
+        if isinstance(arg, ast.Attribute | ast.Subscript):
+            library = self.library_name(name) if self.library_name else None
+            if library is None:
+                raise CodeGenError(f"the shared functions package is not available for `{name}`")
+            return f"{library}({self._document_element(arg)})"
+        kind = infer_type(arg, self.ctx) if isinstance(self.ctx, _FnCtx) else "VARCHAR2"
+        if isinstance(arg, ast.Constant) and arg.value is None:
+            return "NULL"
+        render = to_string_of_kind if name == "to_string" else to_number_of_kind
+        try:
+            return render(kind, self.translate(arg, kind))
+        except ValueError as exc:
+            raise CodeGenError(f"{name}(): {exc}") from exc
 
     def _t_BoolOp(self, node: ast.BoolOp, expected: str | None) -> str:
         return self.condition(node)
@@ -680,6 +709,8 @@ class _ExprTranslator:
             )
 
         impl = self.function_linker.resolve(name)
+        if name in ("to_string", "to_number") and len(node.args) == 1:
+            return self._convert(name, node.args[0])
         if name == "if_else" and len(node.args) == 3:
             test = self.condition(node.args[0])
             arms = [self.translate(a, expected) for a in node.args[1:]]
@@ -955,7 +986,7 @@ def infer_type(node: ast.expr, ctx: _FnCtx) -> str:
             return infer_type(node.args[0], ctx)
         if fname == "if_else":
             return infer_type(node.args[1], ctx)
-        if fname in ("round", "trunc"):
+        if fname in ("round", "trunc", "to_number"):
             return "NUMBER"
         if fname == "parse_date":
             return "DATE"

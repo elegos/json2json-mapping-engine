@@ -178,8 +178,40 @@ def _format_decimal_plsql(arg_exprs: list[str]) -> str:
     return f"TRIM(TO_CHAR(ROUND({x}, {n}), {fmt}, {_NLS_DOT}))"
 
 
+_NUMBER_FORMAT = "'99999999999999999999999999999999D99999999999999999999'"
+
+
+def to_string_of_kind(kind: str, x: str) -> str:
+    """`to_string` of an expression whose PL/SQL type is `kind`: a number without the leading
+    zero Oracle drops (`.5`) or an exponent, a boolean as `true` / `false`, a list or object as
+    compact JSON, a text as it is."""
+    if kind == "NUMBER":
+        return f"TO_CHAR({x}, 'TM9', {_NLS_DOT})"
+    if kind == "BOOLEAN":
+        return f"(CASE WHEN {x} THEN 'true' WHEN NOT {x} THEN 'false' END)"
+    if kind in ("OBJECT", "ARRAY"):
+        return f"{x}.to_String"
+    if kind == "DATE":
+        return f"TO_CHAR({x}, 'YYYY-MM-DD')"
+    return x
+
+
+def to_number_of_kind(kind: str, x: str) -> str:
+    """`to_number` of an expression whose PL/SQL type is `kind`: a number stays, a text is read
+    as one (the decimal separator is always the dot, whatever the session says)."""
+    if kind == "NUMBER":
+        return x
+    if kind == "VARCHAR2":
+        return f"TO_NUMBER(TRIM({x}), {_NUMBER_FORMAT}, {_NLS_DOT})"
+    raise ValueError(f"a {kind.lower()} is not a number")
+
+
 def _to_string_plsql(arg_exprs: list[str]) -> str:
-    return f"TO_CHAR({arg_exprs[0]}, 'TM9')"
+    return to_string_of_kind("NUMBER", arg_exprs[0])
+
+
+def _to_number_plsql(arg_exprs: list[str]) -> str:
+    return to_number_of_kind("VARCHAR2", arg_exprs[0])
 
 
 _FORMAT_DECIMAL_BODY = f"""\
@@ -190,6 +222,31 @@ IF p_x IS NULL THEN
         RAISE_APPLICATION_ERROR(-20999, 'the number of decimals cannot be negative');
     END IF;
     RETURN {_format_decimal_plsql(["p_x", "p_n"])};"""
+
+# `to_string` / `to_number` of a value read from the document: the element is looked at, so a
+# number, a text, a boolean, a list or an object all convert as `to_string_of_kind` says.
+_TO_STRING_BODY = f"""\
+IF p_el IS NULL OR p_el.is_Null THEN
+        RETURN NULL;
+    ELSIF p_el.is_Number THEN
+        RETURN {to_string_of_kind("NUMBER", "p_el.to_Number")};
+    ELSIF p_el.is_Boolean THEN
+        RETURN {to_string_of_kind("BOOLEAN", "p_el.to_Boolean")};
+    ELSIF p_el.is_String THEN
+        -- to_String is the JSON text, quotes and escapes included: read the value out of it
+        RETURN JSON_VALUE(p_el.to_String, '$' RETURNING VARCHAR2(4000));
+    END IF;
+    RETURN p_el.to_String;"""
+
+_TO_NUMBER_BODY = f"""\
+IF p_el IS NULL OR p_el.is_Null THEN
+        RETURN NULL;
+    ELSIF p_el.is_Number THEN
+        RETURN p_el.to_Number;
+    ELSIF p_el.is_String THEN
+        RETURN {to_number_of_kind("VARCHAR2", "JSON_VALUE(p_el.to_String, '$' RETURNING VARCHAR2(4000))")};
+    END IF;
+    RAISE_APPLICATION_ERROR(-20999, 'not a number: ' || p_el.to_String);"""
 
 # A timestamp is read from its pieces; no time is midnight, no offset is UTC. `to_utc` moves the
 # instant to UTC, `rfc3339_normalize` keeps its offset.
@@ -295,7 +352,7 @@ BUILTIN_FUNCTIONS: dict[str, FunctionImpl] = {
     "format_decimal": FunctionImpl(
         name="format_decimal", target_templates={"plsql": _format_decimal_plsql}
     ),
-    "to_number": FunctionImpl(name="to_number", target_templates={"plsql": "TO_NUMBER({0})"}),
+    "to_number": FunctionImpl(name="to_number", target_templates={"plsql": _to_number_plsql}),
     "to_string": FunctionImpl(name="to_string", target_templates={"plsql": _to_string_plsql}),
     # these two live in the functions package only (statements, not one expression)
     "to_utc": FunctionImpl(name="to_utc", target_templates={"plsql": "NULL"}),
@@ -390,8 +447,13 @@ LIBRARY_FUNCTIONS: dict[str, LibraryFunction] = {
         _format_decimal_plsql,
         body=_FORMAT_DECIMAL_BODY,
     ),
-    # a number as text, with the leading zero Oracle's plain TO_CHAR drops (`.5`)
-    "to_string": LibraryFunction("p_n IN NUMBER", "VARCHAR2", ["p_n"], _to_string_plsql),
+    # the value read from the document, as its element
+    "to_string": LibraryFunction(
+        "p_el IN JSON_ELEMENT_T", "VARCHAR2", ["p_el"], lambda a: "NULL", body=_TO_STRING_BODY
+    ),
+    "to_number": LibraryFunction(
+        "p_el IN JSON_ELEMENT_T", "NUMBER", ["p_el"], lambda a: "NULL", body=_TO_NUMBER_BODY
+    ),
     "to_utc": LibraryFunction(
         "p_s IN VARCHAR2", "VARCHAR2", ["p_s"], lambda a: "NULL", body=_TO_UTC_BODY
     ),

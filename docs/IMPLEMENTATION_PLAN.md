@@ -838,10 +838,18 @@ after M7: check that the GitHub pipeline behaves like the forgejo one (not check
 `compiler/backends/plsql/builtins.py` (inline templates, and the functions package for the ones that
 are statements). Decided: lowercase names; `split_nth` stays (no `split_part`); regular expressions are
 in the dialect of the chosen backend, the project's responsibility (a documented exception to
-backend independence). **The PL/SQL renderings were checked as generated text only, not against an
-Oracle instance**: the date and number conversions in particular (`to_string` expects a number,
-`to_number` a text; `TO_NUMBER` depends on the session's decimal separator; an empty string is NULL)
-want golden cases run by the PL/SQL integration tests. Not done: `decode(expr, s1, r1, ..., default)`
+backend independence). **The PL/SQL renderings were checked as generated text only, not against an Oracle
+instance.** The golden mapping `mappings/builtins_text.map.py` and its cases
+(`tests/golden/builtins_text/`: every function, with a value read from the document, a typed
+expression and a constant; a failing `to_number`) are what the PL/SQL integration tests run in CI
+(`mapper test --integration`, both pipelines, nothing to configure) and what the Python backend runs
+offline in track 1: a difference between the two shows up there first. The conversions are
+idempotent whatever the type given: `to_string` / `to_number` of a value read from the document
+go, as the JSON element, to the functions package, which looks at what it is (number, text,
+boolean, list, object); of a typed expression, they are rendered by its type (`to_string_of_kind`,
+`to_number_of_kind`). Known to differ: an empty string is NULL in Oracle, so the cases avoid it;
+`JSON_VALUE` and `TO_CHAR(..., 'TM9')` are what the text and number reads rely on, and are the first
+suspects if track 2 fails. Not done: `decode(expr, s1, r1, ..., default)`
 (Oracle's switch, where two NULLs match), waiting for the decision whether it adds anything over
 `lookup` and `if_else`.
 
