@@ -621,6 +621,15 @@ Sliced; each slice is usable on its own:
       shown on the grid rows. The cases are the shared contract of every backend (see "Python
       backend"), so what the user writes here is also what CI runs. Running locally needs the
       Python backend (no container); the editor can come first, running second.
+      - Done (first slice): the *Golden* tab of a mapping (`Golden.tsx`; `cli/golden.py`, ops
+        `golden_cases` / `golden_import` / `golden_rename` / `golden_delete`). It lists the cases
+        and which files each has; *Import a case…* takes one file for each role (input, expected
+        output, expected errors: the last two optional), a case name proposed from the input's file
+        name, and copies them into `tests/golden/<mapping>/` as `<case>.input.json`,
+        `<case>.expected.json`, `<case>.expected_errors.json` (the names `discover_cases` reads;
+        constants in `compiler/backends/integration.py`). Files are checked before anything is
+        written (JSON; errors a list of rule ids; the case must not exist). A case can be
+        renamed or deleted. Still to do: the JSON editor, *record*, running, PASS / FAIL, the diff.
 
 **Extra mile (needs the Python backend below).** *Try a mapping in the tool*: import an input
 JSON for the open mapping, run it and show the output next to the input, with the per-rule
