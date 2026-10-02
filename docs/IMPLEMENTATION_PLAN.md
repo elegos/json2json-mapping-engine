@@ -721,8 +721,9 @@ Sliced; each slice is usable on its own:
         (`withTargetDefaults`), the others' tables are kept; *Transpile* and *Build* only in
         Developer mode.
       - Decided: the wizard stays lean: it asks only for the keys a backend requires without a
-        default (the others are under *More options*, and a rule that spans keys, such as plsql's
-        package prefix / suffix / table, is reported by *Create project*); at the end it offers to
+        default (the others are under *More options*). A backend can propose a value for a key it
+        cannot default (`Option.suggest`: plsql's error code and package prefix): the form shows
+        it filled in, and `project_create` writes it, so a project loads at once; at the end it offers to
         open the Project properties, saying that they are behind the *Project properties…* button.
         Done, and walked through by `ui/shots/wizard-check.mjs`.
       - Still open: the tutorial project is found next to the executable or in the checkout, but

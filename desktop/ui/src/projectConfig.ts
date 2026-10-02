@@ -9,6 +9,8 @@ export interface ConfigOption {
   required: boolean;
   default: unknown;
   choices: string[];
+  /** What a new project proposes for a key with no default (the user may change it). */
+  suggest?: unknown;
 }
 
 export interface ConfigSection {

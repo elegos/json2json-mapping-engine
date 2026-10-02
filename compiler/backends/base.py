@@ -46,6 +46,9 @@ class Option:
     required: bool = False
     default: Any = None
     choices: tuple[str, ...] = ()
+    # what a new project proposes for a key that has no default (the user may change it); for a
+    # key that must be given, or that a rule across keys makes necessary
+    suggest: Any = None
 
 
 def check_options(

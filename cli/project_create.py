@@ -16,8 +16,8 @@ FOLDERS = ("schemas", "mappings/functional", "fn")
 def create_project(project: Path, target: str, options: dict[str, Any] | None = None) -> None:
     """Makes `project` (the folder is created when missing) a mapper project for `target`.
     `options` are the values of the backend's `[target.<target>]` section that have no default
-    (`schema` for plsql); the defaults the backend declares are written too, so the file shows
-    what can be set. Nothing is written when the folder already holds a `mapper.toml`, the
+    (`schema` for plsql); the defaults and the suggestions the backend declares are written too, so
+    the file shows what can be set and loads at once. Nothing is written when the folder already holds a `mapper.toml`, the
     backend is unknown, or the configuration is refused."""
     known = backends()
     if target not in known:
@@ -27,6 +27,8 @@ def create_project(project: Path, target: str, options: dict[str, Any] | None = 
     if (project / CONFIG_FILENAME).exists():
         raise MapperConfigError(f"{project} already has a {CONFIG_FILENAME}")
     section = {o.key: o.default for o in known[target].options if o.default is not None}
+    # what the backend proposes for the keys it cannot default (a package prefix, an error code)
+    section.update({o.key: o.suggest for o in known[target].options if o.suggest is not None})
     section.update(options or {})
     values: dict[str, Any] = {
         "project": {"mode": "driven", "target": target},

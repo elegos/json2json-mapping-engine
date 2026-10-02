@@ -43,12 +43,14 @@ class PlsqlBackend(Backend):
             "int",
             "Code of the RAISE_APPLICATION_ERROR raised by the raising entry point",
             required=True,
+            suggest=-20000,
         ),
         Option(
             "mapping_package_prefix",
             "string",
             "Mapping package name = prefix + MAPPING ID + suffix (one of prefix / suffix, "
             "or the table below)",
+            suggest="J2JME_MAP_",
         ),
         Option("mapping_package_suffix", "string", "See the prefix"),
         Option(

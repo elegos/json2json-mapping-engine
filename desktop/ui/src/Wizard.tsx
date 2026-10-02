@@ -244,19 +244,25 @@ function StartPage(props: {
   );
 }
 
-function optionValues(options: ConfigOption[], values: Record<string, string | boolean>) {
+type Typed = Record<string, string | boolean>;
+
+/** What the form shows for an option: what was typed, else what the backend proposes. */
+const shown = (o: ConfigOption, values: Typed): string | boolean | undefined =>
+  values[o.key] ?? (o.suggest == null ? undefined : (o.suggest as string | boolean));
+
+function optionValues(options: ConfigOption[], values: Typed) {
   const out: Record<string, unknown> = {};
   for (const o of options) {
-    const v = values[o.key];
+    const v = shown(o, values);
     if (v === undefined || v === "" || o.kind === "table") continue;
     out[o.key] = o.kind === "int" ? Number(v) : v;
   }
   return out;
 }
 
-function missingRequired(options: ConfigOption[], values: Record<string, string | boolean>) {
+function missingRequired(options: ConfigOption[], values: Typed) {
   return options.some(
-    (o) => o.required && o.default == null && (values[o.key] === undefined || values[o.key] === ""),
+    (o) => o.required && o.default == null && (shown(o, values) === undefined || shown(o, values) === ""),
   );
 }
 
@@ -267,7 +273,8 @@ function BackendOptions(props: {
   onChange: (values: Record<string, string | boolean>) => void;
 }) {
   const editable = props.options.filter((o) => o.kind !== "table");
-  const needed = editable.filter((o) => o.required && o.default == null);
+  // the keys the backend cannot default come first: those it must be given, and those it proposes
+  const needed = editable.filter((o) => (o.required && o.default == null) || o.suggest != null);
   const rest = editable.filter((o) => !needed.includes(o));
   const field = (o: ConfigOption) => (
     <label key={o.key} className="prompt-field">
@@ -292,7 +299,7 @@ function BackendOptions(props: {
         </select>
       ) : (
         <input
-          value={String(props.values[o.key] ?? "")}
+          value={String(shown(o, props.values) ?? "")}
           placeholder={o.default == null ? "" : String(o.default)}
           inputMode={o.kind === "int" ? "numeric" : undefined}
           spellCheck={false}

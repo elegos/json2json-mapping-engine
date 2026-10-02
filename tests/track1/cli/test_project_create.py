@@ -36,3 +36,16 @@ def test_unknown_backend_and_existing_project_are_refused(tmp_path: Path) -> Non
         create_project(
             tmp_path, "plsql", {"schema": "B", "error_code": -20000, "mapping_package_prefix": "M_"}
         )
+
+
+def test_what_the_backend_suggests_is_written_and_a_given_value_wins(tmp_path: Path) -> None:
+    create_project(tmp_path / "a", "plsql", {"schema": "OWNER"})  # nothing else needed
+    values = tomllib.loads((tmp_path / "a/mapper.toml").read_text())["target"]["plsql"]
+    assert values["mapping_package_prefix"] == "J2JME_MAP_" and values["error_code"] == -20000
+    create_project(tmp_path / "b", "plsql", {"schema": "O", "mapping_package_prefix": "X_"})
+    assert (
+        tomllib.loads((tmp_path / "b/mapper.toml").read_text())["target"]["plsql"][
+            "mapping_package_prefix"
+        ]
+        == "X_"
+    )
