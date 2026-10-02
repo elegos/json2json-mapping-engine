@@ -897,10 +897,11 @@ export function App() {
               <button className={view === "paths" ? "tab active" : "tab"} onClick={() => setView("paths")}>
                 Paths
               </button>
-              {/* the properties are a page of their own: a tab while they are open, gone when the user
-                  goes elsewhere (the draft stays, and Save still writes it) */}
-              {config && view === "project" && (
-                <button className="tab active" onClick={() => setView("project")}>
+              {/* the properties are a page of their own: a tab while they are open, or while they hold
+                  changes not saved yet (so it is clear that mapper.toml is among them); gone once the
+                  user goes elsewhere with nothing pending */}
+              {config && (view === "project" || configDirty) && (
+                <button className={view === "project" ? "tab active" : "tab"} onClick={() => setView("project")}>
                   Project properties{configDirty ? " ●" : ""}
                 </button>
               )}
@@ -910,6 +911,7 @@ export function App() {
             <ProjectProperties
               schema={configSchema}
               values={config}
+              saved={JSON.parse(configSaved) as ConfigValues}
               issues={configIssues}
               onChange={(next) => {
                 remember(treeRef.current, "config");

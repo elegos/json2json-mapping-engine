@@ -12,6 +12,8 @@ import {
 interface Props {
   schema: ConfigSchema;
   values: ConfigValues;
+  /** What `mapper.toml` holds now: a field that differs is shown as changed. */
+  saved: ConfigValues;
   issues: ConfigIssue[];
   onChange: (values: ConfigValues) => void;
 }
@@ -19,11 +21,12 @@ interface Props {
 interface FieldProps {
   option: ConfigOption;
   table: Record<string, unknown>;
+  changed: boolean;
   problems: string[];
   onSet: (value: unknown) => void;
 }
 
-function Field({ option, table, problems, onSet }: FieldProps) {
+function Field({ option, table, changed, problems, onSet }: FieldProps) {
   const value = shownValue(table, option);
   const placeholder = option.default === null || option.default === undefined ? "" : String(option.default);
   let control;
@@ -91,7 +94,7 @@ function Field({ option, table, problems, onSet }: FieldProps) {
       );
   }
   return (
-    <div className={problems.length ? "config-field invalid" : "config-field"}>
+    <div className={["config-field", problems.length ? "invalid" : "", changed ? "changed" : ""].join(" ").trim()}>
       <label>
         <span className="config-key">
           {option.key}
@@ -114,10 +117,12 @@ function Group(props: {
   path: string[];
   options: ConfigOption[];
   values: ConfigValues;
+  saved: ConfigValues;
   issues: ConfigIssue[];
   onChange: (values: ConfigValues) => void;
 }) {
   const table = tableAt(props.values, props.path);
+  const savedTable = tableAt(props.saved, props.path);
   return (
     <fieldset>
       <legend>{props.title}</legend>
@@ -126,6 +131,7 @@ function Group(props: {
           key={option.key}
           option={option}
           table={table}
+          changed={JSON.stringify(table[option.key]) !== JSON.stringify(savedTable[option.key])}
           problems={issuesAt(props.issues, props.path, option.key)}
           onSet={(value) => {
             let next = setAt(props.values, props.path, option.key, value);
@@ -143,7 +149,7 @@ function Group(props: {
 
 /** Form for `mapper.toml`. The engine's sections and the active target's keys are drawn from
  * the descriptors of `schema`; the target's come from its backend. */
-export function ProjectProperties({ schema, values, issues, onChange }: Props) {
+export function ProjectProperties({ schema, values, saved, issues, onChange }: Props) {
   const target = String(tableAt(values, ["project"]).target ?? "");
   const options = schema.targets[target];
   const testOptions = schema.target_tests?.[target];
@@ -163,6 +169,7 @@ export function ProjectProperties({ schema, values, issues, onChange }: Props) {
           path={section.path}
           options={section.options}
           values={values}
+          saved={saved}
           issues={issues}
           onChange={onChange}
         />
@@ -173,6 +180,7 @@ export function ProjectProperties({ schema, values, issues, onChange }: Props) {
           path={["target", target]}
           options={options}
           values={values}
+          saved={saved}
           issues={issues}
           onChange={onChange}
         />
@@ -191,6 +199,7 @@ export function ProjectProperties({ schema, values, issues, onChange }: Props) {
           path={["target", target, "test"]}
           options={testOptions}
           values={values}
+          saved={saved}
           issues={issues}
           onChange={onChange}
         />

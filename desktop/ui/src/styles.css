@@ -80,6 +80,7 @@ button.primary:hover:not(:disabled) { background: #3468b3; }
 .config-field label { display: flex; align-items: center; gap: 10px; }
 .config-key { width: 210px; font-family: ui-monospace, monospace; font-size: 12.5px; flex: none; }
 .config-field input:not([type="checkbox"]), .config-field select { flex: 1; min-width: 0; }
+.config-field.changed .config-key, .config-field.changed input:not([type="checkbox"]), .config-field.changed select { font-weight: 700; }
 .config-help { margin-left: 220px; font-size: 12px; opacity: 0.6; }
 .config-problem { margin-left: 220px; color: #c0392b; font-size: 12px; }
 .config > .config-problem { margin-left: 0; margin-bottom: 8px; }
