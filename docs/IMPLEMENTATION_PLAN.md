@@ -614,6 +614,97 @@ Sliced; each slice is usable on its own:
       from the registry (`compiler/function_registry.py`), so it never drifts from what the check
       and the completion know; the syntax pages are written once and also checked against the
       grammar in `ARCHITECTURE.md`.
+      - Decided: **start wizard.** A modal shown at launch (and from the Help menu), with: a
+        bordered box listing the recent projects (the list the *Open project…* caret already
+        keeps, `pushRecent`; one click opens, a missing folder is shown greyed and can be
+        removed from the list); *Open project…*; *New project…*, a guided creation (folder,
+        name, target backends, i.e. the project's `mapper.toml`) which can optionally go on to
+        the first mapping (the *New mapping…* flow of M6.6, with its schemas of M6.5); and
+        *Help*, which opens the guide. A "don't show at startup" checkbox.
+      - Decided: **the guide is two books**, as in a CHM manual, with a table of contents on the
+        left, a page on the right, search over all pages, back / forward:
+        *Functional user* (what a mapping is, the grid, Target / Source / Expression in
+        practice, validation states, golden cases, how to read errors) and *Developer*
+        (`.fn` functions, the developer dialect and manual override, backends and
+        `mapper.toml`, Build / Check / Test, CI). Each book opens on a short "who is this
+        for" page; the wizard offers the right one. The syntax reference and the function
+        explorer above are pages of these books.
+      - Decided: **pages are graphic.** Each page mixes text and screenshots of the tool with
+        callouts (numbered markers, arrows, boxes around the part discussed). Pages are
+        markdown files with a small directive for an annotated figure (image + list of
+        callouts as coordinates and text), kept in the repo and bundled into the app; the
+        callouts are data, not painted into the PNG, so a screenshot can be replaced
+        without redrawing them.
+      - Decided: **quick tutorial (guided tour) on the live interface.** Steps highlight a real
+        element of the window (a box around it, the rest dimmed, an arrow and a short
+        description, *Next* / *Back* / *Close*, "3 of 8"). Steps are data (a selector
+        or an anchor id on the element, the text, the placement, the state to load), so the
+        tour follows the UI; a missing element shows the step as a plain card instead of
+        breaking. Two tours, as the two books: functional (project list, grid, Target / Source /
+        Expression, validation states, schema status, Golden tab) and developer (Developer mode,
+        the manual override, function explorer, Build / Check / Test). Started from a **?**
+        button at the top right of the window (a menu: *Quick tutorial*, *Guide*, *Start
+        wizard*), which keeps out of the work area; it also starts by itself the first time a
+        project is created or opened (once per tour, remembered in the user's settings), asking
+        before it takes over ("Take a quick tour?"). It can be closed at any time, and each page of the guide has a link to the matching tour.
+      - Decided: the guide is in English only, like the rest of the application.
+      - Decided: the tour is written by hand, with the tool's theme (no library).
+      - Decided: **the tour is a read-only guide**: simple and linear, *Back* and *Next* only
+        (plus *Close*). While it runs the normal interaction is blocked (an overlay takes the
+        clicks and the keys; nothing can be edited, saved or built). Each step declares the
+        state of the fixture and of the interface it needs (which mapping and rule, which tab,
+        a cell open for editing, a validation shown...) and the tour loads it, going forward
+        or back, so a step looks the same whenever it is reached.
+      - Decided: **a fixture made for the tour** (`desktop/fixtures/tour-project`, bundled with
+        the app), not the `orders` one, and the tour always runs on it, never on the user's open
+        project (loading states would overwrite their work). When it starts, the fixture is
+        copied to a fresh temporary folder and opened from there (loading a state may still
+        write derived files), so a later "retour" starts from the original data; the copy is
+        deleted when the tour ends (and stale ones at startup). The user's project is closed
+        before (after the unsaved-changes guard) and reopened afterwards. It is opened as a
+        *tour project*: never pushed to the recent-projects list (nor to the wizard's box), and
+        the window marks it (a banner "Tutorial: read-only") so it cannot be mistaken for a
+        real one.
+      - Decided: screenshots are tried **automatically** first: a script drives the app on the
+        tour fixture and takes them, the callouts staying as data (see above); the ones that
+        do not come out well are taken by hand and kept as files, replaceable one by one.
+      - Decided: the guide stays HTML (the pages the app shows); no PDF or other export.
+      - Decided: **New project** (from the wizard) writes `mapper.toml` and then guides the
+        user through creating one or more mappings, one after the other ("Add another mapping?").
+        First the project's backend (required), chosen among the available ones, with the note
+        that it can be changed later in the Project properties. Per mapping: a name (required);
+        an input and an output JSON Schema (both optional, loaded as in M6.5); and,
+        when an output schema is given, the question whether to pre-fill the rules from it (the
+        scaffolding of M6.5). Zero mappings is allowed (the wizard can be left after the
+        `mapper.toml`).
+      - Decided: *New project* creates the scaffolding at once: `mapper.toml`, `schemas/`,
+        `mappings/functional/`, `fn/`.
+      - Decided: **the backend is the project's, one active at a time.** `[project] target`
+        names the active one and only its artefacts are produced; the `[target.<name>]` tables
+        of the others stay in `mapper.toml` untouched, so going back finds the configuration as
+        it was (this is how `cli/config.py` already reads it: the active target must have its
+        table, the others are validated and ignored). *Changing the backend* therefore only
+        rewrites `target`; if the new one has no table yet, one is created with its defaults and
+        the form asks for the required options. No destructive confirmation is needed; a note
+        says which backend is now active and that the previous one's settings are kept. The
+        wizard asks for the backend once, in *New project*, not per mapping.
+      - Decided: **every field of the wizard is explained** in a line or two, under or beside
+        it, for a user who knows the key concepts but is not an expert: *Mapping name* (what the
+        mapping is called in the tool and on disk; it names the files, and renaming is possible
+        later), *Input / Output JSON Schema* (the description of the JSON the mapping reads and
+        the one it produces; the input one feeds source suggestions and checks, the output one
+        lists the fields to fill; optional, can be added later), *Pre-fill the rules* (creates
+        an empty rule for each field of the output schema, so only the Sources remain to be
+        written), *Backend* (the language the mapping is turned into and run in, e.g. PL/SQL;
+        custom ones can be changed later in the Project properties). The texts live with the
+        form's data, not scattered in the components, and are the same ones the guide quotes.
+      - Decided: tour accessibility. Keyboard: focus moves into the step card and returns
+        afterwards, Tab stays in the card, Esc closes, arrows / Enter go on. Reduced motion
+        (the system setting): no animations. Screen readers (and other assistive tools for
+        blind or low-vision users): the card is a dialog that names the highlighted element, if
+        that comes cheap; otherwise the tour says at its start that the experience is limited,
+        and a structured approach to assistive technology is left for later (it concerns the
+        whole tool, not the tour).
 
 - [ ] **M6.8 — Golden data in the tool.** Manage the cases of `tests/golden/<mapping>/` from the
       UI, so that a functional user can check on their own machine that, given an input, the
