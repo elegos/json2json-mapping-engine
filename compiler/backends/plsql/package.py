@@ -19,7 +19,7 @@ from __future__ import annotations
 import re
 
 from compiler.backends.base import CodeGenError
-from compiler.backends.plsql.builtins import LIBRARY_FUNCTIONS
+from compiler.backends.plsql.builtins import LIBRARY_DEPENDENCIES, LIBRARY_FUNCTIONS
 from compiler.backends.plsql.codegen import PlsqlSubprogram, PlsqlUnit, _indent_block
 from compiler.backends.plsql.naming import PlsqlNaming
 
@@ -77,7 +77,14 @@ def assemble_packages(
     ordered = sorted(units, key=lambda u: u.mapping_id)  # stable output, independent of file order
     owners: dict[str, str] = {}
     files: dict[str, str] = {}
-    used = sorted({name for unit in ordered for name in unit.library_functions})
+    used = sorted(
+        {
+            name
+            for unit in ordered
+            for used_name in unit.library_functions
+            for name in (used_name, *LIBRARY_DEPENDENCIES.get(used_name, ()))
+        }
+    )
     if used:  # deployed first: the mapping packages call it
         files[f"{naming.functions_package.lower()}.sql"] = _functions_package(naming, used)
     for unit in ordered:

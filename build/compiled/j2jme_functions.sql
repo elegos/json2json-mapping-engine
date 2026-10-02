@@ -1,6 +1,8 @@
 CREATE OR REPLACE PACKAGE MAPPING_OWNER.J2JME_FUNCTIONS AS
     FUNCTION format_decimal(p_x IN NUMBER, p_n IN NUMBER) RETURN VARCHAR2;
 
+    FUNCTION json_text(p_el IN JSON_ELEMENT_T) RETURN VARCHAR2;
+
     FUNCTION lookup(p_key IN VARCHAR2, p_table IN JSON_OBJECT_T, p_default IN VARCHAR2 DEFAULT NULL) RETURN VARCHAR2;
 
     FUNCTION remove_prefix(p_s IN VARCHAR2, p_prefix IN VARCHAR2) RETURN VARCHAR2;
@@ -32,6 +34,22 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_FUNCTIONS AS
         END IF;
         RETURN TRIM(TO_CHAR(ROUND(p_x, p_n), 'FM999999999999999999990' || CASE WHEN p_n > 0 THEN '.' || RPAD('0', p_n, '0') END, 'NLS_NUMERIC_CHARACTERS=''.,'''));
     END format_decimal;
+
+    FUNCTION json_text(p_el IN JSON_ELEMENT_T) RETURN VARCHAR2 IS
+    BEGIN
+        DECLARE
+            v_s VARCHAR2(32767) := p_el.to_String;
+        BEGIN
+            v_s := SUBSTR(v_s, 2, LENGTH(v_s) - 2);
+            v_s := REPLACE(v_s, '\\', CHR(1));
+            v_s := REPLACE(v_s, '\"', '"');
+            v_s := REPLACE(v_s, '\/', '/');
+            v_s := REPLACE(v_s, '\n', CHR(10));
+            v_s := REPLACE(v_s, '\t', CHR(9));
+            v_s := REPLACE(v_s, '\r', CHR(13));
+            RETURN REPLACE(v_s, CHR(1), '\');
+        END;
+    END json_text;
 
     FUNCTION lookup(p_key IN VARCHAR2, p_table IN JSON_OBJECT_T, p_default IN VARCHAR2 DEFAULT NULL) RETURN VARCHAR2 IS
     BEGIN
@@ -102,7 +120,7 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_FUNCTIONS AS
         IF p_el IS NULL OR p_el.is_Null THEN
             RETURN NULL;
         ELSIF p_el.is_Number THEN
-            RETURN TO_CHAR(p_el.to_Number, 'TM9', 'NLS_NUMERIC_CHARACTERS=''.,''');
+            RETURN RTRIM(TO_CHAR(p_el.to_Number, 'FM99999999999999999999990.99999999999999999999', 'NLS_NUMERIC_CHARACTERS=''.,'''), '.');
         ELSIF p_el.is_Boolean THEN
             RETURN (CASE WHEN p_el.to_Boolean THEN 'true' WHEN NOT p_el.to_Boolean THEN 'false' END);
         ELSIF p_el.is_String THEN

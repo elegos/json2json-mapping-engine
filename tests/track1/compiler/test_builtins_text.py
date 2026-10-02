@@ -95,10 +95,10 @@ def test_plsql_renderings() -> None:
     assert plsql("regexp_group", "s", "'(a)'", "1") == "REGEXP_SUBSTR(s, '(a)', 1, 1, NULL, 1)"
     assert plsql("round", "x") == "ROUND(x)" and plsql("round", "x", "2") == "ROUND(x, 2)"
     assert plsql("to_number", "s").startswith("TO_NUMBER(TRIM(s), '9999")
-    assert "'TM9'" in plsql("to_string", "n")
+    assert "'FM99999999999999999999990.9" in plsql("to_string", "n")
     # conversions follow the type of what they are given: idempotent whatever it is
     assert to_string_of_kind("VARCHAR2", "x") == "x"
-    assert to_string_of_kind("NUMBER", "x").startswith("TO_CHAR(x, 'TM9'")
+    assert to_string_of_kind("NUMBER", "x").startswith("RTRIM(TO_CHAR(x, 'FM9")
     assert "'true'" in to_string_of_kind("BOOLEAN", "x")
     assert to_string_of_kind("OBJECT", "x") == "x.to_String"
     assert to_number_of_kind("NUMBER", "x") == "x"
@@ -147,3 +147,17 @@ def test_the_functions_package_does_not_hide_an_oracle_function_it_calls() -> No
         body = function.body_text()
         assert not bare.search(body), f"{name}: the body calls {name}() unqualified"
     assert "STANDARD.TO_NUMBER(" in LIBRARY_FUNCTIONS["to_number"].body_text()
+
+
+def test_a_library_function_that_calls_another_is_deployed_with_it() -> None:
+    """`to_string` calls `json_text`: a package that declares the first without the second does
+    not compile (PLS-00201), and with it no mapping."""
+
+    from compiler.backends.plsql.backend import PlsqlBackend
+    from compiler.pipeline import compile_unit
+
+    backend = PlsqlBackend({"schema": "S", "error_code": -20000, "mapping_package_prefix": "M_"})
+    source = "from __mapping__ import *\ndef a(root: Any) -> str | None:\n    return to_string(root.n)\nout.A = a(root)\n"
+    unit = compile_unit(source, "m", backend)
+    package = backend.assemble([unit])["j2jme_functions.sql"]
+    assert package.count("FUNCTION json_text(") == 2  # in the spec and in the body

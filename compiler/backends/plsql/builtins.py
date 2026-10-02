@@ -178,15 +178,18 @@ def _format_decimal_plsql(arg_exprs: list[str]) -> str:
     return f"TRIM(TO_CHAR(ROUND({x}, {n}), {fmt}, {_NLS_DOT}))"
 
 
+_NUMBER_TEXT_FORMAT = "'FM99999999999999999999990.99999999999999999999'"
 _NUMBER_FORMAT = "'99999999999999999999D999999999999999999'"  # 20 + 18 digits
 
 
 def to_string_of_kind(kind: str, x: str) -> str:
-    """`to_string` of an expression whose PL/SQL type is `kind`: a number without the leading
-    zero Oracle drops (`.5`) or an exponent, a boolean as `true` / `false`, a list or object as
+    """`to_string` of an expression whose PL/SQL type is `kind`: a number with the zero before the dot
+    that Oracle's TO_CHAR drops (`.5`), and no exponent, a boolean as `true` / `false`, a list or object as
     compact JSON, a text as it is."""
     if kind == "NUMBER":
-        return f"TO_CHAR({x}, 'TM9', {_NLS_DOT})"
+        # `TM9` drops the zero before the dot (`.5`); FM with a 0 there keeps it, and the
+        # unused `9`s after the dot are not written, only the point itself is left to trim
+        return f"RTRIM(TO_CHAR({x}, {_NUMBER_TEXT_FORMAT}, {_NLS_DOT}), '.')"
     if kind == "BOOLEAN":
         return f"(CASE WHEN {x} THEN 'true' WHEN NOT {x} THEN 'false' END)"
     if kind in ("OBJECT", "ARRAY"):
@@ -490,6 +493,12 @@ LIBRARY_FUNCTIONS: dict[str, LibraryFunction] = {
         ["p_key", "p_table", "p_default"],
         _lookup_plsql,
     ),
+}
+
+# Library functions another library function calls: deployed with it.
+LIBRARY_DEPENDENCIES: dict[str, tuple[str, ...]] = {
+    "to_string": ("json_text",),
+    "to_number": ("json_text",),
 }
 
 # Python reference implementations, kept alongside (not inside) FunctionImpl

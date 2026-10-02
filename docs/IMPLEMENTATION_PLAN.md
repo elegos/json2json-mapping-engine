@@ -855,8 +855,12 @@ idempotent whatever the type given: `to_string` / `to_number` of a value read fr
 go, as the JSON element, to the functions package, which looks at what it is (number, text,
 boolean, list, object); of a typed expression, they are rendered by its type (`to_string_of_kind`,
 `to_number_of_kind`). Known to differ: an empty string is NULL in Oracle, so the cases avoid it;
-`JSON_VALUE` and `TO_CHAR(..., 'TM9')` are what the text and number reads rely on, and are the first
-suspects if track 2 fails. Left out for the moment, decided: `decode(expr, s1, r1, ..., default)` (Oracle's switch, where two NULLs
+The golden cases were run against a real Oracle (`mapper test --integration` with the local container
+runtime) and pass; what was found that way: the functions package must qualify `STANDARD.TO_NUMBER`
+(it declares its own `to_number`), a library function that calls another is deployed with it, and
+`TO_CHAR(.5, 'TM9')` writes `.5` (the number text uses an `FM` format with a `0` before the dot instead).
+Still differing, and avoided by the cases: an empty string is NULL in Oracle; a `\uXXXX` escape in a JSON
+string is not decoded by `to_string`. Left out for the moment, decided: `decode(expr, s1, r1, ..., default)` (Oracle's switch, where two NULLs
 match); `lookup` and `if_else` cover the rest. The limits of `to_number` (a plain decimal, up to 20 digits
 before the dot and 18 after; no exponent, separators or decimal comma) are in its description, which the
 explorer and the guide show.

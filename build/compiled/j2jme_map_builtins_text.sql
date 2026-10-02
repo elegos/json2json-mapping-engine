@@ -160,7 +160,7 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAP_BUILTINS_TEXT AS
     FUNCTION fn_builtins_text_text_from_expr(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
     BEGIN
         p_omitted := FALSE;
-        RETURN TO_CHAR(ROUND(p_root.get_Number('n'), 0), 'TM9', 'NLS_NUMERIC_CHARACTERS=''.,''');
+        RETURN RTRIM(TO_CHAR(ROUND(p_root.get_Number('n'), 0), 'FM99999999999999999999990.99999999999999999999', 'NLS_NUMERIC_CHARACTERS=''.,'''), '.');
     END fn_builtins_text_text_from_expr;
 
     FUNCTION fn_builtins_text_text_from_concat(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
