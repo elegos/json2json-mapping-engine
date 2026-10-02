@@ -158,6 +158,28 @@ export async function scaffoldRules(
   return reviewRequest({ op: "scaffold", tree, project, stem, apply });
 }
 
+/** Creating, deleting and renaming a mapping (the files are the Python worker's business). */
+export const mappingCreate = (project: string, name: string) =>
+  reviewRequest<{ file: string }>({ op: "mapping_create", project, name });
+
+/** What deleting the mapping removes (project-relative paths), for the confirmation. */
+export const mappingRemoval = (project: string, name: string) =>
+  reviewRequest<{ files: string[] }>({ op: "mapping_removal", project, name });
+
+export const mappingDelete = (project: string, name: string) =>
+  reviewRequest<{ files: string[] }>({ op: "mapping_delete", project, name });
+
+/** `fileId` sets the file's `id` (it names the PL/SQL package); without it the id follows the
+ * name when it was the old name. */
+export const mappingRename = (project: string, name: string, to: string, fileId?: string) =>
+  reviewRequest<{ name: string; file_id: string }>({
+    op: "mapping_rename",
+    project,
+    name,
+    new: to,
+    file_id: fileId,
+  });
+
 /** What the split pane of a rule shows. */
 export interface Proposal {
   /** What the transpiler generates now from the Source and expression. */

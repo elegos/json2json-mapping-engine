@@ -6,6 +6,8 @@ import { CompletingCellEditor, type GridContext } from "./CompletingCellEditor";
 import { Lookups } from "./Lookups";
 import { Paths } from "./Paths";
 import { ProjectProperties } from "./ProjectProperties";
+import { nameProblem } from "./mappings";
+import { PromptDialog, type PromptField } from "./PromptDialog";
 import { SchemaStatusButtons } from "./SchemaStatus";
 import {
   type ConfigIssue,
@@ -25,6 +27,10 @@ import {
   chooseSchemaFile,
   editTree,
   importSchema,
+  mappingCreate,
+  mappingDelete,
+  mappingRemoval,
+  mappingRename,
   type SchemaKind,
   scaffoldRules,
   schemasStatus,
@@ -137,6 +143,13 @@ export function App() {
     message: string;
     choices: Choice[];
     resolve: (id: string) => void;
+  } | null>(null);
+  const [prompt, setPrompt] = useState<{
+    title: string;
+    fields: PromptField[];
+    confirm: string;
+    validate: (values: Record<string, string>) => string | null;
+    resolve: (values: Record<string, string> | null) => void;
   } | null>(null);
   const dirtyRef = useRef(false);
   const saveRef = useRef<() => Promise<boolean>>(async () => true);
@@ -303,10 +316,108 @@ export function App() {
     }
   }, [forgetHistory]);
 
+  const askValues = useCallback(
+    (title: string, fields: PromptField[], confirm: string, validate: (v: Record<string, string>) => string | null) =>
+      new Promise<Record<string, string> | null>((resolve) =>
+        setPrompt({ title, fields, confirm, validate, resolve }),
+      ),
+    [],
+  );
+
+  /** The list of mappings again, then the one called `select` (else the first) is opened. */
+  const reloadFiles = useCallback(
+    async (select: string | null) => {
+      if (!project) return;
+      const found = await listFnFiles(project);
+      setFiles(found);
+      const wanted = found.find((f) => select !== null && mappingName(f) === select) ?? found[0];
+      if (wanted) {
+        await load(wanted);
+      } else {
+        setCurrent(null);
+        setTree(null);
+        setStatus("no mappings/functional/*.fn.yaml in this project");
+      }
+    },
+    [project, load],
+  );
+
   const switchGuard = useCallback(
     () => guardRef.current("Save the current file before switching? Your unsaved changes will be lost otherwise.", "Discard changes"),
     [],
   );
+
+  const newMapping = useCallback(async () => {
+    if (!project || !(await switchGuard())) return;
+    const taken = files.map(mappingName);
+    const got = await askValues(
+      "New mapping",
+      [{ key: "name", label: "Name", value: "", hint: "It names the file, its schemas and the PL/SQL package." }],
+      "Create",
+      (v) => nameProblem(v.name.trim(), taken),
+    );
+    if (!got) return;
+    try {
+      await mappingCreate(project, got.name.trim());
+      await reloadFiles(got.name.trim());
+    } catch (e) {
+      setStatus(String(e instanceof Error ? e.message : e));
+    }
+  }, [project, files, switchGuard, askValues, reloadFiles]);
+
+  const renameCurrent = useCallback(async () => {
+    if (!project || !current || !tree || !(await switchGuard())) return;
+    const old = mappingName(current);
+    const others = files.map(mappingName).filter((n) => n !== old);
+    const got = await askValues(
+      "Rename mapping",
+      [
+        { key: "name", label: "Name", value: old },
+        {
+          key: "id",
+          label: "Id",
+          value: tree.id,
+          hint: "It names the PL/SQL package. It follows the name while it is the old name; change it to pick your own.",
+        },
+      ],
+      "Rename",
+      (v) =>
+        nameProblem(v.name.trim(), others) ??
+        (nameProblem(v.id.trim(), []) ? "The id: letters, digits and _, not starting with a digit." : null),
+    );
+    if (!got) return;
+    const to = got.name.trim();
+    const id = got.id.trim();
+    try {
+      await mappingRename(project, old, to, id !== tree.id ? id : undefined);
+      await reloadFiles(to);
+    } catch (e) {
+      setStatus(String(e instanceof Error ? e.message : e));
+    }
+  }, [project, current, tree, files, switchGuard, askValues, reloadFiles]);
+
+  const deleteCurrent = useCallback(async () => {
+    if (!project || !current) return;
+    const name = mappingName(current);
+    try {
+      const { files: plan } = await mappingRemoval(project, name);
+      const choice = await ask(
+        `Delete the mapping '${name}'? This removes:\n${plan.map((f) => `  ${f}`).join("\n")}\n\n` +
+          `The golden cases (tests/golden/${name}/) stay, and the compiled packages go at the next build. ` +
+          "Unsaved changes in it are lost.",
+        [
+          // the last choice is what Escape answers, and the one focused
+          { id: "delete", label: "Delete" },
+          { id: "cancel", label: "Cancel", primary: true },
+        ],
+      );
+      if (choice !== "delete") return;
+      await mappingDelete(project, name);
+      await reloadFiles(null);
+    } catch (e) {
+      setStatus(String(e instanceof Error ? e.message : e));
+    }
+  }, [project, current, ask, reloadFiles]);
 
   const openProject = useCallback(async () => {
     if (!(await switchGuard())) return;
@@ -958,6 +1069,9 @@ export function App() {
           >
             Project properties…
           </button>
+          <button className="new-mapping" disabled={!project} onClick={() => void newMapping()}>
+            + New mapping…
+          </button>
           {files.map((f) => (
             <div
               key={f}
@@ -966,8 +1080,16 @@ export function App() {
                 if (f !== current && (await switchGuard())) await load(f);
               }}
             >
-              {mappingName(f)}
-              {f === current && fnDirty ? "*" : ""}
+              <span className="file-name">
+                {mappingName(f)}
+                {f === current && fnDirty ? "*" : ""}
+              </span>
+              {f === current && (
+                <span className="file-actions">
+                  <button title="Rename…" onClick={(e) => { e.stopPropagation(); void renameCurrent(); }}>✎</button>
+                  <button title="Delete…" onClick={(e) => { e.stopPropagation(); void deleteCurrent(); }}>✕</button>
+                </span>
+              )}
             </div>
           ))}
         </nav>
@@ -1153,6 +1275,18 @@ export function App() {
           onChoose={(id) => {
             question.resolve(id);
             setQuestion(null);
+          }}
+        />
+      )}
+      {prompt && (
+        <PromptDialog
+          title={prompt.title}
+          fields={prompt.fields}
+          confirm={prompt.confirm}
+          validate={prompt.validate}
+          onDone={(values) => {
+            prompt.resolve(values);
+            setPrompt(null);
           }}
         />
       )}
