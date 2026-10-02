@@ -592,6 +592,11 @@ Sliced; each slice is usable on its own:
         compiled packages go at the next build. Rename moves the files and the golden folder; the
         file's `id` (it names the PL/SQL package) follows the name when it was the old name, and the
         dialog lets the user set it by hand.
+      - Decided: a new mapping whose `tests/golden/<name>/` is not empty (cases left by one deleted
+        earlier) is not created until the user chooses: use the cases for the new mapping, move the
+        folder to another name (`<name>_old` suggested), delete them (confirmed), or pick another
+        name for the mapping. Renaming *into* a name whose golden folder exists is still refused
+        (the same choice could be offered there).
       - Done: `cli/mappings.py` (ops `mapping_create`, `mapping_removal`, `mapping_delete`,
         `mapping_rename` of `mapper serve`) and, in the left list, *+ New mapping…* and, on the
         open mapping, rename (✎) and delete (✕).
