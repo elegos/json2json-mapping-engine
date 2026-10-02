@@ -665,6 +665,9 @@ Sliced; each slice is usable on its own:
         *tour project*: never pushed to the recent-projects list (nor to the wizard's box), and
         the window marks it (a banner "Tutorial: read-only") so it cannot be mistaken for a
         real one.
+      - Decided: *Transpile* and *Build* are shown in Developer mode only; *Save* and *Check* are
+        always there (a functional user saves and checks; producing the code is the developer's).
+        The tours and the guide say so.
       - Decided: screenshots are tried **automatically** first: a script drives the app on the
         tour fixture and takes them, the callouts staying as data (see above); the ones that
         do not come out well are taken by hand and kept as files, replaceable one by one.

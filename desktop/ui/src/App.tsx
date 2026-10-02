@@ -1356,11 +1356,12 @@ export function App() {
         <button className="history" title="Redo (Ctrl + Y)" disabled={!canRedo || busy} onClick={redo}>
           ↷
         </button>
-        <button disabled={!dirty || busy} onClick={() => void save()}>
-          Save{dirty ? " ●" : ""}
-        </button>
-        <span className="commands" data-tour="commands">
-          {COMMANDS.map((c) => (
+        <span className="commands" data-tour="actions">
+          <button disabled={!dirty || busy} onClick={() => void save()}>
+            Save{dirty ? " ●" : ""}
+          </button>
+          {/* transpile and build are the developer's: a functional user only checks */}
+          {COMMANDS.filter((c) => developerMode || c === "check").map((c) => (
             <button key={c} disabled={!canBuild} onClick={() => run(c)}>
               {c[0].toUpperCase() + c.slice(1)}
             </button>

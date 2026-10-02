@@ -69,11 +69,11 @@ Each row is a rule. Rows inside an object or a loop are indented under it, and c
   },
   {
    "n": 7,
-   "x": 83.9,
+   "x": 80.3,
    "y": 5.1,
-   "w": 12.5,
+   "w": 16.1,
    "h": 2.9,
-   "text": "Transpile, Build and Check run the project's mapper command."
+   "text": "Save writes the file; Check reports what is missing or wrong. (Developer mode adds Transpile and Build.)"
   }
  ]
 }

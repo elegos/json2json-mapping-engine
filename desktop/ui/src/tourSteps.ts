@@ -103,10 +103,12 @@ export const FUNCTIONAL_TOUR: TourDef = {
     },
     {
       id: "check",
-      title: "Check and build",
-      label: "the Transpile, Build and Check buttons",
-      text: "Check tells you what is missing or wrong, and marks the rows concerned. Build produces the code for the target. Save writes your changes.",
-      target: '[data-tour="commands"]',
+      title: "Save and check",
+      label: "the Save and Check buttons",
+      text:
+        "Save writes your changes to the file; a dot on the button means there are changes not saved yet. " +
+        "Check tells you what is missing or wrong, and marks the rows concerned.",
+      target: '[data-tour="actions"]',
       side: "bottom",
     },
     {
@@ -199,10 +201,14 @@ export const DEVELOPER_TOUR: TourDef = {
     },
     {
       id: "build",
-      title: "Build, check, test",
-      label: "the Transpile, Build and Check buttons",
-      text: "Transpile writes the .map.py, Build compiles it, Check verifies that what is committed matches the sources. mapper test runs the golden cases, from a terminal.",
-      target: '[data-tour="commands"]',
+      title: "Transpile, build, check",
+      label: "the Save, Transpile, Build and Check buttons",
+      text:
+        "Developer mode adds two buttons. Transpile turns the rules into the intermediate Python code (.map.py), without compiling it. " +
+        "Build does that and compiles it to the backend's code, in the build folder.\n\n" +
+        "Check verifies that what is committed still matches the sources, and reports what is wrong. " +
+        "mapper test runs the golden cases, from a terminal.",
+      target: '[data-tour="actions"]',
       side: "bottom",
       state: { ...rules, developerMode: true },
     },

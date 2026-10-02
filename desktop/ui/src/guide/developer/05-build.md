@@ -1,6 +1,8 @@
 # Build, check and test
 
-The toolbar runs the `mapper` command of the project:
+The toolbar runs the `mapper` command of the project. **Transpile** and **Build** appear only in
+**Developer mode**; **Check** is always there.
+
 
 | Button | What it does |
 |---|---|
