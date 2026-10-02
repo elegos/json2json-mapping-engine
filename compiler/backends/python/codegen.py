@@ -174,8 +174,12 @@ def _parallel_degree(node: ast.FunctionDef) -> int | None:
             and dec.func.id == "parallel"
         ):
             for kw in dec.keywords:
-                if kw.arg == "degree" and isinstance(kw.value, ast.Constant):
-                    return int(kw.value.value)
+                if (
+                    kw.arg == "degree"
+                    and isinstance(kw.value, ast.Constant)
+                    and isinstance(kw.value.value, int)
+                ):
+                    return kw.value.value
     return None
 
 
@@ -228,7 +232,7 @@ def compile_module(tree: ast.Module, mapping_id: str) -> PythonUnit:
         ast.Expr(value=ast.Attribute(value=_name("out"), attr=name, ctx=ast.Load()))
         for name in _output_arrays(body)
     ]
-    run_body = arrays + [rewriter.visit(s) for s in body] or [ast.Pass()]
+    run_body: list[ast.stmt] = [*arrays, *(rewriter.visit(s) for s in body)] or [ast.Pass()]
     run = ast.FunctionDef(
         name="_run",
         args=ast.arguments(

@@ -857,8 +857,8 @@ boolean, list, object); of a typed expression, they are rendered by its type (`t
 `to_number_of_kind`). Known to differ: an empty string is NULL in Oracle, so the cases avoid it;
 `JSON_VALUE` and `TO_CHAR(..., 'TM9')` are what the text and number reads rely on, and are the first
 suspects if track 2 fails. Left out for the moment, decided: `decode(expr, s1, r1, ..., default)` (Oracle's switch, where two NULLs
-match); `lookup` and `if_else` cover the rest. The limits of `to_number` (a plain decimal, up to 32 digits
-before the dot and 20 after; no exponent, separators or decimal comma) are in its description, which the
+match); `lookup` and `if_else` cover the rest. The limits of `to_number` (a plain decimal, up to 20 digits
+before the dot and 18 after; no exponent, separators or decimal comma) are in its description, which the
 explorer and the guide show.
 
 ## 🟨 Python backend (first slice done)

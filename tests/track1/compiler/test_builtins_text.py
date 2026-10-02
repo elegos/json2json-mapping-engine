@@ -18,7 +18,7 @@ def test_replace_and_remove_prefix() -> None:
     assert b.replace("a-b-c", "-", "+") == "a+b+c"
     assert b.replace("a-b-c", "-") == "abc"  # no replacement removes
     assert b.replace("abc", "") == "abc"  # nothing to search for
-    assert b.replace(None, "x") is None
+    assert b.replace(None, "x") is None  # pyright: ignore[reportArgumentType]
     assert b.remove_prefix("pre_x", "pre_") == "x"
     assert b.remove_prefix("x", "pre_") == "x" and b.remove_prefix("x", "") == "x"
 
@@ -121,14 +121,29 @@ def test_the_limits_of_to_number_are_in_its_description() -> None:
         "exponent",
         "thousands",
         "decimal comma",
-        "32 digits",
-        "20",
+        "20 digits",
+        "18",
         "boolean",
     ):
         assert limit in doc, limit
-    for text in ("1e3", "1,200", "3,5", "$5", "12%", "", "-", "1.2.3"):
+    assert b.to_number("1" * 20) == int("1" * 20) and b.to_number("." + "1" * 18) == float(
+        "." + "1" * 18
+    )
+    for text in ("1e3", "1,200", "3,5", "$5", "12%", "", "-", "1.2.3", "1" * 21, "." + "1" * 19):
         if text in ("",):
             assert b.to_number(text) is None
         else:
             with pytest.raises(ValueError):
                 b.to_number(text)
+
+
+def test_the_functions_package_does_not_hide_an_oracle_function_it_calls() -> None:
+    """A package that declares `to_number` sees only its own from the inside: a call to Oracle's
+    must be qualified (`STANDARD.TO_NUMBER`), or the package does not compile and with it no mapping."""
+    import re
+
+    for name, function in LIBRARY_FUNCTIONS.items():
+        bare = re.compile(rf"(?<![\w.]){name}\s*\(", re.IGNORECASE)
+        body = function.body_text()
+        assert not bare.search(body), f"{name}: the body calls {name}() unqualified"
+    assert "STANDARD.TO_NUMBER(" in LIBRARY_FUNCTIONS["to_number"].body_text()

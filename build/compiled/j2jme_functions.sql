@@ -92,7 +92,7 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_FUNCTIONS AS
         ELSIF p_el.is_Number THEN
             RETURN p_el.to_Number;
         ELSIF p_el.is_String THEN
-            RETURN TO_NUMBER(TRIM(JSON_VALUE(p_el.to_String, '$' RETURNING VARCHAR2(4000))), '99999999999999999999999999999999D99999999999999999999', 'NLS_NUMERIC_CHARACTERS=''.,''');
+            RETURN STANDARD.TO_NUMBER(TRIM(json_text(p_el)), '99999999999999999999D999999999999999999', 'NLS_NUMERIC_CHARACTERS=''.,''');
         END IF;
         RAISE_APPLICATION_ERROR(-20999, 'not a number: ' || p_el.to_String);
     END to_number;
@@ -106,8 +106,7 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_FUNCTIONS AS
         ELSIF p_el.is_Boolean THEN
             RETURN (CASE WHEN p_el.to_Boolean THEN 'true' WHEN NOT p_el.to_Boolean THEN 'false' END);
         ELSIF p_el.is_String THEN
-            -- to_String is the JSON text, quotes and escapes included: read the value out of it
-            RETURN JSON_VALUE(p_el.to_String, '$' RETURNING VARCHAR2(4000));
+            RETURN json_text(p_el);
         END IF;
         RETURN p_el.to_String;
     END to_string;

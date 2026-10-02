@@ -34,7 +34,7 @@ Anchors work as in the Source: `$.defaults.price`, `@.qty`, `@line.price`.
 | A timestamp in UTC | `to_utc(@.created)` (or `rfc3339_normalize` to keep the offset) |
 
 > **`to_number` reads only a plain decimal**: an optional sign, digits and a fraction after a dot
-> (`-12`, `3.75`, `.5`), with spaces around it ignored and at most 32 digits before the dot and 20
+> (`-12`, `3.75`, `.5`), with spaces around it ignored and at most 20 digits before the dot and 18
 > after. An empty text gives nothing (null). An exponent (`1e3`), thousands separators (`1,200`), a
 > decimal comma (`3,5`), a currency or percent sign, or any other text is an error: the rule fails
 > and is reported. Clean the text first (`replace`, `regexp_replace`) if it has any of these.

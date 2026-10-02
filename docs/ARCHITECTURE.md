@@ -443,7 +443,7 @@ target language via `@override` declarations. Examples: `coalesce`, `round`, `co
 `remove_prefix(s, prefix)` (a null text gives a null result); `regexp_replace(s, pattern [, replacement])`
 and `regexp_group(s, pattern, n)` (null when there is no match or no such group); `format_decimal(x, n)`
 (rounded half away from zero, all `n` decimals written: `"2.50"`); `to_number(x)` (a text must be a plain decimal:
-sign, digits, a fraction after a dot, spaces around it ignored, up to 32 digits before the dot and 20
+sign, digits, a fraction after a dot, spaces around it ignored, up to 20 digits before the dot and 18
 after; an exponent, thousands separators, a decimal comma or any other text is an error, an empty text
 is null) and `to_string(x)` (no exponent, whole numbers
 without decimals); `to_utc(s)` and `rfc3339_normalize(s)` read an ISO-8601 or RFC3339 timestamp (no

@@ -178,7 +178,7 @@ def _format_decimal_plsql(arg_exprs: list[str]) -> str:
     return f"TRIM(TO_CHAR(ROUND({x}, {n}), {fmt}, {_NLS_DOT}))"
 
 
-_NUMBER_FORMAT = "'99999999999999999999999999999999D99999999999999999999'"
+_NUMBER_FORMAT = "'99999999999999999999D999999999999999999'"  # 20 + 18 digits
 
 
 def to_string_of_kind(kind: str, x: str) -> str:
@@ -196,13 +196,16 @@ def to_string_of_kind(kind: str, x: str) -> str:
     return x
 
 
-def to_number_of_kind(kind: str, x: str) -> str:
+def to_number_of_kind(kind: str, x: str, inside_package: bool = False) -> str:
     """`to_number` of an expression whose PL/SQL type is `kind`: a number stays, a text is read
-    as one (the decimal separator is always the dot, whatever the session says)."""
+    as one (the decimal separator is always the dot, whatever the session says). Inside the
+    functions package, which declares its own `to_number`, Oracle's is `STANDARD.TO_NUMBER`: the
+    plain name would only see the package's."""
     if kind == "NUMBER":
         return x
     if kind == "VARCHAR2":
-        return f"TO_NUMBER(TRIM({x}), {_NUMBER_FORMAT}, {_NLS_DOT})"
+        name = "STANDARD.TO_NUMBER" if inside_package else "TO_NUMBER"
+        return f"{name}(TRIM({x}), {_NUMBER_FORMAT}, {_NLS_DOT})"
     raise ValueError(f"a {kind.lower()} is not a number")
 
 
@@ -225,6 +228,23 @@ IF p_x IS NULL THEN
 
 # `to_string` / `to_number` of a value read from the document: the element is looked at, so a
 # number, a text, a boolean, a list or an object all convert as `to_string_of_kind` says.
+# the text of a JSON string element, without its quotes and with its escapes undone (`\\"`, `\\\\`,
+# `\\/`, `\\n`, `\\t`, `\\r`; a `\\uXXXX` stays as written)
+_JSON_TEXT_BODY = r"""DECLARE
+        v_s VARCHAR2(32767) := p_el.to_String;
+    BEGIN
+        v_s := SUBSTR(v_s, 2, LENGTH(v_s) - 2);
+        v_s := REPLACE(v_s, '\\', CHR(1));
+        v_s := REPLACE(v_s, '\"', '"');
+        v_s := REPLACE(v_s, '\/', '/');
+        v_s := REPLACE(v_s, '\n', CHR(10));
+        v_s := REPLACE(v_s, '\t', CHR(9));
+        v_s := REPLACE(v_s, '\r', CHR(13));
+        RETURN REPLACE(v_s, CHR(1), '\');
+    END;"""
+
+# `to_string` / `to_number` of a value read from the document: the element is looked at, so a
+# number, a text, a boolean, a list or an object all convert as `to_string_of_kind` says.
 _TO_STRING_BODY = f"""\
 IF p_el IS NULL OR p_el.is_Null THEN
         RETURN NULL;
@@ -233,8 +253,7 @@ IF p_el IS NULL OR p_el.is_Null THEN
     ELSIF p_el.is_Boolean THEN
         RETURN {to_string_of_kind("BOOLEAN", "p_el.to_Boolean")};
     ELSIF p_el.is_String THEN
-        -- to_String is the JSON text, quotes and escapes included: read the value out of it
-        RETURN JSON_VALUE(p_el.to_String, '$' RETURNING VARCHAR2(4000));
+        RETURN json_text(p_el);
     END IF;
     RETURN p_el.to_String;"""
 
@@ -244,7 +263,7 @@ IF p_el IS NULL OR p_el.is_Null THEN
     ELSIF p_el.is_Number THEN
         RETURN p_el.to_Number;
     ELSIF p_el.is_String THEN
-        RETURN {to_number_of_kind("VARCHAR2", "JSON_VALUE(p_el.to_String, '$' RETURNING VARCHAR2(4000))")};
+        RETURN {to_number_of_kind("VARCHAR2", "json_text(p_el)", inside_package=True)};
     END IF;
     RAISE_APPLICATION_ERROR(-20999, 'not a number: ' || p_el.to_String);"""
 
@@ -446,6 +465,10 @@ LIBRARY_FUNCTIONS: dict[str, LibraryFunction] = {
         ["p_x", "p_n"],
         _format_decimal_plsql,
         body=_FORMAT_DECIMAL_BODY,
+    ),
+    # not callable from a mapping: the text inside a JSON string element
+    "json_text": LibraryFunction(
+        "p_el IN JSON_ELEMENT_T", "VARCHAR2", ["p_el"], lambda a: "NULL", body=_JSON_TEXT_BODY
     ),
     # the value read from the document, as its element
     "to_string": LibraryFunction(

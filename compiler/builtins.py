@@ -187,8 +187,8 @@ def to_number(x: Any) -> float | None:
     - spaces around it are ignored; an empty text gives null;
     - NOT accepted (an error, and the rule fails): an exponent (`1e3`), thousands separators
       (`1,200`), a decimal comma (`3,5`), a currency or percent sign, any other text;
-    - at most 32 digits before the dot and 20 after it (the limit of the Oracle format the PL/SQL
-      backend reads with; Python has none, so stay within it);
+    - at most 20 digits before the dot and 18 after it (38 in all, the limit of the Oracle format the PL/SQL
+      backend reads with; a longer number is an error on every backend);
     - a boolean is an error, and a missing value gives null.
     The text is read the same way whatever the database session's number settings are."""
     if x is None or isinstance(x, bool):
@@ -200,7 +200,7 @@ def to_number(x: Any) -> float | None:
     text = str(x).strip()
     if not text:
         return None
-    if not re.fullmatch(r"[+-]?(\d+(\.\d*)?|\.\d+)", text):
+    if not re.fullmatch(r"[+-]?(\d{1,20}(\.\d{0,18})?|\.\d{1,18})", text):
         raise ValueError(f"not a number: {x!r}")  # a plain decimal: no exponent, no separators
     value = Decimal(text)
     return int(value) if re.fullmatch(r"[+-]?\d+", text) else float(value)
