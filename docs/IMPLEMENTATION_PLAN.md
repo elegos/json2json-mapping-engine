@@ -374,6 +374,11 @@ Independent of M6/M7; pick up in any order.
       (`compiler/backends/base.py`), self-discovering registry, `PlsqlBackend`; pipeline,
       Function Linker (built-ins now come from the backend) and `cli/build.py` only use the
       interface; required keys/defaults of `[target.<name>]` live in the backend.
+- [x] **Undefined names in code overrides.** `ExprTyper.check_block` reports a name that nothing
+      defines (`'x' is not defined`, on the Status column): the scope's `root`, `src`/`srcN`,
+      `index`/`indexN` (only as many as there are enclosing elements), the block's own variables
+      and parameters, the function registry, the casts, `Null`. Python's builtins are not
+      reported; use before assignment is not looked for.
 - [ ] **`enumerate(..., dense=True)` / loop `guard`** — deliberately deferred: the loop
       `filter` stays the only guard for now.
 

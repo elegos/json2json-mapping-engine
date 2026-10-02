@@ -16,8 +16,9 @@ reported. Only single-expression rules are typed; blocks with statements are lef
 from __future__ import annotations
 
 import ast
+import builtins
 import textwrap
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping
 from typing import Any
 
 from compiler.function_registry import FunctionInfo, builtin_functions
@@ -122,13 +123,16 @@ class ExprTyper:
         if not compatible(actual, want):
             self.report(f"the expression is {describe(actual)}, but {what}")
 
-    def check_block(self, text: str) -> None:
+    def check_block(self, text: str, extra_names: Collection[str] = ()) -> None:
         """The calls of a block of statements (a developer's override): each is checked for its
-        arguments, but the block is not compared with a type: its result is not one expression."""
+        arguments, but the block is not compared with a type: its result is not one expression.
+        A name that is not in scope is reported: `env`, `extra_names` (what the scope offers
+        besides the schema nodes, e.g. `index`), the block's own variables, the registry."""
         try:
             tree = ast.parse(textwrap.dedent(text).strip("\n"))
         except SyntaxError:
             return  # reported by the form check
+        self._undefined(tree, set(extra_names))
         for stmt in ast.walk(tree):
             for field in ("value", "test"):
                 expr = getattr(stmt, field, None)
@@ -136,6 +140,29 @@ class ExprTyper:
                     stmt, ast.Assign | ast.Return | ast.Expr | ast.If
                 ):
                     self.infer(expr)
+
+    def _undefined(self, tree: ast.AST, extra: set[str]) -> None:
+        """Names read in the block that nothing defines. A variable counts as defined anywhere
+        in the block (use before assignment is not looked for); Python's own builtins are not
+        reported, whether the target accepts them is not this check's call."""
+        known = {*self.env, *extra, *self.registry, *_CASTS, *dir(builtins), "Null"}
+        for n in ast.walk(tree):
+            if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store | ast.Del):
+                known.add(n.id)
+            elif isinstance(n, ast.arg):
+                known.add(n.arg)
+            elif isinstance(n, ast.FunctionDef | ast.ClassDef):
+                known.add(n.name)
+        reported: set[str] = set()
+        for n in ast.walk(tree):
+            if (
+                isinstance(n, ast.Name)
+                and isinstance(n.ctx, ast.Load)
+                and n.id not in known
+                and n.id not in reported
+            ):
+                reported.add(n.id)
+                self.report(f"'{n.id}' is not defined")
 
     def _arity(self, node: ast.Call, name: str) -> None:
         """A call of a registered function must fit its parameters."""

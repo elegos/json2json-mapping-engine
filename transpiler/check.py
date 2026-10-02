@@ -411,9 +411,10 @@ class _Checker:
         and their types, against the registry."""
         env: dict[str, Any] = {"root": root}
         env.update({("src" if o == 0 else f"src{o}"): n for o, n in enumerate(reversed(items))})
+        indexes = ["index" if o == 0 else f"index{o}" for o in range(len(items))]
         ExprTyper(
             self.inp, env, lambda message: self.add(path, "status", message), self.functions
-        ).check_block(text)
+        ).check_block(text, indexes)
 
     def _anchor(self, anchor: str, root: Node, items: list[Node], labels: list[str | None]) -> Node:
         if anchor == "$":

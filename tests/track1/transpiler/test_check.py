@@ -444,3 +444,14 @@ def test_a_code_override_is_checked_too() -> None:
     assert _call_issues("split_first(root.name, ',')", "manual") == []
     block = "x = split_first(root.name)\nx"
     assert _call_issues(block, "manual")[0].startswith("split_first() takes 2")
+
+
+def test_a_code_override_name_that_nothing_defines_is_an_error() -> None:
+    assert _call_issues("root.name + missing", "manual") == ["'missing' is not defined"]
+    assert _call_issues("x = root.name\nx + y + y", "manual") == ["'y' is not defined"]
+    # `src`/`index` exist only inside a loop; the root, the block's variables and functions do
+    assert _call_issues("src.name", "manual") == ["'src' is not defined"]
+    assert _call_issues("index", "manual") == ["'index' is not defined"]
+    ok = "parts = [p.strip() for p in str(root.name).split(',')]\nlen(parts)"
+    assert _call_issues(ok, "manual") == []
+    assert _call_issues("coalesce(root.name, Null)", "manual") == []
