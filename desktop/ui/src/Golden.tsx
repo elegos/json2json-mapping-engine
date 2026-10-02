@@ -21,6 +21,9 @@ export function Golden({ mapping, cases, onImport, onRename, onDelete }: Props) 
       </p>
       <div className="golden-bar">
         <button onClick={onImport}>Import a case…</button>
+        <button disabled title="Needs the Python backend (not available yet)">
+          ▶ Execute all…
+        </button>
       </div>
       {cases.length === 0 ? (
         <div className="empty">No golden cases for this mapping yet.</div>
@@ -43,6 +46,9 @@ export function Golden({ mapping, cases, onImport, onRename, onDelete }: Props) 
                 <td>{c.expected ? "✓" : <span className="golden-none">none</span>}</td>
                 <td>{c.errors ? "✓" : <span className="golden-none">none</span>}</td>
                 <td className="golden-actions">
+                  <button disabled title="Run this case: needs the Python backend (not available yet)">
+                    ▶
+                  </button>
                   <button title="Rename…" onClick={() => onRename(c.name)}>
                     ✎
                   </button>

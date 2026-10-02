@@ -630,6 +630,10 @@ Sliced; each slice is usable on its own:
         constants in `compiler/backends/integration.py`). Files are checked before anything is
         written (JSON; errors a list of rule ids; the case must not exist). A case can be
         renamed or deleted. Still to do: the JSON editor, *record*, running, PASS / FAIL, the diff.
+      - Buttons in place, disabled until the Python backend exists: ▶ on each case (run it) and
+        *▶ Execute all…* next to *Import a case…*. To do after the Python backend: running one case
+        or all, how the results are shown (PASS / FAIL per case, the output diff, the per-rule
+        errors on the grid rows), and what the buttons wait on while a run is going.
 
 **Extra mile (needs the Python backend below).** *Try a mapping in the tool*: import an input
 JSON for the open mapping, run it and show the output next to the input, with the per-rule
@@ -707,3 +711,7 @@ build in:
       failure of a rule wins" stays deterministic. The `orders` golden cases (degree 2)
       run under every strategy.
 - [ ] Then the desktop preview (Extra mile in M6).
+- [ ] Then the golden runs in the tool (M6.8): the disabled ▶ buttons of the *Golden* tab (one
+      case, and *Execute all…*) run the cases on this backend, and the tool shows the results
+      (PASS / FAIL per case, the output diff, the per-rule errors on the grid rows). How the
+      results are shown is still to be designed.
