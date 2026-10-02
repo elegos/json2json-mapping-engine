@@ -91,6 +91,17 @@ export const FUNCTIONAL_TOUR: TourDef = {
       state: { ...rules, select: "lines" },
     },
     {
+      id: "lookups",
+      title: "Lookups",
+      label: "the lookup tables",
+      text:
+        "A lookup is a table of codes and what they stand for, such as country to currency. " +
+        "Its label is how expressions name it: the Currency rule of this mapping uses @countryCurrency, with N/A when the country is not in the table.",
+      target: ".lookups",
+      side: "bottom",
+      state: { ...rules, view: "lookups" },
+    },
+    {
       id: "schemas",
       title: "Schemas",
       label: "the schema status buttons",
