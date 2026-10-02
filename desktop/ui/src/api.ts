@@ -191,6 +191,35 @@ export const mappingRename = (project: string, name: string, to: string, fileId?
     file_id: fileId,
   });
 
+/** A golden case of a mapping and which of its optional files exist. */
+export interface GoldenCase {
+  name: string;
+  expected: boolean;
+  errors: boolean;
+}
+
+export const goldenCases = async (project: string, mapping: string) =>
+  (await reviewRequest<{ cases: GoldenCase[] }>({ op: "golden_cases", project, mapping })).cases;
+
+export async function chooseJsonFile(title: string): Promise<string | null> {
+  const file = await open({ title, filters: [{ name: "JSON", extensions: ["json"] }] });
+  return typeof file === "string" ? file : null;
+}
+
+/** Copies the files into `tests/golden/<mapping>/` under the standard names. */
+export const goldenImport = (
+  project: string,
+  mapping: string,
+  name: string,
+  files: { input: string; expected: string | null; errors: string | null },
+) => reviewRequest({ op: "golden_import", project, mapping, name, ...files });
+
+export const goldenRename = (project: string, mapping: string, name: string, to: string) =>
+  reviewRequest({ op: "golden_rename", project, mapping, name, new: to });
+
+export const goldenDelete = (project: string, mapping: string, name: string) =>
+  reviewRequest({ op: "golden_delete", project, mapping, name });
+
 /** What the split pane of a rule shows. */
 export interface Proposal {
   /** What the transpiler generates now from the Source and expression. */

@@ -6,6 +6,8 @@ import { CompletingCellEditor, type GridContext } from "./CompletingCellEditor";
 import { Lookups } from "./Lookups";
 import { Paths } from "./Paths";
 import { ProjectProperties } from "./ProjectProperties";
+import { Golden } from "./Golden";
+import { GoldenImport } from "./GoldenImport";
 import { nameProblem } from "./mappings";
 import { PromptDialog, type PromptField } from "./PromptDialog";
 import { SchemaStatusButtons } from "./SchemaStatus";
@@ -26,6 +28,11 @@ import {
   chooseProject,
   chooseSchemaFile,
   editTree,
+  goldenCases,
+  goldenDelete,
+  goldenImport,
+  goldenRename,
+  type GoldenCase,
   importSchema,
   mappingCreate,
   mappingDelete,
@@ -138,6 +145,9 @@ export function App() {
   // the mapping's input / output schemas as found on disk; `schemaTick` asks for a new look
   const [schemas, setSchemas] = useState<SchemasStatus | null>(null);
   const [schemaTick, setSchemaTick] = useState(0);
+  // the golden cases of the open mapping; `importingGolden` is the import dialog being open
+  const [cases, setCases] = useState<GoldenCase[]>([]);
+  const [importingGolden, setImportingGolden] = useState(false);
   const [recent, setRecent] = useState<string[]>(loadRecent);
   const grid = useRef<AgGridReact<Row>>(null);
   const [question, setQuestion] = useState<{
@@ -163,7 +173,7 @@ export function App() {
   const [flags, setFlags] = useState<ReadonlyMap<string, ReviewFlag>>(new Map());
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const filterInput = useRef<HTMLInputElement>(null);
-  const [view, setView] = useState<"rules" | "lookups" | "paths" | "project">("rules");
+  const [view, setView] = useState<"rules" | "lookups" | "paths" | "golden" | "project">("rules");
   // mapper.toml: the form's descriptors, the file's values, the draft being edited
   const [configSchema, setConfigSchema] = useState<ConfigSchema | null>(null);
   const [configSaved, setConfigSaved] = useState("");
@@ -776,6 +786,89 @@ export function App() {
     };
   }, [project, current, python, schemaRefs, schemaTick]);
 
+  const loadCases = useCallback(async () => {
+    if (!project || !current) {
+      setCases([]);
+      return;
+    }
+    try {
+      setCases(await goldenCases(project, mappingName(current)));
+    } catch (e) {
+      setCases([]);
+      setStatus(String(e instanceof Error ? e.message : e));
+    }
+  }, [project, current]);
+  useEffect(() => {
+    if (view === "golden") void loadCases();
+  }, [view, loadCases]);
+
+  const importCase = useCallback(
+    async (v: { name: string; input: string; expected: string | null; errors: string | null }) => {
+      if (!project || !current) return "No mapping is open.";
+      try {
+        await goldenImport(project, mappingName(current), v.name, {
+          input: v.input,
+          expected: v.expected,
+          errors: v.errors,
+        });
+        setImportingGolden(false);
+        await loadCases();
+        return null;
+      } catch (e) {
+        return String(e instanceof Error ? e.message : e);
+      }
+    },
+    [project, current, loadCases],
+  );
+
+  const renameCase = useCallback(
+    async (name: string) => {
+      if (!project || !current) return;
+      const others = cases.map((c) => c.name).filter((n) => n !== name);
+      const got = await askValues(
+        "Rename golden case",
+        [{ key: "name", label: "Case name", value: name }],
+        "Rename",
+        (v) =>
+          /^[A-Za-z0-9_][A-Za-z0-9_-]*$/.test(v.name.trim())
+            ? others.includes(v.name.trim())
+              ? `There is already a case called ${v.name.trim()}.`
+              : null
+            : "Letters, digits, _ and -.",
+      );
+      if (!got || got.name.trim() === name) return;
+      try {
+        await goldenRename(project, mappingName(current), name, got.name.trim());
+        await loadCases();
+      } catch (e) {
+        setStatus(String(e instanceof Error ? e.message : e));
+      }
+    },
+    [project, current, cases, askValues, loadCases],
+  );
+
+  const deleteCase = useCallback(
+    async (name: string) => {
+      if (!project || !current) return;
+      const mapping = mappingName(current);
+      const choice = await ask(
+        `Delete the golden case '${name}' of ${mapping}? Its input, expected output and expected errors files are removed.`,
+        [
+          { id: "delete", label: "Delete" },
+          { id: "cancel", label: "Cancel", primary: true },
+        ],
+      );
+      if (choice !== "delete") return;
+      try {
+        await goldenDelete(project, mapping, name);
+        await loadCases();
+      } catch (e) {
+        setStatus(String(e instanceof Error ? e.message : e));
+      }
+    },
+    [project, current, ask, loadCases],
+  );
+
   /** Loads (or replaces) the input / output schema: the file is copied into the project under the
    * mapping's name, so the mapping reads the copy; a `schemas:` override in the file would hide
    * it, so it is dropped (the file is then unsaved, as for any edit). */
@@ -1160,6 +1253,9 @@ export function App() {
               <button className={view === "paths" ? "tab active" : "tab"} onClick={() => setView("paths")}>
                 Paths
               </button>
+              <button className={view === "golden" ? "tab active" : "tab"} onClick={() => setView("golden")}>
+                Golden
+              </button>
               {/* the properties are a page of their own: a tab while they are open, or while they hold
                   changes not saved yet (so it is clear that mapper.toml is among them); gone once the
                   user goes elsewhere with nothing pending */}
@@ -1180,6 +1276,15 @@ export function App() {
                 remember(treeRef.current, "config");
                 setConfig(next);
               }}
+            />
+          )}
+          {tree && current && view === "golden" && (
+            <Golden
+              mapping={mappingName(current)}
+              cases={cases}
+              onImport={() => setImportingGolden(true)}
+              onRename={(name) => void renameCase(name)}
+              onDelete={(name) => void deleteCase(name)}
             />
           )}
           {tree && view === "paths" && (
@@ -1332,6 +1437,14 @@ export function App() {
             question.resolve(id, checked);
             setQuestion(null);
           }}
+        />
+      )}
+      {importingGolden && current && (
+        <GoldenImport
+          mapping={mappingName(current)}
+          taken={cases.map((c) => c.name)}
+          onImport={importCase}
+          onClose={() => setImportingGolden(false)}
         />
       )}
       {prompt && (

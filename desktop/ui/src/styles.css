@@ -182,3 +182,16 @@ button.primary:hover:not(:disabled) { background: #3468b3; }
 .file-actions { display: flex; gap: 2px; }
 .file-actions button { padding: 0 6px; line-height: 1.5; }
 .new-mapping { display: block; width: calc(100% - 16px); margin: 0 8px 8px; }
+.golden { padding: 12px 16px; overflow: auto; }
+.golden-help { margin: 0 0 10px; }
+.golden-bar { margin-bottom: 10px; }
+.golden-table { border-collapse: collapse; min-width: 480px; }
+.golden-table th, .golden-table td { text-align: left; padding: 5px 16px 5px 0; border-bottom: 1px solid #8883; }
+.golden-name { font-family: ui-monospace, monospace; }
+.golden-none { opacity: 0.5; }
+.golden-actions { white-space: nowrap; }
+.golden-actions button, .golden-row button { padding: 0 8px; line-height: 1.6; }
+.golden-import { min-width: 520px; }
+.golden-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.golden-role { width: 120px; flex: none; }
+.golden-file { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, monospace; font-size: 12.5px; }
