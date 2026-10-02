@@ -706,6 +706,14 @@ Sliced; each slice is usable on its own:
         and a structured approach to assistive technology is left for later (it concerns the
         whole tool, not the tour).
 
+- [ ] **M6.9 — Project functions in the tool.** Creating and editing the project's `fn/*.fn`
+      without an external editor: the tool is self-contained. A dedicated editor view (code
+      editor with the same highlighting and completion as the override pane, the docstring and
+      signature checked as the registry reads them, a test call). The function explorer of
+      M6.7 only lists and inserts; for a project function it offers *Edit…* / *New function…*,
+      which open this editor. Until it exists the explorer shows the functions and says where
+      the file is.
+
 - [ ] **M6.8 — Golden data in the tool.** Manage the cases of `tests/golden/<mapping>/` from the
       UI, so that a functional user can check on their own machine that, given an input, the
       output is the one expected: list a mapping's cases; create, rename, delete; edit the input
