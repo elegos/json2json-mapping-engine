@@ -15,4 +15,7 @@ export const WIZARD_TEXTS = {
     "A JSON Schema describing the JSON the mapping produces. It lists the fields to fill in. Optional: it can be added later.",
   prefill:
     "Create an empty rule for each field of the output schema, so only the Sources are left to write.",
+  projectReady:
+    "The settings of the project (the backend and its options, the optimizer, the compiler) are in Project properties…, " +
+    "the button at the top of the list of mappings. Open them now to look at them?",
 } as const;

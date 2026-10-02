@@ -22,13 +22,13 @@ interface Props {
   onOpenDialog: () => void;
   onOpenRecent: (dir: string) => void;
   onForget: (dir: string) => void;
-  /** A project was created (and may hold mappings): open it. */
-  onCreated: (dir: string) => void;
+  /** A project was created (and may hold mappings): open it, and its properties if asked. */
+  onCreated: (dir: string, properties: boolean) => void;
   onClose: () => void;
   onHelp: () => void;
 }
 
-type Step = "start" | "project" | "mappings";
+type Step = "start" | "project" | "mappings" | "done";
 
 const errorText = (e: unknown) => String(e instanceof Error ? e.message : e);
 
@@ -160,9 +160,21 @@ export function Wizard({
             dir={dir.trim()}
             mappings={mappings}
             onAdded={(name) => setMappings((m) => [...m, name])}
-            onDone={() => onCreated(dir.trim())}
+            onDone={() => setStep("done")}
             created={made}
           />
+        )}
+        {step === "done" && (
+          <>
+            <h3>Project ready</h3>
+            <p>{T.projectReady}</p>
+            <div className="modal-buttons">
+              <button onClick={() => onCreated(dir.trim(), false)}>Not now</button>
+              <button autoFocus className="primary" onClick={() => onCreated(dir.trim(), true)}>
+                Open the project properties
+              </button>
+            </div>
+          </>
         )}
       </div>
     </div>

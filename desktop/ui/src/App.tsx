@@ -172,6 +172,8 @@ export function App() {
   const [wizard, setWizard] = useState(false);
   const [guide, setGuide] = useState<string | null>(null);
   const [explorer, setExplorer] = useState(false);
+  /** A project to show the properties of as soon as it is the open one (the wizard asked). */
+  const [propertiesFor, setPropertiesFor] = useState<string | null>(null);
   const [tourRun, setTourRun] = useState<{ book: Book; index: number } | null>(null);
   /** The temporary copy of the tutorial project while a tour runs. */
   const [tourCopy, setTourCopy] = useState<string | null>(null);
@@ -846,6 +848,13 @@ export function App() {
       if (choice === "tour") void startTour(developerMode ? "developer" : "functional");
     })();
   }, [project, developerMode, tourCopy, tourRun, wizard, ask, startTour]);
+
+  useEffect(() => {
+    if (propertiesFor && propertiesFor === project) {
+      setPropertiesFor(null);
+      void openProperties();
+    }
+  }, [propertiesFor, project, openProperties]);
 
   const selectedRow = () => grid.current?.api?.getSelectedRows()[0];
 
@@ -1628,9 +1637,10 @@ export function App() {
             await openDir(dir);
           }}
           onForget={forgetRecent}
-          onCreated={async (dir) => {
+          onCreated={async (dir, properties) => {
             setWizard(false);
             await openDir(dir);
+            if (properties) setPropertiesFor(dir);
           }}
           onClose={() => setWizard(false)}
         />

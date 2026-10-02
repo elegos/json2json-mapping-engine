@@ -720,11 +720,13 @@ Sliced; each slice is usable on its own:
         page); choosing a backend in the Project properties gives it a section of defaults
         (`withTargetDefaults`), the others' tables are kept; *Transpile* and *Build* only in
         Developer mode.
+      - Decided: the wizard stays lean: it asks only for the keys a backend requires without a
+        default (the others are under *More options*, and a rule that spans keys, such as plsql's
+        package prefix / suffix / table, is reported by *Create project*); at the end it offers to
+        open the Project properties, saying that they are behind the *Project properties…* button.
+        Done, and walked through by `ui/shots/wizard-check.mjs`.
       - Still open: the tutorial project is found next to the executable or in the checkout, but
-        nothing copies it into a package yet (`bundle.active` is false); the start wizard asks only
-        for the keys a backend requires without a default, so a rule that spans keys (plsql: a
-        package prefix, a suffix or a table) is reported by *Create project* and the field is under
-        *More options*; the guide pages are short and want a read by someone who uses the tool.
+        nothing copies it into a package yet (`bundle.active` is false); the guide pages are short and want a read by someone who uses the tool.
 
 - [ ] **M6.9 — Project functions in the tool.** Creating and editing the project's `fn/*.fn`
       without an external editor: the tool is self-contained. A dedicated editor view (code
