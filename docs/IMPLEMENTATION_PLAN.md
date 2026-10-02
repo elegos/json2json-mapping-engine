@@ -404,8 +404,11 @@ Sliced; each slice is usable on its own:
             actions when none is found.
       - [x] Tauri shell (`desktop/src-tauri`), React + AG Grid UI (`desktop/ui`), fixture
             `desktop/fixtures/orders-project`; `cargo test` drives the real `mapper`.
-      - [ ] Run it by hand (`cargo tauri dev`) and fix what the GUI shows — not yet done:
-            nothing here could open a window.
+      - [x] Run it by hand (`cargo tauri dev`) and fix what the GUI shows: done in several
+            rounds with screencasts and screenshots (editor closing on click, editor contrast,
+            no sorting and the filter field, dual fuzzy search, icons, window title, the
+            Project properties tab). Last change (`1e511ef`, tab named and closed with the
+            page) checked with `tsc` only, not yet seen in the window.
 - [x] **Target / Source editing** (`transpiler/edit.py`, served by `mapper serve` to the
       grid so edits are instant): `OrderId` → `$.OrderId`; `A.B` creates the object `A` and
       moves the field under it; `Lines.A.B` on a declared loop puts `A` in every element;
@@ -596,7 +599,8 @@ that someone who only installs does not need the project. Still to design: what 
 contains and its layout, how it is built and published from CI (both pipelines, forgejo and
 github), versioning, and the bundled Python runtime the tool already needs (see M6.1). Open
 point, not decided: whether CI should fail when `mapper build` produces a diff against the
-tracked artifacts (it would catch a generator change committed without them).
+tracked artifacts (it would catch a generator change committed without them). Also here,
+after M7: check that the GitHub pipeline behaves like the forgejo one (not checked so far).
 
 ---
 
