@@ -10,8 +10,8 @@ Each row is a rule. Rows inside an object or a loop are indented under it, and c
 
 - Click a cell to edit it; Enter confirms, Esc cancels. Edits can be undone with **Ctrl + Z**
   and redone with **Ctrl + Y**.
-- The filter field above the grid finds rows by what they contain.
-- **Save** writes the file. A dot on the button means there are changes not saved yet.
+- The filter field above the grid finds rows by rule id or by target.
+- **Save** (or **Ctrl + S**) writes the file. A dot on the button means there are changes not saved yet.
 - **Check** reports what is missing or wrong; the problems are marked on the rows concerned.
 
 ## The columns

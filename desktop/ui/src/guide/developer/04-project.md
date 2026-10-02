@@ -16,8 +16,8 @@ A **backend** is the language the mappings are turned into (for example PL/SQL).
 `[target.<name>]`; the tables of the other backends are kept untouched, so going back to one finds
 its settings as they were.
 
-Change it in the **Project properties** tab. If the new backend has no settings yet, it starts
-from its defaults and asks for the required ones.
+Change it in the **Project properties** tab. If the new backend has no settings yet, it gets a section with its defaults, and the form marks the
+required ones (*) for you to fill in.
 
 ## Project properties
 

@@ -6,6 +6,7 @@ import {
   issuesAt,
   setAt,
   shownValue,
+  withTargetDefaults,
   tableAt,
 } from "./projectConfig";
 
@@ -134,12 +135,7 @@ function Group(props: {
           changed={JSON.stringify(table[option.key]) !== JSON.stringify(savedTable[option.key])}
           problems={issuesAt(props.issues, props.path, option.key)}
           onSet={(value) => {
-            let next = setAt(props.values, props.path, option.key, value);
-            // choosing a target creates its section, so its required keys get reported
-            if (props.path.join(".") === "project" && option.key === "target" && typeof value === "string") {
-              if (!(value in tableAt(next, ["target"]))) next = setAt(next, ["target"], value, {});
-            }
-            props.onChange(next);
+            props.onChange(setAt(props.values, props.path, option.key, value));
           }}
         />
       ))}
@@ -171,7 +167,8 @@ export function ProjectProperties({ schema, values, saved, issues, onChange }: P
           values={values}
           saved={saved}
           issues={issues}
-          onChange={onChange}
+          // choosing the backend gives it a section of defaults; its required keys get reported
+          onChange={(next) => onChange(withTargetDefaults(next, schema))}
         />
       ))}
       {options ? (

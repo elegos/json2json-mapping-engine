@@ -15,7 +15,7 @@ Open the **Lookups** view of a mapping. Each lookup has:
 | Part | Meaning |
 |---|---|
 | **Label** | The name expressions use to refer to it: label `countryCurrency` is `@countryCurrency`. |
-| **Type** | Optional: the type of every value (text, integer, number…). When set, it is checked. |
+| **Type** | Optional: the type of every value (`str`, `int`, `number`, `bool`, `date`, `datetime`). When set, it is checked. |
 | **Entries** | The rows: a key and the value it stands for. |
 | **Description** | What the table is for. |
 

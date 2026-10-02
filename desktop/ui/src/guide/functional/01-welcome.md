@@ -31,7 +31,7 @@ and its first mappings; the wizard button (🧙‍♂️) in the toolbar brings 
 2. For each field of the output, say **where** its value comes from (the *Source*) and, if it is
    not copied as it is, **how** it is computed (the *Expression*).
 3. *Check* the mapping to see what is missing or wrong.
-4. Look at the golden cases to see that, for a given input, the output is the one expected.
+4. Keep golden cases: examples of an input and the output it must give, which protect the mapping when it changes.
 
 > The rest of this book follows these steps. Start with [the grid](page:functional/the-grid).
 > Developers and anyone curious about what happens behind the scenes will find it in the

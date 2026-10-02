@@ -22,5 +22,8 @@ The **Golden** tab of a mapping lists its cases and which files each has. *Impor
 the files and copies them in, proposing a name from the input file's. A case can be renamed or
 deleted.
 
-The same cases are what the developers' tests and the automatic build run, so what you write
+The same cases are what the developers' tests and the automatic build run, so what you keep
 here is what protects the mapping.
+
+Running the cases from the tool, and seeing which pass, is not there yet: for now they are run with
+`mapper test`, and the Run buttons of the view are disabled.

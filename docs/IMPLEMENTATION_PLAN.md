@@ -604,7 +604,7 @@ Sliced; each slice is usable on its own:
       - Done: `cli/mappings.py` (ops `mapping_create`, `mapping_removal`, `mapping_delete`,
         `mapping_rename` of `mapper serve`) and, in the left list, *+ New mapping…* and, on the
         open mapping, rename (✎) and delete (✕).
-- [ ] **M6.7 — In-app guide and function explorer.** A help panel in the tool: what each part
+- [x] **M6.7 — In-app guide and function explorer.** A help panel in the tool: what each part
       does, the syntax of Target (`A.B`, `Lines[*]`), Source (`$`, `@`, `@label`, constants,
       selectors `list[cond]`, aliases), Expression (`value`, anchors, blocks, `Null`, bare `return`,
       lookups, truthiness) and the manual override (developer dialect: `root`, `src`, `index`,
@@ -708,6 +708,23 @@ Sliced; each slice is usable on its own:
         that comes cheap; otherwise the tour says at its start that the experience is limited,
         and a structured approach to assistive technology is left for later (it concerns the
         whole tool, not the tour).
+
+      - Done: the start wizard (`Wizard.tsx`, texts in `wizardTexts.ts`; ops `project_backends` /
+        `project_create` of `mapper serve`, `cli/project_create.py`); the guide (`Guide.tsx`,
+        `guideModel.ts`, pages in `ui/src/guide/<book>/NN-name.md`, figures with callouts as data,
+        search, back / forward); the function explorer (`FunctionExplorer.tsx`, op `functions`,
+        `cli/functions.py`; Insert into a Source / Expression cell or the override being edited);
+        the quick tours (`Tour.tsx`, steps in `tourSteps.ts`, two tours on the tutorial project
+        `desktop/fixtures/tour-project`, copied by `tour_project_prepare`, never in the recent
+        list); the screenshots taken by script (`ui/shots/`, `npm run shots`, callouts found in the
+        page); choosing a backend in the Project properties gives it a section of defaults
+        (`withTargetDefaults`), the others' tables are kept; *Transpile* and *Build* only in
+        Developer mode.
+      - Still open: the tutorial project is found next to the executable or in the checkout, but
+        nothing copies it into a package yet (`bundle.active` is false); the start wizard asks only
+        for the keys a backend requires without a default, so a rule that spans keys (plsql: a
+        package prefix, a suffix or a table) is reported by *Create project* and the field is under
+        *More options*; the guide pages are short and want a read by someone who uses the tool.
 
 - [ ] **M6.9 — Project functions in the tool.** Creating and editing the project's `fn/*.fn`
       without an external editor: the tool is self-contained. A dedicated editor view (code

@@ -1,7 +1,8 @@
 # Developer mode and overrides
 
-**Developer mode** shows what a functional user does not need: the validation column, the rule
-ids, and the code of each rule.
+**Developer mode** shows what a functional user does not need: the validation column, the code of
+the selected rule in the override pane, and the Transpile and Build buttons. (*Show rule ids* is a
+separate switch.)
 
 
 ```figure
@@ -17,18 +18,19 @@ Each rule's code is in one of two states:
 | **auto** | The code is generated from the Source and the Expression at every build. |
 | **manual** | You wrote the code. It is used exactly as written. |
 
-When an operation cannot be written with the available functions, open the rule's code and edit
-it: the rule becomes **manual**. The code you write is the **developer dialect**: the Python
-subset directly, with `root` (the input document), `src` (the current element), `out` and `index`,
-and no `$` / `@` anchors.
+When an operation cannot be written with the available functions, select the rule and press
+**Edit as code** in the override pane: the rule becomes **manual**. The code you write is the
+**developer dialect**: the Python subset directly, with `root` (the input document), `src` (the
+current element of the innermost loop; `src1` is the one around it) and `index` (its position;
+`index1` for the outer loop), and no `$` / `@` anchors.
 
 ## When the functional side moves
 
 If a user changes the Source or the Expression of a manual rule, the rule is flagged as **out of
 date**. You then see the code you wrote next to what the tool would generate now, and choose:
 
-1. **Accept the new proposal**: the rule goes back to auto and your code is cleared.
-2. **Keep the override**: your code stays and the flag goes away; revise it if needed.
+1. **Use auto code**: the rule goes back to auto and your code is cleared.
+2. **Keep override**: your code stays and the flag goes away; revise it if needed.
 
 An override is never discarded silently: each flagged rule needs your decision.
 

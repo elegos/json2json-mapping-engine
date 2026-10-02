@@ -73,3 +73,17 @@ export function issuesAt(issues: ConfigIssue[], path: string[], key: string): st
   const dotted = [...path, key].join(".");
   return issues.filter((i) => i.path === dotted).map((i) => i.message);
 }
+
+/** After the active backend was chosen: a backend with no table of its own in the file gets one,
+ * holding the defaults its options declare (the others' tables stay as they are, so going back to
+ * a backend finds its settings). The required keys without a default are left for the form to
+ * report. */
+export function withTargetDefaults(values: ConfigValues, schema: ConfigSchema): ConfigValues {
+  const target = tableAt(values, ["project"]).target;
+  if (typeof target !== "string" || target in tableAt(values, ["target"])) return values;
+  const section: Record<string, unknown> = {};
+  for (const o of schema.targets[target] ?? []) {
+    if (o.default !== null && o.default !== undefined && o.kind !== "table") section[o.key] = o.default;
+  }
+  return setAt(values, ["target"], target, section);
+}
