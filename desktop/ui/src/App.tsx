@@ -6,6 +6,7 @@ import { CompletingCellEditor, type GridContext } from "./CompletingCellEditor";
 import { Lookups } from "./Lookups";
 import { Paths } from "./Paths";
 import { ProjectProperties } from "./ProjectProperties";
+import { SchemaStatusButtons } from "./SchemaStatus";
 import {
   type ConfigIssue,
   type ConfigSchema,
@@ -21,7 +22,12 @@ import {
   configRead,
   configWrite,
   chooseProject,
+  chooseSchemaFile,
   editTree,
+  importSchema,
+  type SchemaKind,
+  schemasStatus,
+  type SchemasStatus,
   initialProject,
   listFnFiles,
   type CommandReport,
@@ -103,6 +109,11 @@ function loadRecent(): string[] {
   }
 }
 
+/** The name the tool shows for a mapping: `orders`, not `mappings/functional/orders.fn.yaml`. */
+function mappingName(file: string): string {
+  return file.replace(/^.*\//, "").replace(/\.fn\.yaml$/, "");
+}
+
 const COMMANDS = ["transpile", "build", "check"] as const;
 
 export function App() {
@@ -116,6 +127,9 @@ export function App() {
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
   const [live, setLive] = useState<Diagnostic[]>([]);
+  // the mapping's input / output schemas as found on disk; `schemaTick` asks for a new look
+  const [schemas, setSchemas] = useState<SchemasStatus | null>(null);
+  const [schemaTick, setSchemaTick] = useState(0);
   const [recent, setRecent] = useState<string[]>(loadRecent);
   const grid = useRef<AgGridReact<Row>>(null);
   const [question, setQuestion] = useState<{
@@ -555,7 +569,7 @@ export function App() {
       setFlags(new Map());
       return;
     }
-    const stem = current.replace(/^.*\//, "").replace(/\.fn\.yaml$/, "");
+    const stem = mappingName(current);
     let stale = false;
     const timer = setTimeout(() => {
       checkTree(tree, project, stem).then(
@@ -575,7 +589,49 @@ export function App() {
       stale = true;
       clearTimeout(timer);
     };
-  }, [tree, project, current, python]);
+  }, [tree, project, current, python, schemaTick]);
+
+  // are the mapping's schemas there? (a `schemas:` change in the file counts too)
+  const schemaRefs = JSON.stringify(tree?.schemas ?? null);
+  useEffect(() => {
+    const open = treeRef.current;
+    if (!open || !project || !current || python?.available !== true) {
+      setSchemas(null);
+      return;
+    }
+    let stale = false;
+    schemasStatus(open, project, mappingName(current)).then(
+      (found) => !stale && setSchemas({ input: found.input, output: found.output }),
+      () => !stale && setSchemas(null),
+    );
+    return () => {
+      stale = true;
+    };
+  }, [project, current, python, schemaRefs, schemaTick]);
+
+  /** Loads (or replaces) the input / output schema: the file is copied into the project under the
+   * mapping's name, so the mapping reads the copy; a `schemas:` override in the file would hide
+   * it, so it is dropped (the file is then unsaved, as for any edit). */
+  const pickSchema = useCallback(
+    async (kind: SchemaKind) => {
+      const open = treeRef.current;
+      if (!open || !project || !current) return;
+      try {
+        const source = await chooseSchemaFile(kind, project);
+        if (!source) return;
+        await importSchema(project, mappingName(current), kind, source);
+        if (open.schemas[kind]) {
+          remember(open, "schemas");
+          setTree((old) => (old ? { ...old, schemas: { ...old.schemas, [kind]: null } } : old));
+        }
+        setSchemaTick((n) => n + 1);
+        setStatus("");
+      } catch (e) {
+        setStatus(String(e instanceof Error ? e.message : e));
+      }
+    },
+    [project, current, remember],
+  );
 
   // what differs from the saved file, per row path ("*" = a new rule)
   const changes = useMemo(() => {
@@ -647,7 +703,7 @@ export function App() {
         if (!now || !project || !current || python?.available !== true) {
           return { from: cursor, items: [] };
         }
-        const stem = current.replace(/^.*\//, "").replace(/\.fn\.yaml$/, "");
+        const stem = mappingName(current);
         try {
           return await completeAt(now, project, stem, { path, column, text, cursor });
         } catch {
@@ -881,7 +937,7 @@ export function App() {
                 if (f !== current && (await switchGuard())) await load(f);
               }}
             >
-              {f.replace("mappings/functional/", "")}
+              {mappingName(f)}
               {f === current && fnDirty ? "*" : ""}
             </div>
           ))}
@@ -972,6 +1028,7 @@ export function App() {
                 onChange={(e) => setFilterText(e.target.value)}
                 onKeyDown={(e) => e.key === "Escape" && setFilterText("")}
               />
+              <SchemaStatusButtons status={schemas} onPick={(kind) => void pickSchema(kind)} />
             </div>
           )}
           {tree && view === "rules" ? (

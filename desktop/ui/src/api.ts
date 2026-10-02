@@ -116,6 +116,37 @@ export async function checkTree(
   return { diagnostics: parsed.diagnostics ?? [], review: parsed.review ?? [] };
 }
 
+/** One schema of a mapping, as the toolbar shows it: found and readable, missing, or broken. */
+export interface SchemaStatus {
+  state: "ok" | "missing" | "invalid";
+  /** Where the tool looks for it, from the project root. */
+  path: string;
+  reason: string | null;
+}
+
+export interface SchemasStatus {
+  input: SchemaStatus;
+  output: SchemaStatus;
+}
+
+export type SchemaKind = "input" | "output";
+
+export const schemasStatus = (tree: FunctionalFile, project: string, stem: string) =>
+  reviewRequest<SchemasStatus>({ op: "schemas_status", tree, project, stem });
+
+export async function chooseSchemaFile(kind: SchemaKind, defaultPath?: string): Promise<string | null> {
+  const file = await open({
+    title: `Load the ${kind} JSON Schema`,
+    defaultPath,
+    filters: [{ name: "JSON Schema", extensions: ["json"] }],
+  });
+  return typeof file === "string" ? file : null;
+}
+
+/** Copies a schema file into the project as the mapping's own (named by the convention). */
+export const importSchema = (project: string, stem: string, kind: SchemaKind, source: string) =>
+  reviewRequest<SchemaStatus>({ op: "schema_import", project, stem, kind, source });
+
 /** What the split pane of a rule shows. */
 export interface Proposal {
   /** What the transpiler generates now from the Source and expression. */

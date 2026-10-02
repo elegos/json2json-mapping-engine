@@ -159,3 +159,9 @@ button.primary:hover:not(:disabled) { background: #3468b3; }
 .row-review .warn-cell::before { left: 0; background: #e0a100; }
 .row-validated .warn-cell::before { left: 0; background: #2e9e4f; }
 .row-stale .warn-cell::after { left: 4px; background: #c0392b; }
+
+.schema-status { display: flex; gap: 6px; margin-left: auto; }
+.schema-button { display: flex; align-items: center; gap: 6px; }
+.light { width: 9px; height: 9px; border-radius: 50%; background: #888; flex: none; }
+.light.ok { background: #2e9e4f; }
+.light.missing, .light.invalid { background: #c0392b; }
