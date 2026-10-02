@@ -588,7 +588,8 @@ Sliced; each slice is usable on its own:
       - Decided: a new mapping is `id`, `name`, `rules: []` (the loader accepts no rules; building
         it fails with "mapping '<id>' is empty"). Delete removes the `.fn.yaml`, its two schema
         files and what was derived (`build/transpiled`, `build/cache`, `generated/stubs`,
-        `generated/dataclasses`), and lists them in the confirmation; the golden cases stay, and the
+        `generated/dataclasses`), and lists them in the confirmation; the golden cases stay unless the confirmation's
+        checkbox *Delete also the golden records* (shown when there are any) is ticked, and the
         compiled packages go at the next build. Rename moves the files and the golden folder; the
         file's `id` (it names the PL/SQL package) follows the name when it was the old name, and the
         dialog lets the user set it by hand.
