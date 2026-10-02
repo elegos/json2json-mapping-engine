@@ -16,6 +16,15 @@ A **mapping** turns one JSON document (the *input*) into another (the *output*).
 | **Loop** | A list in the output, built from a list in the input: its rules are applied to each element. |
 | **Lookup** | A table of codes and their meaning, used by other rules. |
 
+## Getting started
+
+When the tool starts it shows a window with your recent projects. Open one, or create a new project
+and its first mappings; the wizard button (🧙‍♂️) in the toolbar brings the window back.
+
+```figure
+{"src": "wizard.png", "alt": "The start window"}
+```
+
 ## What you do here
 
 1. Open (or create) a project, and pick a mapping from the list on the left.

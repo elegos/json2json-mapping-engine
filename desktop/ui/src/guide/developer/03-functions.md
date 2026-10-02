@@ -20,6 +20,11 @@ code of a rule's override. The same functions are available in both, by the same
 only difference is how the arguments are written: anchors (`@.qty`, `$.rate`) in a cell,
 `src.qty` and `root.rate` in override code (the developer dialect).
 
+
+```figure
+{"src": "functions.png", "alt": "The function explorer"}
+```
+
 ## Writing a function
 
 A `.fn` file holds functions in the same restricted Python subset as the rest. They work on typed

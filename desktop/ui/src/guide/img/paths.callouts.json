@@ -1,0 +1,18 @@
+[
+ {
+  "n": 1,
+  "x": 15.3,
+  "y": 14.3,
+  "w": 52.8,
+  "h": 2.3,
+  "text": "What $ stands for in every rule, when the data sits under a fixed part of the document."
+ },
+ {
+  "n": 2,
+  "x": 15.3,
+  "y": 21.1,
+  "w": 52.8,
+  "h": 6,
+  "text": "The aliases: a short name, used as @name.field, for a longer path."
+ }
+]

@@ -21,5 +21,10 @@ from its defaults and asks for the required ones.
 
 ## Project properties
 
+```figure
+{"src": "project.png", "alt": "The Project properties view"}
+```
+
+
 The tab shows every setting with a short help, and checks what you type before saving it. Comments
 and the order of `mapper.toml` are kept.

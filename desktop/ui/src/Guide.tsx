@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { imageUrl, PAGES } from "./guide";
+import { foundCallouts, imageUrl, PAGES } from "./guide";
 import { BOOKS, type Book, type Page, renderPage, searchPages, snippet } from "./guideModel";
 
 interface Props {
@@ -32,7 +32,7 @@ export function Guide({ start, onClose, onTour, onExplorer }: Props) {
     setQuery("");
   };
 
-  const html = useMemo(() => (page ? renderPage(page.body, imageUrl) : ""), [page]);
+  const html = useMemo(() => (page ? renderPage(page.body, imageUrl, foundCallouts) : ""), [page]);
   const found = useMemo(() => searchPages(PAGES, query), [query]);
 
   useEffect(() => {

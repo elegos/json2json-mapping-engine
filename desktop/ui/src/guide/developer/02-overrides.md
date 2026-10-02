@@ -3,6 +3,11 @@
 **Developer mode** shows what a functional user does not need: the validation column, the rule
 ids, and the code of each rule.
 
+
+```figure
+{"src": "developer.png", "alt": "The grid in Developer mode, with the override pane"}
+```
+
 ## Auto and manual
 
 Each rule's code is in one of two states:

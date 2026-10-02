@@ -13,6 +13,11 @@ A case is made of up to three files, in `tests/golden/<mapping>/`:
 
 ## In the tool
 
+```figure
+{"src": "golden.png", "alt": "The Golden view"}
+```
+
+
 The **Golden** tab of a mapping lists its cases and which files each has. *Import a case…* takes
 the files and copies them in, proposing a name from the input file's. A case can be renamed or
 deleted.

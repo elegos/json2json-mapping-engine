@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PAGES } from "./guide";
+import { foundCallouts, imageUrl, PAGES } from "./guide";
 import { BOOKS, parseFigure } from "./guideModel";
 
 describe("the guide's pages", () => {
@@ -23,7 +23,11 @@ describe("the guide's pages", () => {
         const figure = parseFigure(m[1]);
         expect(typeof figure, `${p.id}: ${figure}`).toBe("object");
         if (typeof figure === "object") {
-          expect(figure.callouts.map((c) => c.n)).toEqual(figure.callouts.map((_, i) => i + 1));
+          // its own callouts, or the ones found when the screenshot was taken (run shots/run.mjs)
+          const callouts = figure.callouts ?? foundCallouts(figure.src);
+          expect(callouts, `${p.id}: no callouts for ${figure.src}`).toBeDefined();
+          expect(callouts?.map((c) => c.n)).toEqual(callouts?.map((_, i) => i + 1));
+          expect(imageUrl(figure.src), `${p.id}: no image ${figure.src}`).toBeDefined();
         }
       }
     }

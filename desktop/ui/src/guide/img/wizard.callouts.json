@@ -1,0 +1,42 @@
+[
+ {
+  "n": 1,
+  "x": 30.6,
+  "y": 41.6,
+  "w": 38.9,
+  "h": 10.8,
+  "text": "Recent projects: one click opens it. A greyed folder is no longer there."
+ },
+ {
+  "n": 2,
+  "x": 30.6,
+  "y": 56.7,
+  "w": 8.2,
+  "h": 3,
+  "text": "Open a project from a folder."
+ },
+ {
+  "n": 3,
+  "x": 39.4,
+  "y": 56.7,
+  "w": 7.8,
+  "h": 3,
+  "text": "Create a project, and its first mappings, step by step."
+ },
+ {
+  "n": 4,
+  "x": 47.7,
+  "y": 56.7,
+  "w": 3.6,
+  "h": 3,
+  "text": "Open this guide."
+ },
+ {
+  "n": 5,
+  "x": 30.6,
+  "y": 61.7,
+  "w": 11,
+  "h": 2.1,
+  "text": "Untick to skip this window at startup; the wizard button in the toolbar brings it back."
+ }
+]

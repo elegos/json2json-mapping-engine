@@ -1,0 +1,26 @@
+[
+ {
+  "n": 1,
+  "x": 15.3,
+  "y": 13.9,
+  "w": 52.8,
+  "h": 14.7,
+  "text": "The mode and the active backend (target). Changing the backend keeps the settings of the one you leave."
+ },
+ {
+  "n": 2,
+  "x": 15.3,
+  "y": 30.1,
+  "w": 52.8,
+  "h": 14.7,
+  "text": "The optimizer's settings."
+ },
+ {
+  "n": 3,
+  "x": 15.3,
+  "y": 62.6,
+  "w": 52.8,
+  "h": 58.3,
+  "text": "The settings of the active backend; those marked * are required."
+ }
+]

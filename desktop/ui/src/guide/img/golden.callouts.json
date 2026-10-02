@@ -1,0 +1,18 @@
+[
+ {
+  "n": 1,
+  "x": 15.1,
+  "y": 14.8,
+  "w": 8.6,
+  "h": 3,
+  "text": "Import a case: an input, the output expected for it and, optionally, the rules expected to report an error."
+ },
+ {
+  "n": 2,
+  "x": 15.1,
+  "y": 18.9,
+  "w": 37.6,
+  "h": 15.1,
+  "text": "The cases of the mapping and the files each one has; a case can be renamed (✎) or deleted (✕)."
+ }
+]

@@ -1,0 +1,70 @@
+[
+ {
+  "n": 1,
+  "x": 0,
+  "y": 4.9,
+  "w": 14,
+  "h": 90.6,
+  "text": "The mappings of the project and their buttons: project properties, new mapping; the open mapping can be renamed (✎) or deleted (✕)."
+ },
+ {
+  "n": 2,
+  "x": 14,
+  "y": 4.9,
+  "w": 86,
+  "h": 3.7,
+  "text": "The views of a mapping: rules, lookups, paths and golden cases."
+ },
+ {
+  "n": 3,
+  "x": 17.9,
+  "y": 13.3,
+  "w": 13.9,
+  "h": 66,
+  "text": "Target: the field of the output this row fills.",
+  "at": {
+   "x": 22,
+   "y": 90
+  }
+ },
+ {
+  "n": 4,
+  "x": 48.5,
+  "y": 13.3,
+  "w": 13.9,
+  "h": 66,
+  "text": "Source: where the value comes from in the input.",
+  "at": {
+   "x": 40,
+   "y": 90
+  }
+ },
+ {
+  "n": 5,
+  "x": 62.4,
+  "y": 13.3,
+  "w": 18.1,
+  "h": 66,
+  "text": "Expression: how it is computed, when it is not a plain copy.",
+  "at": {
+   "x": 58,
+   "y": 90
+  }
+ },
+ {
+  "n": 6,
+  "x": 80.6,
+  "y": 9.2,
+  "w": 18.9,
+  "h": 3.2,
+  "text": "The schemas of the mapping; green means it is found and readable."
+ },
+ {
+  "n": 7,
+  "x": 88.2,
+  "y": 0.9,
+  "w": 8.5,
+  "h": 3,
+  "text": "Save writes the file; Check reports what is missing or wrong."
+ }
+]

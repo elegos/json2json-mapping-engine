@@ -5,6 +5,11 @@ to description. Define it once and use it from any rule that needs to recode a v
 
 ## The table
 
+```figure
+{"src": "lookups.png", "alt": "The Lookups view"}
+```
+
+
 Open the **Lookups** view of a mapping. Each lookup has:
 
 | Part | Meaning |

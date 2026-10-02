@@ -53,6 +53,14 @@ describe("figures", () => {
     expect(html).toContain("callout-badge");
   });
 
+  it("takes the callouts found with the screenshot when the figure lists none", () => {
+    const found = [{ n: 1, x: 1, y: 2, w: 3, h: 4, text: "Found one" }];
+    const html = renderPage('```figure\n{"src":"a.png"}\n```', () => undefined, () => found);
+    expect(html).toContain("Found one");
+    const own = renderPage(block(), () => undefined, () => found);
+    expect(own).not.toContain("Found one");
+  });
+
   it("reports a figure it cannot read instead of dropping it", () => {
     expect(parseFigure("{")).toMatch(/^figure:/);
     expect(renderPage("```figure\n{}\n```", () => undefined)).toContain("figure-error");

@@ -33,7 +33,9 @@ export interface Callout {
 export interface Figure {
   src: string;
   alt: string;
-  callouts: Callout[];
+  /** Left out, they are the ones found when the screenshot was taken (`<name>.callouts.json`,
+   * see shots/run.mjs); given, they are the figure's own, e.g. for a screenshot taken by hand. */
+  callouts?: Callout[];
 }
 
 /** Pages from `{path: markdown}` (path like `./functional/01-welcome.md`), in book and file order. */
@@ -61,15 +63,18 @@ export function parseFigure(text: string): Figure | string {
     return `figure: ${e instanceof Error ? e.message : e}`;
   }
   const f = raw as Partial<Figure>;
-  if (typeof f.src !== "string" || !Array.isArray(f.callouts)) {
-    return "figure: needs src and callouts";
+  if (typeof f.src !== "string" || (f.callouts !== undefined && !Array.isArray(f.callouts))) {
+    return "figure: needs src, and callouts as a list when given";
   }
   return { src: f.src, alt: f.alt ?? "", callouts: f.callouts };
 }
 
 /** HTML of a figure: the image (or a placeholder when it is not there yet), the boxes, the
  * arrows and the numbers over it, and the legend under it. */
-export function figureHtml(figure: Figure, resolve: (src: string) => string | undefined): string {
+export function figureHtml(
+  figure: Figure & { callouts: Callout[] },
+  resolve: (src: string) => string | undefined,
+): string {
   const url = resolve(figure.src);
   const base = url
     ? `<img src="${escapeHtml(url)}" alt="${escapeHtml(figure.alt)}">`
@@ -110,15 +115,19 @@ export function figureHtml(figure: Figure, resolve: (src: string) => string | un
 
 /** A page's HTML. `resolve` maps an image name to its URL. Links `page:<id>` stay as they are
  * (the viewer follows them); `tour:<book>` starts a tour. */
-export function renderPage(body: string, resolve: (src: string) => string | undefined): string {
+export function renderPage(
+  body: string,
+  resolve: (src: string) => string | undefined,
+  found: (src: string) => Callout[] | undefined = () => undefined,
+): string {
   const renderer = new marked.Renderer();
   const code = renderer.code.bind(renderer);
   renderer.code = (token) => {
     if (token.lang !== "figure") return code(token);
     const figure = parseFigure(token.text);
-    return typeof figure === "string"
-      ? `<p class="figure-error">${escapeHtml(figure)}</p>`
-      : figureHtml(figure, resolve);
+    if (typeof figure === "string") return `<p class="figure-error">${escapeHtml(figure)}</p>`;
+    const callouts = figure.callouts ?? found(figure.src) ?? [];
+    return figureHtml({ ...figure, callouts }, resolve);
   };
   return marked.parse(body, { renderer, async: false });
 }

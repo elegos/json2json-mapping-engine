@@ -1,0 +1,26 @@
+[
+ {
+  "n": 1,
+  "x": 14,
+  "y": 8.6,
+  "w": 15.3,
+  "h": 86.9,
+  "text": "The mapping's lookups. The label, with an @, is the name expressions use for it."
+ },
+ {
+  "n": 2,
+  "x": 30.4,
+  "y": 9.9,
+  "w": 68.5,
+  "h": 4.6,
+  "text": "The label, the type of the values (optional, and checked when set) and a description."
+ },
+ {
+  "n": 3,
+  "x": 30.4,
+  "y": 15.6,
+  "w": 29.7,
+  "h": 9.4,
+  "text": "The entries: a key, and the value it stands for."
+ }
+]

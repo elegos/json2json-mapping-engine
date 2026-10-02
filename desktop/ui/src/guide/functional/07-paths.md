@@ -2,6 +2,11 @@
 
 The **Paths** view holds two things that save typing long paths.
 
+
+```figure
+{"src": "paths.png", "alt": "The Paths view"}
+```
+
 ## Aliases
 
 An alias is a short name for a path of the input. If `metadata` stands for `$.metadata`, a rule

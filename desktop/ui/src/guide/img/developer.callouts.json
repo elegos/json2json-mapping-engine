@@ -1,0 +1,34 @@
+[
+ {
+  "n": 1,
+  "x": 6.7,
+  "y": 96,
+  "w": 6.2,
+  "h": 2.1,
+  "text": "Developer mode: shows the validation of each rule and its code, and adds Transpile and Build."
+ },
+ {
+  "n": 2,
+  "x": 81.5,
+  "y": 13.3,
+  "w": 6.8,
+  "h": 5.3,
+  "text": "Validation: not validated, to review, or validated. The coloured edge of a row says the same."
+ },
+ {
+  "n": 3,
+  "x": 83,
+  "y": 0.9,
+  "w": 14.5,
+  "h": 3,
+  "text": "Save, Transpile, Build and Check."
+ },
+ {
+  "n": 4,
+  "x": 10.6,
+  "y": 68.7,
+  "w": 89.4,
+  "h": 26.8,
+  "text": "The code of the selected rule. Left: what the tool generates from Source and Expression. Right: the override, when the rule is manual."
+ }
+]
