@@ -1,0 +1,5 @@
+# fn/text.fn — a project function: the explorer lists it next to the built-ins.
+def first_word(s: str) -> str | None:
+    """The first word of a text, or null when it is empty."""
+    parts = s.split()
+    return parts[0] if parts else None

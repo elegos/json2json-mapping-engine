@@ -1,0 +1,120 @@
+name: Orders
+id: orders
+paths:
+  aliases:
+    metadata: $.metadata
+rules:
+- kind: field
+  id: oid
+  field: OrderId
+  type: str
+  description: The order id, unchanged.
+  source:
+    path: $.id
+  validation:
+    validated: true
+- kind: field
+  id: cur
+  field: Currency
+  type: str
+  required: false
+  description: Currency of the order's country; N/A when the country is unknown.
+  source:
+    path: $.country
+  transform:
+    expression: lookup(value, @countryCurrency, "N/A")
+  validation:
+    needs_review: true
+    notes: 'functional: confirmed with the business; the list of countries is still
+      open'
+- kind: field
+  id: wh
+  field: Warehouse
+  type: str
+  required: false
+  description: Third element of the comma separated reference.
+  source:
+    path: $.ref
+  transform:
+    expression: split_nth(value, ",", 2)
+- kind: field
+  id: ver
+  field: MapVersion
+  type: int
+  description: Version of this mapping, a constant.
+  source:
+    constant: 27
+- kind: field
+  id: chan
+  field: Channel
+  type: str
+  required: false
+  description: Where the order came from, read through the @metadata path alias.
+  source:
+    path: '@metadata.source'
+- kind: object
+  id: cust
+  output: Customer
+  source: $.parties[@.role == 'CUSTOMER']
+  description: The party with role CUSTOMER (the first one); left out when there is
+    none.
+  rules:
+  - kind: field
+    id: cust_name
+    field: Name
+    type: str
+    source:
+      path: '@.name'
+  - kind: field
+    id: cust_code
+    field: Code
+    type: str
+    description: Code before the first pipe of the remarks.
+    source:
+      path: '@.remarks'
+    transform:
+      expression: split_first(value, "|")
+- kind: loop
+  id: lines
+  label: item
+  source: $.items[*]
+  output: Lines[*]
+  rules:
+  - kind: field
+    id: sku
+    field: Sku
+    type: str
+    source:
+      path: '@.sku'
+  - kind: field
+    id: qty
+    field: Qty
+    type: int
+    source:
+      path: '@.qty'
+  - kind: field
+    id: fam
+    field: Family
+    type: str
+    description: SKU family, the part before the first dash.
+    transform:
+      expression: split_first(@.sku, "-")
+  - kind: field
+    id: unit
+    field: Unit
+    type: number
+    required: false
+    description: Unit price; left out when the quantity is zero.
+    transform:
+      expression: '@.total / @.qty'
+      status: manual
+      code_override: src.total / src.qty
+      last_auto_version: src.total / src.qty
+- kind: lookup
+  id: lut_currency
+  label: countryCurrency
+  type: str
+  entries:
+    IT: EUR
+    US: USD
+  description: Fallback currency by country code.

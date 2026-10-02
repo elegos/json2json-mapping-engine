@@ -1,0 +1,40 @@
+{
+  "title": "Orders",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string"},
+    "country": {"type": "string"},
+    "ref": {"type": "string"},
+    "metadata": {
+      "type": "object",
+      "properties": {"source": {"type": "string"}},
+      "required": ["source"]
+    },
+    "parties": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "role": {"type": "string"},
+          "name": {"type": "string"},
+          "remarks": {"type": "string"}
+        },
+        "required": ["role", "name", "remarks"]
+      }
+    },
+    "currencies": {"type": "object", "additionalProperties": {"type": "string"}},
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "sku": {"type": "string"},
+          "qty": {"type": "integer"},
+          "total": {"type": "number"}
+        },
+        "required": ["sku", "qty", "total"]
+      }
+    }
+  },
+  "required": ["id", "items", "country", "currencies", "ref", "metadata", "parties"]
+}

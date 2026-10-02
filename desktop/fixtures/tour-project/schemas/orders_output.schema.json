@@ -1,0 +1,33 @@
+{
+  "title": "OrdersOut",
+  "type": "object",
+  "properties": {
+    "OrderId": {"type": "string"},
+    "Currency": {"type": ["string", "null"]},
+    "Warehouse": {"type": ["string", "null"]},
+    "MapVersion": {"type": "integer"},
+    "Channel": {"type": ["string", "null"]},
+    "Customer": {
+      "type": ["object", "null"],
+      "properties": {
+        "Name": {"type": "string"},
+        "Code": {"type": "string"}
+      },
+      "required": ["Name", "Code"]
+    },
+    "Lines": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "Sku": {"type": "string"},
+          "Qty": {"type": "integer"},
+          "Family": {"type": "string"},
+          "Unit": {"type": ["number", "null"]}
+        },
+        "required": ["Sku", "Qty", "Family"]
+      }
+    }
+  },
+  "required": ["OrderId", "MapVersion", "Lines"]
+}
