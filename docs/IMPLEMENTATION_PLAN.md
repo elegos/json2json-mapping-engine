@@ -412,7 +412,7 @@ Sliced; each slice is usable on its own:
       - [x] Run it by hand (`cargo tauri dev`) and fix what the GUI shows: done in several
             rounds with screencasts and screenshots (editor closing on click, editor contrast,
             no sorting and the filter field, dual fuzzy search, icons, window title, the
-            Project properties tab). Last change (`1e511ef`, tab named and closed with the
+            Project properties tab, the schemas and golden tabs). Each later slice was
             checked in the window by the user.
 - [x] **Target / Source editing** (`transpiler/edit.py`, served by `mapper serve` to the
       grid so edits are instant): `OrderId` → `$.OrderId`; `A.B` creates the object `A` and
