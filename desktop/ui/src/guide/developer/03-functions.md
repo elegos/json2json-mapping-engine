@@ -15,7 +15,10 @@ Some examples: `coalesce` (first value that is not null), `round`, `concat`, `if
 `max`, `min`, `sum`, `avg`, `count`.
 
 In the explorer, search by name or by what a function does, read its signature and description,
-and press **Insert** to put a call in the Source or Expression cell you are editing.
+and press **Insert** to put a call in the Source or Expression cell you are editing, or in the
+code of a rule's override. The same functions are available in both, by the same names; the
+only difference is how the arguments are written: anchors (`@.qty`, `$.rate`) in a cell,
+`src.qty` and `root.rate` in override code (the developer dialect).
 
 ## Writing a function
 

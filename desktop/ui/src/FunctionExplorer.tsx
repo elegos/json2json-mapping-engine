@@ -38,6 +38,9 @@ export function FunctionExplorer({ project, onClose }: Props) {
           ✕
         </button>
       </div>
+      <p className="explorer-about">
+        What Source and Expression cells can call, and override code too, by the same names.
+      </p>
       <input
         className="explorer-search"
         placeholder="Search functions"
@@ -81,14 +84,15 @@ export function FunctionExplorer({ project, onClose }: Props) {
           <p className="explorer-origin">
             {current.builtin ? "Built-in." : `Project function, in ${current.origin}.`}
             {current.replaces_builtin && " It replaces the built-in of the same name."}
+            {current.targets.length > 0 && ` Written out for: ${current.targets.join(", ")}.`}
           </p>
           <button
             className="primary"
             disabled={!canInsert}
             title={
               canInsert
-                ? "Put the call in the cell being edited"
-                : "Edit a Source or Expression cell first"
+                ? "Put the call in the cell or the override being edited"
+                : "Edit a Source or Expression cell, or a rule's override, first"
             }
             // keep the focus in the cell, or the edit ends before the call is inserted
             onMouseDown={(e) => e.preventDefault()}

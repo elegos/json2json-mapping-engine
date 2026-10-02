@@ -1,4 +1,6 @@
+import type { EditorView } from "@codemirror/view";
 import { useEffect, useRef, useState } from "react";
+import { setActiveCellEditor } from "./cellEditor";
 import { type Proposal, proposalOf } from "./api";
 import { CodeEditor, type Completer } from "./CodeEditor";
 import type { FieldRule, FunctionalFile, ReviewFlag } from "./model";
@@ -30,6 +32,12 @@ export function OverridePane({ tree, path, rule, target, flag, onResolve, comple
   const manual = rule.transform.status === "manual";
   // right after "Edit as code" the cursor goes into the editor; selecting another rule leaves it be
   const focusNext = useRef(false);
+  const codeView = useRef<EditorView | null>(null);
+  // the function explorer can put a call into the override while it is shown
+  useEffect(
+    () => (manual && codeView.current ? setActiveCellEditor(codeView.current, "code") : undefined),
+    [manual, path, rule.transform.last_auto_version],
+  );
   useEffect(() => {
     focusNext.current = false;
   }, [path]);
@@ -97,6 +105,7 @@ export function OverridePane({ tree, path, rule, target, flag, onResolve, comple
           {manual ? (
             <CodeEditor
               key={`${path}|${rule.transform.last_auto_version}`}
+              viewRef={codeView}
               className="code-editor multi"
               singleLine={false}
               highlightPython

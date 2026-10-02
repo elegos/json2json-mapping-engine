@@ -29,9 +29,10 @@ export function subscribeCellEditor(fn: () => void): () => void {
   return () => void listeners.delete(fn);
 }
 
-/** The column of the cell being edited, when a call can go into it (Source or Expression). */
+/** The column being edited, when a call can go into it: Source or Expression, or `code`, the
+ * override of a rule (the same functions, by the same names, in the developer dialect). */
 export function insertableColumn(): string | null {
-  return active && (active.column === "source" || active.column === "expression")
+  return active && (["source", "expression", "code"].includes(active.column))
     ? active.column
     : null;
 }

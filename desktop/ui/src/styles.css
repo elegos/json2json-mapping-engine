@@ -278,3 +278,4 @@ button.primary:hover:not(:disabled) { background: #3468b3; }
 .explorer-detail dt { font-family: monospace; min-width: 70px; }
 .explorer-detail dd { margin: 0; opacity: 0.75; }
 .explorer-origin { opacity: 0.7; font-size: 12px; }
+.explorer-about { margin: 0; opacity: 0.7; font-size: 12px; line-height: 1.4; }
