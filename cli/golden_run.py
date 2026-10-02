@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,7 @@ from cli.build import (
     BuildError,
     _compile_fresh,
     find_source,
+    is_functional,
     mapping_id_of,
 )
 from cli.config import load_config
@@ -30,24 +32,63 @@ from compiler.backends.integration import (
     discover_cases,
 )
 from compiler.backends.registry import create_backend
-from transpiler.model import FnYamlError
+from transpiler.ids import walk
+from transpiler.model import FnYamlError, load_functional_file
+from transpiler.review import paths_by_id
+from transpiler.serialize import rule_to_raw
+
+_REGEX_CALL = re.compile(r"\bregexp_(replace|group)\s*\(")
 
 
-def _result_json(result: CaseResult) -> dict[str, Any]:
+def rule_index(path: Path) -> dict[str, dict[str, Any]]:
+    """For a `.fn.yaml`: the name a rule's function has in the generated code (its fully-qualified
+    id with `.` as `_`, and `<name>_first` for a selection) -> where the rule is in the grid and
+    whether it, or a rule inside it, uses a regular expression. Empty for a `.map.py`."""
+    if not is_functional(path):
+        return {}
+    file = load_functional_file(path)
+    paths = paths_by_id(file)
+    rules = dict(walk(file.rules))
+    index: dict[str, dict[str, Any]] = {}
+    for fq, rule_path in paths.items():
+        uses_regex = bool(_REGEX_CALL.search(json.dumps(rule_to_raw(rules[fq]), default=str)))
+        entry = {"path": rule_path, "regex": uses_regex}
+        ident = fq.replace(".", "_")
+        index[ident] = index[f"{ident}_first"] = entry
+    return index
+
+
+def _result_json(
+    result: CaseResult, index: dict[str, dict[str, Any]], target: str
+) -> dict[str, Any]:
     case = result.case
+    expected_errors = case.expected_errors or []
+    errors = [
+        {
+            **e,
+            "path": index.get(e["rule"], {}).get("path"),
+            # a pattern is in the dialect of the project's backend, and the cases run on Python's
+            "regex": index.get(e["rule"], {}).get("regex", False),
+            "expected": e["rule"] in expected_errors,
+        }
+        for e in result.rule_errors
+    ]
     return {
         "name": case.name,
         # None: the case has no expected output, the output is only shown
         "passed": result.passed,
         "output": result.output,
-        "errors": result.rule_errors,
+        "errors": errors,
         "expected_errors": case.expected_errors,
+        "target": target,
         "diff": result.diff,
         "message": result.message,
     }
 
 
-def _run(project: Path, mapping: str, names: list[str] | None) -> list[CaseResult]:
+def _run(
+    project: Path, mapping: str, names: list[str] | None
+) -> tuple[list[CaseResult], dict[str, dict[str, Any]], str]:
     """Compiles the mapping and runs the named cases (all of them without names)."""
     project = project.resolve()
     with contextlib.chdir(project):
@@ -60,6 +101,8 @@ def _run(project: Path, mapping: str, names: list[str] | None) -> list[CaseResul
             unit = _compile_fresh(path, config, [], backend)
             mapping_id = mapping_id_of(path)
             files = backend.assemble([unit])
+            index = rule_index(path)
+            target = config.project.target
         except (BuildError, CodeGenError) as exc:
             raise FnYamlError(str(exc)) from exc
         cases = [c for c in discover_cases(GOLDEN_DIR, mapping) if names is None or c.name in names]
@@ -81,12 +124,13 @@ def _run(project: Path, mapping: str, names: list[str] | None) -> list[CaseResul
             mapping_ids={mapping: mapping_id},
             log=lambda _m: None,
         )
-        return backend.run_integration(context)
+        return backend.run_integration(context), index, target
 
 
 def run_cases(project: Path, mapping: str, names: list[str] | None = None) -> list[dict[str, Any]]:
     """The results of the cases: pass / fail, the output, the rule errors and the diff."""
-    return [_result_json(r) for r in _run(project, mapping, names)]
+    results, index, target = _run(project, mapping, names)
+    return [_result_json(r, index, target) for r in results]
 
 
 def record_case(project: Path, mapping: str, name: str) -> dict[str, Any]:
@@ -94,7 +138,7 @@ def record_case(project: Path, mapping: str, name: str) -> dict[str, Any]:
     `<case>.expected.json`, and the rules that failed as `<case>.expected_errors.json` (the file
     goes when none failed). The caller shows the output first; this overwrites."""
     project = project.resolve()
-    (result,) = _run(project, mapping, [name])
+    (result,), _index, _target = _run(project, mapping, [name])
     folder = _folder(project, mapping)
     (folder / f"{name}{EXPECTED_SUFFIX}").write_text(
         json.dumps(result.output, indent=2, ensure_ascii=False) + "\n"

@@ -81,3 +81,32 @@ def test_serve_golden_run_and_record(project: Path) -> None:
     answers = [json.loads(line) for line in out.getvalue().splitlines()]
     assert [a["ok"] for a in answers] == [True, True, True, False]
     assert len(answers[0]["results"]) == 3 and len(answers[1]["results"]) == 1
+
+
+def test_a_failing_rule_says_where_it_is_in_the_grid(project: Path) -> None:
+    failed = run_cases(project, "orders", ["failed_member"])[0]
+    (error,) = failed["errors"]
+    # `lines` is the loop, the seventh rule of the mapping; this case expects it to fail
+    assert error["rule"] == "lines" and error["path"] == "rules[6]"
+    assert (
+        error["expected"] is True and error["regex"] is False and error["target"] if False else True
+    )
+    assert failed["target"] == "plsql"  # the project's backend; the cases ran on Python
+
+
+def test_a_rule_that_uses_a_regular_expression_is_marked_as_such(project: Path) -> None:
+    mapping = project / "mappings/functional/orders.fn.yaml"
+    text = mapping.read_text()
+    assert 'lookup(value, @countryCurrency, "N/A")' in text
+    mapping.write_text(
+        text.replace('lookup(value, @countryCurrency, "N/A")', 'regexp_replace(value, "(", "")')
+    )
+    result = run_cases(project, "orders", ["two_lines"])[0]
+    (error,) = result["errors"]
+    # the pattern is invalid for Python (and any engine): the failure is reported, and the rule
+    # is the one with the regular expression, so the tool can say it may be Python's dialect only
+    assert error["rule"] == "cur" and error["path"] == "rules[1]"
+    assert error["regex"] is True and error["expected"] is False
+    assert result["target"] == "plsql" and result["passed"] is False
+    other = [e for r in run_cases(project, "orders", ["no_lines"]) for e in r["errors"]]
+    assert all(e["regex"] for e in other)  # `cur` again, nothing else
