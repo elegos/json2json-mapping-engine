@@ -577,6 +577,9 @@ Sliced; each slice is usable on its own:
       - Still open: what "rule validated" becomes for rules the new schema invalidates; a picker
         among the project's own schemas (only a file from outside can be loaded so far); a
         command to lay out the rules again from the schema, outside the load.
+      - Still open: loading a schema over an existing one has no confirmation (offered, not
+        decided); a change to the schema files made outside the tool while the mapping is open
+        is not noticed (the status and the check are read at load).
 - [x] **M6.6 — Create, rename and delete mappings.** Every session so far has used the `orders` fixture:
       the tool cannot make a new `.fn.yaml` (name, id, and the schemas of M6.5; an empty file
       that loads) nor delete one (with a confirmation; what depends on it: `build/`, `generated/`,
