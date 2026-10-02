@@ -4,6 +4,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod python;
+mod window_size;
 
 use serde_json::Value;
 use std::fs;
@@ -119,6 +120,11 @@ fn main() {
                 let state = handle.state::<EditWorker>();
                 let _ = ask_worker(&state, r#"{"id":0,"op":"ping"}"#);
             });
+            // the window starts hidden: it is sized, then shown
+            use tauri::Manager;
+            if let Some(window) = app.get_webview_window("main") {
+                window_size::setup(&window);
+            }
             Ok(())
         })
         .plugin(tauri_plugin_dialog::init())

@@ -10,7 +10,7 @@
     "frontendDist": "../ui/dist"
   },
   "app": {
-    "windows": [{ "title": "J2JME", "width": 1280, "height": 800 }],
+    "windows": [{ "label": "main", "title": "J2JME", "width": 1440, "height": 900, "visible": false }],
     "security": { "csp": null }
   },
   "bundle": {

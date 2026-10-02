@@ -132,7 +132,7 @@ button.primary:hover:not(:disabled) { background: #3468b3; }
   .ag-cell.ag-cell-inline-editing { background: Canvas !important; }
 }
 
-.rule-filter { margin-left: 8px; min-width: 300px; padding: 3px 8px; font: inherit; color: inherit; background: color-mix(in srgb, CanvasText 6%, Canvas); border: 1px solid color-mix(in srgb, CanvasText 22%, transparent); border-radius: 4px; }
+.rule-filter { margin-left: 8px; flex: 1 1 220px; min-width: 140px; padding: 3px 8px; font: inherit; color: inherit; background: color-mix(in srgb, CanvasText 6%, Canvas); border: 1px solid color-mix(in srgb, CanvasText 22%, transparent); border-radius: 4px; }
 .state-filter { margin-left: 8px; padding: 3px 6px; font: inherit; color: inherit; background: color-mix(in srgb, CanvasText 6%, Canvas); border: 1px solid color-mix(in srgb, CanvasText 22%, transparent); border-radius: 4px; }
 .override-pane { border-top: 1px solid #8886; height: 240px; display: flex; flex-direction: column; }
 .override-pane header { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-bottom: 1px solid #8884; }
@@ -165,3 +165,7 @@ button.primary:hover:not(:disabled) { background: #3468b3; }
 .light { width: 9px; height: 9px; border-radius: 50%; background: #888; flex: none; }
 .light.ok { background: #2e9e4f; }
 .light.missing, .light.invalid { background: #c0392b; }
+
+/* the toolbar's buttons keep their labels on one line; the filter field is what gives way */
+.toolbar button { white-space: nowrap; flex: none; }
+.toolbar .state-filter, .toolbar .schema-status { flex: none; }
