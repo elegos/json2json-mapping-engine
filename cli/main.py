@@ -17,6 +17,7 @@ from cli.build import (
     BUILD_COMPILED_DIR,
     BuildError,
     assemble,
+    backend_for,
     compile_fresh,
     compile_mapping,
     discover_mappings,
@@ -381,7 +382,8 @@ def check(json_output: bool = JSON_OPTION) -> None:
     except Exception as exc:
         typer.echo(f"error compiling: {exc}", err=True)
         raise typer.Exit(code=1) from exc
-    on_disk = {p.name: p for p in BUILD_COMPILED_DIR.glob("*.sql")}
+    suffix = backend_for(config).artifact_suffix
+    on_disk = {p.name: p for p in BUILD_COMPILED_DIR.glob(f"*{suffix}")}
     problems = [f"missing: {BUILD_COMPILED_DIR / n}" for n in fresh if n not in on_disk]
     problems += [f"stale: {p} (no longer produced)" for n, p in on_disk.items() if n not in fresh]
     problems += [

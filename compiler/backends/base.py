@@ -169,6 +169,8 @@ class Backend(ABC):
     # Every key of `[target.<name>.test]`, what this backend's integration tests need (an image
     # for a database that runs in a container, say). Empty when it needs nothing.
     test_options: ClassVar[tuple[Option, ...]] = ()
+    # The extension of the artifact files `assemble` gives (`build/compiled/<name><suffix>`).
+    artifact_suffix: ClassVar[str] = ".sql"
     # Whether the backend can run the golden cases (track 2) at all.
     has_integration: ClassVar[bool] = False
 

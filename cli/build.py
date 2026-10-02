@@ -295,11 +295,11 @@ def compile_mapping(path: Path, config: MapperConfig, force: bool = False) -> Co
 
 
 def write_package(units: list[CompiledUnit], config: MapperConfig) -> list[Path]:
-    """Write the artifact files under `build/compiled/`, removing `.sql` files that
+    """Write the artifact files under `build/compiled/`, removing the files of the target that
     are no longer produced (a renamed or deleted mapping)."""
     files = assemble(units, config)
     BUILD_COMPILED_DIR.mkdir(parents=True, exist_ok=True)
-    for stale in BUILD_COMPILED_DIR.glob("*.sql"):
+    for stale in BUILD_COMPILED_DIR.glob(f"*{backend_for(config).artifact_suffix}"):
         if stale.name not in files:
             stale.unlink()
     for name, text in files.items():
@@ -310,10 +310,12 @@ def write_package(units: list[CompiledUnit], config: MapperConfig) -> list[Path]
 def compiled_files(config: MapperConfig) -> dict[str, str]:
     """The artifact files on disk, in the order the target environment needs them (what the
     integration tests deploy). Raises `BuildError` when there are none."""
-    on_disk = {p.name: p for p in BUILD_COMPILED_DIR.glob("*.sql")}
+    backend = backend_for(config)
+    suffix = backend.artifact_suffix
+    on_disk = {p.name: p for p in BUILD_COMPILED_DIR.glob(f"*{suffix}")}
     if not on_disk:
-        raise BuildError(f"no .sql files in {BUILD_COMPILED_DIR} (run `mapper build`)")
-    order = backend_for(config).deploy_order(list(on_disk))
+        raise BuildError(f"no {suffix} files in {BUILD_COMPILED_DIR} (run `mapper build`)")
+    order = backend.deploy_order(list(on_disk))
     return {name: on_disk[name].read_text() for name in order}
 
 

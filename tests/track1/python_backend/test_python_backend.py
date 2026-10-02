@@ -1,0 +1,155 @@
+"""The Python backend: the golden cases run on it, and the run-time rules one by one."""
+
+from __future__ import annotations
+
+import importlib.util
+import json
+import sys
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from compiler.backends.integration import IntegrationContext, discover_cases
+from compiler.backends.python.backend import PythonBackend
+from compiler.pipeline import compile_unit
+
+ROOT = Path(__file__).resolve().parents[3]
+GOLDEN_MAPPINGS = ["orders", "positions", "selection", "truthiness"]
+
+
+def _compile(source: str, mapping_id: str = "m") -> tuple[PythonBackend, Any]:
+    backend = PythonBackend({})
+    return backend, compile_unit(source, mapping_id, backend)
+
+
+def _load(tmp_path: Path, source: str, mapping_id: str = "m") -> Any:
+    """The compiled mapping as an imported module."""
+    backend, unit = _compile(source, mapping_id)
+    for name, text in backend.assemble([unit]).items():
+        (tmp_path / name).write_text(text)
+    for stale in [m for m in sys.modules if m == "j2jme_runtime" or m.startswith("map_")]:
+        del sys.modules[stale]
+    sys.path.insert(0, str(tmp_path))
+    try:
+        spec = importlib.util.spec_from_file_location(
+            f"map_{mapping_id}", tmp_path / f"map_{mapping_id}.py"
+        )
+        assert spec and spec.loader
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        return module
+    finally:
+        sys.path.remove(str(tmp_path))
+
+
+def test_every_golden_case_passes_on_the_python_backend() -> None:
+    backend = PythonBackend({})
+    units = [
+        compile_unit((ROOT / "mappings" / f"{name}.map.py").read_text(), name, backend)
+        for name in GOLDEN_MAPPINGS
+    ]
+    context = IntegrationContext(
+        cases=discover_cases(ROOT / "tests/golden"),
+        files=backend.assemble(units),
+        mapping_ids={name: name for name in GOLDEN_MAPPINGS},
+        log=lambda _m: None,
+    )
+    results = backend.run_integration(context)
+    assert len(results) == len(discover_cases(ROOT / "tests/golden")) >= 8
+    failed = [
+        f"{r.case.mapping}/{r.case.name}: {r.message}\n{r.diff}"
+        for r in results
+        if r.passed is not True
+    ]
+    assert not failed, "\n".join(failed)
+
+
+def test_a_failing_rule_is_reported_once_and_the_rest_goes_on(tmp_path: Path) -> None:
+    module = _load(
+        tmp_path,
+        "from __mapping__ import *\n"
+        "def a(root: Any) -> int:\n    return root.x / root.y\n"
+        "def b(root: Any) -> str:\n    return root.name\n"
+        "out.A = a(root)\nout.B = b(root)\n"
+        "for item in root.items:\n    out.C = a(item)\n",
+    )
+    out, errors = module.map_m_safe(
+        {"x": 1, "y": 0, "name": "n", "items": [{"x": 1, "y": 0}, {"x": 2, "y": 0}]}
+    )
+    assert out == {"B": "n"}
+    assert [e["rule"] for e in errors] == ["a"] and "ZeroDivisionError" in errors[0]["cause"]
+    with pytest.raises(module.MappingError) as raised:
+        module.map_m({"x": 1, "y": 0, "name": "n", "items": []})
+    assert json.loads(str(raised.value))["total_errors"] == 1
+
+
+def test_missing_values_are_null_and_arithmetic_and_ordering_propagate_it(tmp_path: Path) -> None:
+    module = _load(
+        tmp_path,
+        "from __mapping__ import *\n"
+        "def a(root: Any) -> int | None:\n    return root.a.b.c\n"
+        "def b(root: Any) -> int | None:\n    return root.n + 1\n"
+        "def c(root: Any) -> str:\n    return if_else(root.n > 3, 'big', 'small')\n"
+        "out.A = a(root)\nout.B = b(root)\nout.C = c(root)\n",
+    )
+    out, errors = module.map_m_safe({})
+    assert out == {"A": None, "B": None, "C": "small"} and errors == []
+
+
+def test_bare_return_omits_and_return_null_puts_a_null(tmp_path: Path) -> None:
+    module = _load(
+        tmp_path,
+        "from __mapping__ import *\n"
+        "def omitted(root: Any) -> str | None:\n    return\n"
+        "def nulled(root: Any) -> str | Null:\n    return Null\n"
+        "out.Omitted = omitted(root)\nout.Nulled = nulled(root)\n",
+    )
+    assert module.map_m_safe({})[0] == {"Nulled": None}
+
+
+def test_whole_numbers_are_written_as_integers(tmp_path: Path) -> None:
+    module = _load(
+        tmp_path,
+        "from __mapping__ import *\n"
+        "def half(root: Any) -> number:\n    return root.n / 2\n"
+        "out.Half = half(root)\n",
+    )
+    out = module.map_m_safe({"n": 10})[0]
+    assert json.dumps(out) == '{"Half": 5}'
+    assert module.map_m_safe({"n": 5})[0] == {"Half": 2.5}
+
+
+def test_the_artifacts_are_the_runtime_and_a_module_per_mapping() -> None:
+    backend = PythonBackend({})
+    _, unit = _compile("from __mapping__ import *\nout.A = 1\n", "x")
+    files = backend.assemble([unit])
+    assert list(files) == ["j2jme_runtime.py", "map_x.py"]
+    assert backend.deploy_order(["map_x.py", "j2jme_runtime.py"])[0] == "j2jme_runtime.py"
+    assert "import" not in files["map_x.py"].replace(
+        "from j2jme_runtime import *", ""
+    )  # nothing of the engine
+    runtime = files["j2jme_runtime.py"]
+    assert "import compiler" not in runtime and "from compiler" not in runtime
+
+
+def test_the_builtins_run_with_their_reference_semantics(tmp_path: Path) -> None:
+    module = _load(
+        tmp_path,
+        "from __mapping__ import *\n"
+        "def d(root: Any) -> str:\n    return parse_date(root.d, 'DD/MM/YYYY')\n"
+        "def total(root: Any) -> number:\n    return sum(root.rows, 'v')\n"
+        "def top(root: Any) -> number:\n    return max(root.rows, 'v')\n"
+        "def n(root: Any) -> int:\n    return count(root.rows)\n"
+        "def r(root: Any) -> number:\n    return round(root.x, 1)\n"
+        "def c(root: Any) -> str:\n    return concat(root.a, '-', root.missing)\n"
+        "def k(root: Any) -> str:\n    return coalesce(root.missing, root.a)\n"
+        "out.D = d(root)\nout.Total = total(root)\nout.Top = top(root)\nout.N = n(root)\n"
+        "out.R = r(root)\nout.C = c(root)\nout.K = k(root)\n",
+    )
+    out, errors = module.map_m_safe(
+        {"d": "03/10/2026", "rows": [{"v": 2}, {"v": 5}], "x": 2.25, "a": "A"}
+    )
+    assert errors == []
+    assert out == {"D": "2026-10-03", "Total": 7, "Top": 5, "N": 2, "R": 2.3, "C": "A-", "K": "A"}
