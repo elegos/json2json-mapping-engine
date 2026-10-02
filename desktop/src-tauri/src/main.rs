@@ -4,6 +4,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod python;
+mod tour;
 mod window_size;
 
 use serde_json::Value;
@@ -103,6 +104,18 @@ fn ask_worker(state: &EditWorker, request: &str) -> Result<String, String> {
     Err("the edit worker does not answer".into())
 }
 
+/// A fresh copy of the tutorial project in a temporary folder; its path.
+#[tauri::command]
+fn tour_project_prepare() -> Result<String, String> {
+    tour::prepare().map(|p| p.display().to_string())
+}
+
+/// Deletes a copy made by `tour_project_prepare` (anything else is refused).
+#[tauri::command]
+fn tour_project_cleanup(path: String) -> Result<(), String> {
+    tour::cleanup(Path::new(&path))
+}
+
 /// One JSON request to `mapper serve`; returns the JSON answer line.
 #[tauri::command]
 fn edit_request(state: tauri::State<EditWorker>, request: String) -> Result<String, String> {
@@ -110,6 +123,7 @@ fn edit_request(state: tauri::State<EditWorker>, request: String) -> Result<Stri
 }
 
 fn main() {
+    tour::sweep();
     tauri::Builder::default()
         .manage(EditWorker(Mutex::new(None)))
         .setup(|app| {
@@ -135,7 +149,9 @@ fn main() {
             mapper_command,
             read_fn,
             write_fn,
-            edit_request
+            edit_request,
+            tour_project_prepare,
+            tour_project_cleanup
         ])
         .run(tauri::generate_context!())
         .expect("error while running the desktop tool");
