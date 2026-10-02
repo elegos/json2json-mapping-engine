@@ -278,3 +278,46 @@ def test_a_loader_spells_out_short_paths_and_accepts_the_long_ones() -> None:
     sku, cur = loop.rules
     assert isinstance(sku, FieldRule) and sku.source_path == "@.sku"
     assert isinstance(cur, FieldRule) and cur.source_path == "$.currency"
+
+
+def _ask(*requests: dict) -> list[dict]:
+    out = io.StringIO()
+    serve(io.StringIO("".join(json.dumps(r) + "\n" for r in requests)), out)
+    return [json.loads(line) for line in out.getvalue().splitlines()]
+
+
+def test_serve_schema_status_and_import(tmp_path: Path) -> None:
+    fixture = Path(__file__).parents[3] / "desktop" / "fixtures" / "orders-project"
+    tree = functional_to_dict(load_functional_file(fixture / "mappings/functional/orders.fn.yaml"))
+    project = tmp_path / "p"
+    project.mkdir()
+    base = {"project": str(project), "stem": "orders"}
+    [status] = _ask({"id": 1, "op": "schemas_status", "tree": tree, **base})
+    assert status["input"]["state"] == "missing"
+    assert status["input"]["path"] == "schemas/orders_input.schema.json"
+
+    good = tmp_path / "anywhere.json"
+    good.write_text('{"type": "object"}')
+    bad = tmp_path / "bad.json"
+    bad.write_text("{nope")
+    answers = _ask(
+        {"id": 1, "op": "schema_import", "kind": "input", "source": str(good), **base},
+        {"id": 2, "op": "schema_import", "kind": "output", "source": str(bad), **base},
+        {"id": 3, "op": "schema_import", "kind": "output", "source": str(tmp_path / "x"), **base},
+        {"id": 4, "op": "schemas_status", "tree": tree, **base},
+    )
+    assert answers[0]["ok"] and answers[0]["state"] == "ok"
+    assert (project / "schemas/orders_input.schema.json").read_text() == '{"type": "object"}'
+    assert not answers[1]["ok"] and "not valid JSON" in answers[1]["error"]
+    assert not answers[2]["ok"]  # a file that is not there
+    assert not (project / "schemas/orders_output.schema.json").exists()  # nothing was written
+    assert [answers[3]["input"]["state"], answers[3]["output"]["state"]] == ["ok", "missing"]
+
+
+def test_schema_status_follows_the_override_and_sees_a_broken_file(tmp_path: Path) -> None:
+    from compiler.schema_files import schema_status
+
+    (tmp_path / "elsewhere.json").write_text("[]")
+    status = schema_status(tmp_path, "m", "input", "elsewhere.json")
+    assert (status["state"], status["path"]) == ("invalid", "elsewhere.json")
+    assert "not an object" in status["reason"]

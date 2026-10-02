@@ -5,7 +5,7 @@ so that per-edit operations (Target / Source normalisation) cost a message, not 
 Python start-up. Requests: `{"id", "op", ...}`; answers `{"id", "ok", ...}`.
 
 Ops: `ping`; `complete` (`tree`, `project`, `stem`, `path`, `column`, `text`, `cursor`: what can be typed there, see `transpiler/complete.py`); `check` (`tree`, `project`, `stem`); `retarget` (`tree`, `path`, `value`); `set_source` (`tree`, `path`,
-`value`); `add_rule` (`tree`, `parent`, `index`, `kind`); `delete_rule` (`tree`, `path`); `proposal` (`tree`, `path`: the auto code, the override), `take_over` / `accept_proposal` / `keep_override` (`tree`, `path`), `set_override` (`tree`, `path`, `code`), see `transpiler/review.py`; `check` also answers `review` (overrides whose auto code moved); `config_read` (`project`), `config_check` (`values`), `config_write` (`project`, `values`): `mapper.toml`, see `cli/project_config.py`. `tree` is the file as `mapper fn read` prints it; the answer carries the new
+`value`); `add_rule` (`tree`, `parent`, `index`, `kind`); `delete_rule` (`tree`, `path`); `proposal` (`tree`, `path`: the auto code, the override), `take_over` / `accept_proposal` / `keep_override` (`tree`, `path`), `set_override` (`tree`, `path`, `code`), see `transpiler/review.py`; `check` also answers `review` (overrides whose auto code moved); `schemas_status` (`tree`, `project`, `stem`: the input and output schema of a mapping, `ok` / `missing` / `invalid`), `schema_import` (`project`, `stem`, `kind`, `source`: copy a schema into the project as the mapping's own); `config_read` (`project`), `config_check` (`values`), `config_write` (`project`, `values`): `mapper.toml`, see `cli/project_config.py`. `tree` is the file as `mapper fn read` prints it; the answer carries the new
 `tree`, or `error`.
 """
 
@@ -19,6 +19,7 @@ from typing import Any, TextIO
 from cli import project_config
 from cli.config import MapperConfigError
 from compiler.function_registry import all_functions
+from compiler.schema_files import import_schema, schema_status
 from transpiler import review as rv
 from transpiler.check import check_functional, schemas_for
 from transpiler.complete import complete
@@ -77,6 +78,18 @@ def handle(request: dict[str, Any]) -> dict[str, Any]:
         else:
             file = _REVIEW_OPS[op](file, request["path"])
         return {"ok": True, "tree": functional_to_dict(file)}
+    if op == "schemas_status":
+        refs = functional_from_dict(request["tree"]).schemas
+        project = Path(request["project"])
+        return {
+            "ok": True,
+            "input": schema_status(project, request["stem"], "input", refs.input),
+            "output": schema_status(project, request["stem"], "output", refs.output),
+        }
+    if op == "schema_import":
+        project = Path(request["project"])
+        import_schema(project, request["stem"], request["kind"], Path(request["source"]))
+        return {"ok": True, **schema_status(project, request["stem"], request["kind"])}
     if op == "config_read":
         return {"ok": True, **project_config.read(Path(request["project"]))}
     if op == "config_check":
@@ -103,7 +116,7 @@ def serve(stdin: TextIO = sys.stdin, stdout: TextIO = sys.stdout) -> None:
             request = json.loads(line)
             request_id = request.get("id")
             answer = handle(request)
-        except (FnYamlError, MapperConfigError, ValueError, KeyError, TypeError) as exc:
+        except (FnYamlError, MapperConfigError, OSError, ValueError, KeyError, TypeError) as exc:
             answer = {"ok": False, "error": f"{exc}"}
         answer["id"] = request_id
         stdout.write(json.dumps(answer, ensure_ascii=False) + "\n")
