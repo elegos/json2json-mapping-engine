@@ -188,3 +188,15 @@ def test_creating_over_leftover_golden_cases_needs_a_decision(project: Path) -> 
     create_mapping(project, "orders", golden="delete")
     assert not (project / "tests/golden/orders").exists()
     assert (project / "tests/golden/orders_old/a.input.json").exists()  # the other folder is safe
+
+
+def test_delete_can_take_the_golden_cases_too(project: Path) -> None:
+    create_mapping(project, "orders")
+    _touch(project, "tests/golden/orders/a.input.json", "tests/golden/other/b.input.json")
+    plan = delete_mapping(project, "orders", golden=True)
+    assert plan[-1] == "tests/golden/orders"
+    assert not (project / "tests/golden/orders").exists()
+    assert (project / "tests/golden/other/b.input.json").exists()
+    # nothing to take: asking for it is not an error
+    create_mapping(project, "orders")
+    assert delete_mapping(project, "orders", golden=True) == ["mappings/functional/orders.fn.yaml"]

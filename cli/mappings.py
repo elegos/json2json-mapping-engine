@@ -116,8 +116,12 @@ def removal_plan(project: Path, name: str) -> list[str]:
     return _shown(project, files)
 
 
-def delete_mapping(project: Path, name: str) -> list[str]:
+def delete_mapping(project: Path, name: str, golden: bool = False) -> list[str]:
+    """Removes what `removal_plan` lists, and with `golden` also the golden cases."""
     plan = removal_plan(project, name)
+    folder = project / GOLDEN / name
+    if golden and folder.is_dir():
+        plan.append(str(folder.relative_to(project)))
     for relative in plan:
         target = project / relative
         shutil.rmtree(target) if target.is_dir() else target.unlink()
