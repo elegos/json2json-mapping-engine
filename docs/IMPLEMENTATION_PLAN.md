@@ -573,8 +573,10 @@ Sliced; each slice is usable on its own:
         missing or does not parse (the tooltip gives the path, or the reason). Clicking one opens
         the picker to load it, or to load another in its place.
       - Done: the status buttons in the rules toolbar (`SchemaStatus.tsx`; `schemas_status` / `schema_import` ops of `mapper serve`, `compiler/schema_files.py`): green when the schema is found and readable, red when missing or not valid JSON; a click picks a file, which is copied into `schemas/` under the mapping's name (a `schemas:` override of that kind is dropped, as it would hide the copy). The list on the left shows the mapping's name (`orders`), not the file's.
-      - Still open: what "rule validated" becomes for rules the new schema invalidates; the
-        picker (the project's schemas, or a file from outside).
+      - Done: scaffolding (`transpiler/scaffold.py`, op `scaffold` of `mapper serve`). After a new output schema is loaded the tool asks whether to create the rules it describes: a field per scalar property (type from `type` / `format`, `required` from the schema), an object per object, a loop per array of objects, nested; an existing mapping keeps its rules and gets only the missing ones, at the end of their container. Not laid out (and reported): arrays of non-objects, objects with no properties listed, names that are not valid field names. Loading a schema also checks it is one (valid, with schema keywords), not any JSON.
+      - Still open: what "rule validated" becomes for rules the new schema invalidates; a picker
+        among the project's own schemas (only a file from outside can be loaded so far); a
+        command to lay out the rules again from the schema, outside the load.
 - [ ] **M6.6 — Create and delete mappings.** Every session so far has used the `orders` fixture:
       the tool cannot make a new `.fn.yaml` (name, id, and the schemas of M6.5; an empty file
       that loads) nor delete one (with a confirmation; what depends on it: `build/`, `generated/`,
