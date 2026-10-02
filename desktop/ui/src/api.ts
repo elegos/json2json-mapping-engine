@@ -28,8 +28,11 @@ export const pythonStatus = () => invoke<PythonStatus>("python_status");
 
 export const initialProject = () => invoke<string | null>("initial_project");
 
-export async function chooseProject(defaultPath?: string): Promise<string | null> {
-  const dir = await open({ directory: true, title: "Open a mapper project", defaultPath });
+export async function chooseProject(
+  defaultPath?: string,
+  title = "Open a mapper project",
+): Promise<string | null> {
+  const dir = await open({ directory: true, title, defaultPath });
   return typeof dir === "string" ? dir : null;
 }
 
@@ -291,6 +294,19 @@ export async function configCheck(values: ConfigValues): Promise<ConfigIssue[]> 
 
 export async function configWrite(project: string, values: ConfigValues): Promise<void> {
   await configRequest({ op: "config_write", project, values });
+}
+
+/** The backends and their options (what the start wizard draws its project form from). */
+export const projectBackends = () => configRequest<ConfigSchema>({ op: "project_backends" });
+
+/** Makes `project` a project for `target`: `mapper.toml` and the folders. `options` are the
+ * values of the backend's section that have no default. */
+export async function projectCreate(
+  project: string,
+  target: string,
+  options: Record<string, unknown>,
+): Promise<void> {
+  await configRequest({ op: "project_create", project, target, options });
 }
 
 export interface CompletionItem {

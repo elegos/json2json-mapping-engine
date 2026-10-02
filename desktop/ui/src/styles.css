@@ -195,3 +195,25 @@ button.primary:hover:not(:disabled) { background: #3468b3; }
 .golden-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .golden-role { width: 120px; flex: none; }
 .golden-file { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, monospace; font-size: 12.5px; }
+
+/* start wizard */
+.modal.wizard { width: 560px; max-width: 92vw; max-height: 88vh; overflow-y: auto; }
+.wizard .row { display: flex; gap: 6px; }
+.wizard .row input { flex: 1; min-width: 0; }
+.wizard select { font: inherit; padding: 4px 6px; }
+.wizard-recent-title { font-size: 12px; opacity: 0.7; margin-bottom: 4px; }
+.wizard-recent { list-style: none; margin: 0 0 6px; padding: 4px; max-height: 190px; overflow-y: auto; border: 1px solid color-mix(in srgb, CanvasText 28%, transparent); border-radius: 6px; background: color-mix(in srgb, CanvasText 4%, Canvas); }
+.wizard-recent li { display: flex; align-items: center; border-radius: 4px; }
+.wizard-recent li:hover { background: #2a5a9f33; }
+.wizard-recent li.empty { padding: 6px 8px; opacity: 0.6; }
+.wizard-recent li.gone { opacity: 0.5; }
+.wizard-recent button.link { flex: 1; min-width: 0; text-align: left; background: none; border: none; color: inherit; padding: 5px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.wizard-recent button.forget { background: none; border: none; color: inherit; cursor: pointer; padding: 2px 8px; }
+.wizard-actions { display: flex; gap: 8px; margin: 14px 0; }
+.wizard-foot { align-items: center; justify-content: space-between; }
+.wizard-foot .modal-option { margin: 0; }
+.wizard-error { color: #d9534f; margin: 0 0 12px; }
+.wizard-added { opacity: 0.8; margin: 0 0 12px; }
+.wizard-more { margin: 0 0 12px; }
+.wizard-more summary { cursor: pointer; margin-bottom: 8px; }
+.wizard-inline { display: block; opacity: 0.6; }

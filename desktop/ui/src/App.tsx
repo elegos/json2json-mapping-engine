@@ -17,6 +17,7 @@ import {
   type ConfigValues,
 } from "./projectConfig";
 import { ProjectButton } from "./ProjectButton";
+import { Wizard } from "./Wizard";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   changeStructure,
@@ -115,6 +116,16 @@ function usePersisted(key: string): [boolean, (value: boolean) => void] {
   return [value, set];
 }
 
+const WIZARD_KEY = "wizardAtStartup";
+
+function wizardAtStartup(): boolean {
+  try {
+    return localStorage.getItem(WIZARD_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+
 function loadRecent(): string[] {
   try {
     const parsed: unknown = JSON.parse(localStorage.getItem("recentProjects") ?? "[]");
@@ -149,6 +160,8 @@ export function App() {
   const [cases, setCases] = useState<GoldenCase[]>([]);
   const [importingGolden, setImportingGolden] = useState(false);
   const [recent, setRecent] = useState<string[]>(loadRecent);
+  const [wizard, setWizard] = useState(false);
+  const [wizardStartup, setWizardStartup] = useState(wizardAtStartup);
   const grid = useRef<AgGridReact<Row>>(null);
   const [question, setQuestion] = useState<{
     message: string;
@@ -494,10 +507,23 @@ export function App() {
     initialProject().then(
       (dir) => {
         if (dir) void openDir(dir);
+        else if (wizardAtStartup()) setWizard(true);
       },
       () => {},
     );
   }, [openDir]);
+
+  const forgetRecent = useCallback((dir: string) => {
+    setRecent((old) => {
+      const next = old.filter((d) => d !== dir);
+      try {
+        localStorage.setItem("recentProjects", JSON.stringify(next));
+      } catch {
+        /* not persisted */
+      }
+      return next;
+    });
+  }, []);
 
   const save = useCallback(async (): Promise<boolean> => {
     if (!project) return true;
@@ -1187,6 +1213,9 @@ export function App() {
         <ProjectButton recent={recent} onOpen={openProject} onPick={async (d) => {
             if (await switchGuard()) await openDir(d);
           }} />
+        <button title="Start: recent projects, new project" onClick={() => setWizard(true)}>
+          ?
+        </button>
         <MiddleEllipsis className="project" text={project ?? "no project"} />
         <button className="history" title="Undo (Ctrl + Z)" disabled={!canUndo || busy} onClick={undo}>
           ↶
@@ -1428,6 +1457,38 @@ export function App() {
           Developer mode
         </label>
       </div>
+      {wizard && (
+        <Wizard
+          recent={recent}
+          showAtStartup={wizardStartup}
+          onShowAtStartup={(value) => {
+            setWizardStartup(value);
+            try {
+              localStorage.setItem(WIZARD_KEY, value ? "1" : "0");
+            } catch {
+              /* not persisted */
+            }
+          }}
+          onOpenDialog={async () => {
+            if (!(await switchGuard())) return;
+            const dir = await chooseProject(recent[0]);
+            if (!dir) return;
+            setWizard(false);
+            await openDir(dir);
+          }}
+          onOpenRecent={async (dir) => {
+            if (!(await switchGuard())) return;
+            setWizard(false);
+            await openDir(dir);
+          }}
+          onForget={forgetRecent}
+          onCreated={async (dir) => {
+            setWizard(false);
+            await openDir(dir);
+          }}
+          onClose={() => setWizard(false)}
+        />
+      )}
       {question && (
         <Confirm
           message={question.message}
