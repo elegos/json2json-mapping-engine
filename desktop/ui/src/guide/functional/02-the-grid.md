@@ -3,13 +3,80 @@
 Each row is a rule. Rows inside an object or a loop are indented under it, and can be folded.
 
 ```figure
-{"src": "grid.png", "alt": "The rule grid of a mapping",
+{
+ "src": "grid.png",
+ "alt": "The rule grid of a mapping",
  "callouts": [
-   {"n": 1, "x": 0, "y": 8, "w": 18, "h": 80, "text": "The mappings of the project; the open one is highlighted."},
-   {"n": 2, "x": 20, "y": 8, "w": 20, "h": 8, "text": "Target: the field of the output this row fills.", "at": {"x": 30, "y": 30}},
-   {"n": 3, "x": 42, "y": 8, "w": 20, "h": 8, "text": "Source: where the value comes from in the input.", "at": {"x": 52, "y": 30}},
-   {"n": 4, "x": 64, "y": 8, "w": 30, "h": 8, "text": "Expression: how it is computed, when it is not a plain copy.", "at": {"x": 80, "y": 30}}
- ]}
+  {
+   "n": 1,
+   "x": 0.6,
+   "y": 9.7,
+   "w": 11.5,
+   "h": 11.0,
+   "text": "The mapping list and its buttons: project properties, new mapping; the open mapping can be renamed (\u270e) or deleted (\u2715)."
+  },
+  {
+   "n": 2,
+   "x": 12.8,
+   "y": 9.7,
+   "w": 16.7,
+   "h": 2.7,
+   "text": "The views of a mapping: rules, lookups, paths and golden cases."
+  },
+  {
+   "n": 3,
+   "x": 15.8,
+   "y": 18.5,
+   "w": 11.7,
+   "h": 61.8,
+   "text": "Target: the field of the output this row fills.",
+   "at": {
+    "x": 21.5,
+    "y": 87.4
+   }
+  },
+  {
+   "n": 4,
+   "x": 42.2,
+   "y": 18.5,
+   "w": 11.7,
+   "h": 61.8,
+   "text": "Source: where the value comes from in the input.",
+   "at": {
+    "x": 47.8,
+    "y": 87.4
+   }
+  },
+  {
+   "n": 5,
+   "x": 54.4,
+   "y": 18.5,
+   "w": 16.4,
+   "h": 61.8,
+   "text": "Expression: how it is computed, when it is not a plain copy.",
+   "at": {
+    "x": 62.5,
+    "y": 87.4
+   }
+  },
+  {
+   "n": 6,
+   "x": 83.0,
+   "y": 13.0,
+   "w": 16.2,
+   "h": 3.8,
+   "text": "The schemas of the mapping; green means it is found and readable."
+  },
+  {
+   "n": 7,
+   "x": 83.9,
+   "y": 5.1,
+   "w": 12.5,
+   "h": 2.9,
+   "text": "Transpile, Build and Check run the project's mapper command."
+  }
+ ]
+}
 ```
 
 ## Working in the grid

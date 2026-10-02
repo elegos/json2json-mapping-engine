@@ -84,7 +84,11 @@ export function figureHtml(figure: Figure, resolve: (src: string) => string | un
     .filter((c) => c.at)
     .map((c) => {
       const from = c.at!;
-      const to = { x: c.x + c.w / 2, y: c.y + c.h / 2 };
+      // to the nearest point of the box's edge, so the arrow does not cross what it points at
+      const to = {
+        x: Math.min(Math.max(from.x, c.x), c.x + c.w),
+        y: Math.min(Math.max(from.y, c.y), c.y + c.h),
+      };
       return `<line x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}" marker-end="url(#arrowhead)"/>`;
     })
     .join("");
