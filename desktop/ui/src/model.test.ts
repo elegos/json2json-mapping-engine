@@ -28,6 +28,8 @@ import {
   setExpression,
   filterByState,
   type FieldRule,
+  type LoopRule,
+  isUnfinished,
   targetPath,
   reviewState,
   setReviewState,
@@ -434,5 +436,22 @@ describe("fitMiddle", () => {
   });
   it("shows only the ellipsis when nothing fits", () => {
     expect(fitMiddle("abcdef", width(0))).toBe("…");
+  });
+});
+
+describe("isUnfinished", () => {
+  const empty = field("e", "E", "");
+  it("is a field with no Source and no Expression", () => {
+    expect(isUnfinished(empty)).toBe(true);
+    expect(isUnfinished({ ...empty, source_path: "$.x" })).toBe(false);
+    expect(isUnfinished({ ...empty, has_constant: true })).toBe(false);
+    expect(isUnfinished({ ...empty, transform: { ...empty.transform, expression: "1" } })).toBe(false);
+    expect(isUnfinished({ ...empty, transform: { ...empty.transform, status: "manual" } })).toBe(false);
+  });
+  it("is a container whose rules are all unfinished, and a loop with no Source", () => {
+    const loop = { ...(file.rules[1] as LoopRule), source: "", rules: [empty] };
+    expect(isUnfinished(loop)).toBe(true);
+    expect(isUnfinished({ ...loop, rules: [field("b", "B", "@.b")] })).toBe(false);
+    expect(isUnfinished({ ...loop, source: "$.items[*]" })).toBe(false);
   });
 });

@@ -47,6 +47,7 @@ import {
   type FieldRule,
   type FunctionalFile,
   type LookupRule,
+  isUnfinished,
   nameOf,
   pushRecent,
   rowIssues,
@@ -1004,7 +1005,10 @@ export function App() {
               rowClassRules={{
                 "row-error": (p) =>
                   (diagnostics.get(p.data?.path ?? "") ?? []).some((d: { severity: string }) => d.severity === "error"),
+                // a rule with nothing defined is drawn apart (its "ignored" warning is not a problem)
+                "row-unfinished": (p) => (p.data ? isUnfinished(p.data.rule) : false),
                 "row-warning": (p) =>
+                  !(p.data && isUnfinished(p.data.rule)) &&
                   (diagnostics.get(p.data?.path ?? "") ?? []).some((d: { severity: string }) => d.severity === "warning"),
                 "row-stale": (p) => developerMode && flags.get(p.data?.path ?? "")?.stale_override === true,
                 "row-review": (p) => developerMode && (p.data ? reviewState(p.data.rule) === "review" : false),

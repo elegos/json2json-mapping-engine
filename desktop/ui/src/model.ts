@@ -90,6 +90,25 @@ export function addAlias(aliases: Record<string, string>): Record<string, string
   return { ...aliases, [name]: "$." };
 }
 
+/** A rule that does nothing yet (same definition as `is_unfinished` in `transpiler/model.py`): a
+ * field with no Source and no Expression, a loop with no Source, or a container whose rules are
+ * all of that kind. The grid draws it apart; the build leaves it out. */
+export function isUnfinished(rule: Rule): boolean {
+  switch (rule.kind) {
+    case "field": {
+      const t = rule.transform;
+      const hasSource = rule.has_constant || !!rule.source_path?.trim();
+      return t.status === "auto" && !t.expression?.trim() && !hasSource;
+    }
+    case "loop":
+      return !rule.source.trim() && rule.rules.every(isUnfinished);
+    case "object":
+      return rule.rules.every(isUnfinished);
+    default:
+      return false;
+  }
+}
+
 /** One grid row: a rule plus where it sits in the tree. */
 export interface Row {
   /** `rules[0].rules[1]` — the path the loader reports in its errors. */
