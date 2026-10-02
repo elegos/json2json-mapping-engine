@@ -139,12 +139,23 @@ class PathsSection:
 
 
 @dataclass
+class SchemasSection:
+    """The file's `schemas:` section: a schema elsewhere than the convention
+    (`schemas/<id>_input.schema.json`), as a path from the project root. The tool never runs
+    anything from it; it lets a larger project keep its schemas where it wants."""
+
+    input: str | None = None
+    output: str | None = None
+
+
+@dataclass
 class FunctionalFile:
     name: str
     id: str
     rules: list[Rule]
     path: Path | None = None
     paths: PathsSection = dc_field(default_factory=PathsSection)
+    schemas: SchemasSection = dc_field(default_factory=SchemasSection)
 
 
 # `@root` always reaches the real document root; `@index` is the loop position
@@ -450,7 +461,7 @@ def parse_functional(raw: Any, default_id: str, path: Path | None = None) -> Fun
     where = str(path) if path else "<fn.yaml>"
     if not isinstance(raw, dict):
         raise _err(where, "top level must be a mapping")
-    _check_keys(where, raw, {"name", "id", "rules", "paths"})
+    _check_keys(where, raw, {"name", "id", "rules", "paths", "schemas"})
     file_id = raw.get("id", default_id)
     if not isinstance(file_id, str) or not _IDENT.match(file_id):
         raise _err(where, f"invalid file id {file_id!r}")
@@ -460,8 +471,14 @@ def parse_functional(raw: Any, default_id: str, path: Path | None = None) -> Fun
     rules = [_load_rule(f"rules[{i}]", r) for i, r in enumerate(rules_raw)]
     qualify_paths(rules)
     paths = _load_paths(where, raw.get("paths"), rules)
+    schemas = _load_schemas(where, raw.get("schemas"))
     return FunctionalFile(
-        name=str(raw.get("name", file_id)), id=file_id, rules=rules, path=path, paths=paths
+        name=str(raw.get("name", file_id)),
+        id=file_id,
+        rules=rules,
+        path=path,
+        paths=paths,
+        schemas=schemas,
     )
 
 
@@ -479,6 +496,19 @@ def _names_of(rules: list[Rule]) -> tuple[set[str], set[str]]:
             lookups |= inner[0]
             loops |= inner[1]
     return lookups, loops
+
+
+def _load_schemas(where: str, raw: Any) -> SchemasSection:
+    if raw is None:
+        return SchemasSection()
+    if not isinstance(raw, dict):
+        raise _err(where, "'schemas' must be a mapping")
+    _check_keys(f"{where}.schemas", raw, {"input", "output"})
+    for key in ("input", "output"):
+        value = raw.get(key)
+        if value is not None and (not isinstance(value, str) or not value.strip()):
+            raise _err(where, f"schemas.{key} must be a file path, got {value!r}")
+    return SchemasSection(input=raw.get("input"), output=raw.get("output"))
 
 
 def _load_paths(where: str, raw: Any, rules: list[Rule]) -> PathsSection:
@@ -603,6 +633,7 @@ def functional_from_dict(data: dict[str, Any]) -> FunctionalFile:
         rules=[_rule_from_dict(r) for r in data["rules"]],
         path=Path(data["path"]) if data.get("path") else None,
         paths=PathsSection(**data.get("paths", {})),
+        schemas=SchemasSection(**data.get("schemas", {})),
     )
 
 

@@ -19,6 +19,14 @@ def schema_path(schemas_dir: Path, stem: str, kind: Kind) -> Path:
     return schemas_dir / f"{stem}{suffix(kind)}"
 
 
+def resolve_schema_path(project: Path, stem: str, kind: Kind, override: str | None = None) -> Path:
+    """The schema file of a mapping: its `schemas:` override (from the project root) when it
+    has one, else the convention."""
+    if override:
+        return project / override
+    return schema_path(project / SCHEMAS_DIR, stem, kind)
+
+
 def schema_stems(schemas_dir: Path, kind: Kind) -> list[str]:
     """The mapping names that have a schema of `kind` in `schemas_dir`, sorted."""
     ending = suffix(kind)

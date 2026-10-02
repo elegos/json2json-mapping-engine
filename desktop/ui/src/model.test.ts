@@ -54,6 +54,7 @@ const file: FunctionalFile = {
   id: "t",
   path: null,
   paths: { root: null, aliases: {} },
+  schemas: { input: null, output: null },
   rules: [
     field("a", "A", "$.a"),
     {

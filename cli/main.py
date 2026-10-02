@@ -424,7 +424,7 @@ def fn_check(file: str = typer.Argument(..., help=".fn.yaml file")) -> None:
         typer.echo(json.dumps({"ok": False, "error": str(exc)}))
         raise typer.Exit(code=1) from exc
     stem = path.name.removesuffix(".fn.yaml")
-    inp, out = schemas_for(Path.cwd(), stem)
+    inp, out = schemas_for(Path.cwd(), stem, tree.schemas)
     issues = check_functional(tree, inp, out, all_functions(Path.cwd()))
     failed = any(i.severity == "error" for i in issues)
     typer.echo(
@@ -454,7 +454,7 @@ def fn_write(file: str = typer.Argument(..., help=".fn.yaml file to write")) -> 
             new, decayed = apply_decay_tree(old, new)
         # a validated rule that no longer checks goes back to review (while editing it only
         # shows: the developer may fix it before saving)
-        inp, out = schemas_for(Path.cwd(), path.name.removesuffix(".fn.yaml"))
+        inp, out = schemas_for(Path.cwd(), path.name.removesuffix(".fn.yaml"), new.schemas)
         issues = check_functional(new, inp, out, all_functions(Path.cwd()))
         new, demoted = demote_invalid(
             new, {i.rule for i in issues if i.severity == "error"}, touched

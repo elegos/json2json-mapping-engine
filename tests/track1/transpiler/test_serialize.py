@@ -12,8 +12,10 @@ from typer.testing import CliRunner
 from cli.main import app
 from transpiler.model import (
     FieldRule,
+    FnYamlError,
     FunctionalFile,
     ObjectRule,
+    functional_from_dict,
     functional_to_dict,
     load_functional_file,
     parse_functional,
@@ -142,3 +144,27 @@ def test_targets_are_written_without_prefix_and_sources_in_full() -> None:
     again = parse_functional(out, default_id="t")  # and it reads back as the same tree
     assert again == file
     assert isinstance(again.rules[1], LoopRule) and isinstance(again.rules[0], FieldRule)
+
+
+def test_the_schemas_section_round_trips_and_is_checked() -> None:
+    raw = {
+        "id": "t",
+        "schemas": {"input": "contracts/in.json"},
+        "rules": [
+            {
+                "kind": "field",
+                "id": "a",
+                "field": "A",
+                "type": "str",
+                "transform": {"expression": "'x'"},
+            }
+        ],
+    }
+    file = parse_functional(raw, "t")
+    assert (file.schemas.input, file.schemas.output) == ("contracts/in.json", None)
+    assert functional_to_raw(file)["schemas"] == {"input": "contracts/in.json"}
+    assert "schemas" not in functional_to_raw(parse_functional({**raw, "schemas": None}, "t"))
+    assert functional_from_dict(functional_to_dict(file)).schemas == file.schemas
+    for bad in ({"input": 3}, {"other": "x"}, ["x"]):
+        with pytest.raises(FnYamlError):
+            parse_functional({**raw, "schemas": bad}, "t")

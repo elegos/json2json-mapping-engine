@@ -122,6 +122,11 @@ def rule_to_raw(rule: Rule) -> dict[str, Any]:
 
 def functional_to_raw(file: FunctionalFile) -> dict[str, Any]:
     raw: dict[str, Any] = {"name": file.name, "id": file.id}
+    schemas: dict[str, Any] = {}
+    _put(schemas, "input", file.schemas.input)
+    _put(schemas, "output", file.schemas.output)
+    if schemas:
+        raw["schemas"] = schemas
     paths: dict[str, Any] = {}
     _put(paths, "root", file.paths.root)
     if file.paths.aliases:

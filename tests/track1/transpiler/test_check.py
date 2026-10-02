@@ -10,7 +10,13 @@ from typer.testing import CliRunner
 
 from cli.main import app
 from transpiler.check import check_functional, schemas_for
-from transpiler.model import FieldRule, LoopRule, load_functional_file, parse_functional
+from transpiler.model import (
+    FieldRule,
+    LoopRule,
+    SchemasSection,
+    load_functional_file,
+    parse_functional,
+)
 
 PROJECT = Path(__file__).parents[3] / "desktop" / "fixtures" / "orders-project"
 FN = PROJECT / "mappings" / "functional" / "orders.fn.yaml"
@@ -455,3 +461,12 @@ def test_a_code_override_name_that_nothing_defines_is_an_error() -> None:
     ok = "parts = [p.strip() for p in str(root.name).split(',')]\nlen(parts)"
     assert _call_issues(ok, "manual") == []
     assert _call_issues("coalesce(root.name, Null)", "manual") == []
+
+
+def test_schemas_for_follows_the_schemas_section(tmp_path: Path) -> None:
+    (tmp_path / "schemas").mkdir()
+    (tmp_path / "schemas" / "m_input.schema.json").write_text('{"title": "convention"}')
+    (tmp_path / "elsewhere.json").write_text('{"title": "override"}')
+    assert schemas_for(tmp_path, "m") == ({"title": "convention"}, None)
+    refs = SchemasSection(input="elsewhere.json", output="missing.json")
+    assert schemas_for(tmp_path, "m", refs) == ({"title": "override"}, None)

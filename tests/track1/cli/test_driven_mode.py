@@ -127,3 +127,22 @@ def test_cached_without_previous_artifact_runs_from_the_start(project: Path):
 def test_stage_option_errors(project: Path):
     assert runner.invoke(app, ["transpile", "--cached"]).exit_code == 2
     assert runner.invoke(app, ["transpile", "--stage", "9"]).exit_code == 2
+
+
+def test_a_schemas_section_points_the_mapping_at_a_schema_elsewhere(project: Path):
+    fn = project / "mappings/functional/order_summary.fn.yaml"
+    fn.write_text(
+        fn.read_text().replace("rules:", "schemas:\n  input: contracts/in.json\nrules:", 1)
+    )
+    (project / "contracts").mkdir()
+    schema = project / "contracts/in.json"
+    schema.write_text(
+        json.dumps({"title": "O", "type": "object", "properties": {"id": {"type": "string"}}})
+    )
+    # the convention's file is not there: only the override can make this one compile
+    assert "compiled: " in runner.invoke(app, ["build"]).output
+    assert "up-to-date: " in runner.invoke(app, ["build"]).output
+    schema.write_text(
+        json.dumps({"title": "O", "type": "object", "properties": {"id": {"type": "integer"}}})
+    )
+    assert "compiled: " in runner.invoke(app, ["build"]).output

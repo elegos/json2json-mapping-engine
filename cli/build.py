@@ -31,9 +31,9 @@ from cli.config import MapperConfig
 from compiler.backends.base import Backend, CodeGenError, CompiledUnit
 from compiler.backends.registry import create_backend
 from compiler.pipeline import compile_unit, extract_mapping_id
-from compiler.schema_files import SCHEMAS_DIR, Kind, schema_path
+from compiler.schema_files import Kind, resolve_schema_path
 from compiler.schema_generator import SchemaTypes, resolve_schema_types
-from transpiler.model import FnYamlError, load_functional_file
+from transpiler.model import FnYamlError, SchemasSection, load_functional_file
 from transpiler.stages import STAGES, run_stages
 from transpiler.transpile import TranspileOptions, transpile_file
 
@@ -72,8 +72,24 @@ def discover_mappings(config: MapperConfig | None = None) -> list[Path]:
     return sorted(MAPPINGS_DIR.glob("*.map.py"))
 
 
-def resolve_schema_for(mapping_stem: str, kind: Kind) -> SchemaTypes | None:
-    path = schema_path(SCHEMAS_DIR, mapping_stem, kind)
+def schema_refs(path: Path) -> SchemasSection:
+    """The `schemas:` section of a `.fn.yaml` (empty for a `.map.py`, or a file that does not
+    load: the build reports that itself)."""
+    if not is_functional(path):
+        return SchemasSection()
+    try:
+        return load_functional_file(path).schemas
+    except (FnYamlError, OSError):
+        return SchemasSection()
+
+
+def schema_file(stem: str, kind: Kind, refs: SchemasSection) -> Path:
+    override = refs.input if kind == "input" else refs.output
+    return resolve_schema_path(Path("."), stem, kind, override)
+
+
+def resolve_schema_for(mapping_stem: str, kind: Kind, refs: SchemasSection) -> SchemaTypes | None:
+    path = schema_file(mapping_stem, kind, refs)
     if not path.is_file():
         return None
     schema = json.loads(path.read_text())
@@ -89,11 +105,11 @@ def compute_hash(source: bytes, config_raw: dict, extra: list[bytes] | None = No
     return h.hexdigest()
 
 
-def _schema_bytes(stem: str) -> list[bytes]:
+def _schema_bytes(stem: str, refs: SchemasSection) -> list[bytes]:
     """Schemas a mapping is checked/typed against — part of its cache key."""
     return [
         p.read_bytes()
-        for p in (schema_path(SCHEMAS_DIR, stem, "input"), schema_path(SCHEMAS_DIR, stem, "output"))
+        for p in (schema_file(stem, "input", refs), schema_file(stem, "output", refs))
         if p.is_file()
     ]
 
@@ -131,7 +147,7 @@ def transpile_functional(
     reaches the last stage."""
     stem = source_stem(path)
     options = transpile_options(config)
-    schema = resolve_schema_for(stem, "input")
+    schema = resolve_schema_for(stem, "input", schema_refs(path))
     try:
         if stage is None and not dump_stages:
             text = transpile_file(path, options, input_schema=schema, warnings=warnings)
@@ -173,8 +189,9 @@ def _compile_fresh(path: Path, config: MapperConfig, warnings: list[str]) -> Com
     else:
         source = path.read_text()
     backend = backend_for(config)
-    input_schema = resolve_schema_for(stem, "input")
-    output_schema = resolve_schema_for(stem, "output")
+    refs = schema_refs(path)
+    input_schema = resolve_schema_for(stem, "input", refs)
+    output_schema = resolve_schema_for(stem, "output", refs)
     return compile_unit(
         source,
         default_mapping_id=stem,
@@ -230,7 +247,7 @@ def compile_mapping(path: Path, config: MapperConfig, force: bool = False) -> Co
     source hash + full `mapper.toml`. Units are assembled into the project's
     artifact by `write_package`."""
     source = path.read_bytes()
-    digest = compute_hash(source, config.raw, _schema_bytes(source_stem(path)))
+    digest = compute_hash(source, config.raw, _schema_bytes(source_stem(path), schema_refs(path)))
     cache_file = BUILD_CACHE_DIR / f"{path.name}.unit.json"
 
     if not force and cache_file.is_file():

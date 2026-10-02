@@ -391,6 +391,22 @@ schemas/order_line_output.schema.json   →   generated/dataclasses/order_line.p
 Generated files are checked into the repository and must not be edited manually.
 `mapper check` regenerates them from schemas and fails if the checked-in files are out of sync.
 
+### Which schema a mapping uses
+
+By convention `mappings/functional/<name>.fn.yaml` is checked and typed against
+`schemas/<name>_input.schema.json` and `schemas/<name>_output.schema.json`; each is optional.
+A project that keeps its schemas elsewhere says so in the file's header, with paths from the
+project root; the override wins over the convention, per schema:
+
+```yaml
+schemas:
+  input: contracts/order-v2.json
+  output: contracts/summary.json
+```
+
+The schemas in the header are read for the check, the types and the build cache key (a change
+to the file rebuilds the mapping). The tool never executes anything from them.
+
 ### Schema change management
 
 When an input JSON Schema changes, the compiler regenerates the affected `.pyi` stubs

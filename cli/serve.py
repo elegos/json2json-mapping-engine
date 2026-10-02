@@ -40,7 +40,7 @@ def handle(request: dict[str, Any]) -> dict[str, Any]:
         return {"ok": True}
     if op == "check":
         file = functional_from_dict(request["tree"])
-        inp, out = schemas_for(Path(request["project"]), request["stem"])
+        inp, out = schemas_for(Path(request["project"]), request["stem"], file.schemas)
         issues = check_functional(file, inp, out, all_functions(Path(request["project"])))
         try:
             flags = [r.to_json() for r in rv.review(file)]
@@ -49,7 +49,7 @@ def handle(request: dict[str, Any]) -> dict[str, Any]:
         return {"ok": True, "diagnostics": [i.to_json() for i in issues], "review": flags}
     if op == "complete":
         file = functional_from_dict(request["tree"])
-        inp, out = schemas_for(Path(request["project"]), request["stem"])
+        inp, out = schemas_for(Path(request["project"]), request["stem"], file.schemas)
         found = complete(
             file,
             request["path"],

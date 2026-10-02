@@ -68,12 +68,19 @@ export interface PathsSection {
   aliases: Record<string, string>;
 }
 
+/** The `schemas:` section: a schema elsewhere than the convention, as a path from the project root. */
+export interface SchemasSection {
+  input: string | null;
+  output: string | null;
+}
+
 export interface FunctionalFile {
   name: string;
   id: string;
   rules: Rule[];
   path: string | null;
   paths: PathsSection;
+  schemas: SchemasSection;
 }
 
 /** `aliases` plus a new one with a free name (`alias`, `alias2`, …). */
