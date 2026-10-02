@@ -321,3 +321,23 @@ def test_schema_status_follows_the_override_and_sees_a_broken_file(tmp_path: Pat
     status = schema_status(tmp_path, "m", "input", "elsewhere.json")
     assert (status["state"], status["path"]) == ("invalid", "elsewhere.json")
     assert "not an object" in status["reason"]
+
+
+def test_a_json_document_that_is_not_a_schema_is_refused(tmp_path: Path) -> None:
+    from compiler.schema_files import import_schema
+
+    for text, why in [
+        ('{"orderId": "A1", "lines": [{"sku": "x"}]}', "data document"),
+        ('{"type": "nonsense"}', "not a valid JSON Schema"),
+        ('{"properties": 3}', "not a valid JSON Schema"),
+        ("[1, 2]", "not an object"),
+    ]:
+        source = tmp_path / "s.json"
+        source.write_text(text)
+        with pytest.raises(ValueError, match=why):
+            import_schema(tmp_path, "m", "input", source)
+    assert not (tmp_path / "schemas").exists()
+    source.write_text(
+        '{"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object"}'
+    )
+    assert import_schema(tmp_path, "m", "input", source).is_file()

@@ -8,6 +8,9 @@ import shutil
 from pathlib import Path
 from typing import Any, Literal
 
+from jsonschema.exceptions import SchemaError
+from jsonschema.validators import validator_for
+
 SCHEMAS_DIR = Path("schemas")
 
 Kind = Literal["input", "output"]
@@ -35,6 +38,34 @@ def schema_stems(schemas_dir: Path, kind: Kind) -> list[str]:
     return sorted(p.name.removesuffix(ending) for p in schemas_dir.glob(f"*{ending}"))
 
 
+# Any JSON object is a valid schema to the meta-schema (unknown keywords are ignored), so a
+# document that is data and not a schema would pass: it must also say something a schema says.
+_SCHEMA_KEYWORDS = frozenset(
+    [
+        "$schema",
+        "$ref",
+        "$defs",
+        "definitions",
+        "type",
+        "properties",
+        "patternProperties",
+        "additionalProperties",
+        "required",
+        "items",
+        "prefixItems",
+        "enum",
+        "const",
+        "oneOf",
+        "anyOf",
+        "allOf",
+        "not",
+        "if",
+        "format",
+        "pattern",
+    ]
+)
+
+
 def _read_schema(path: Path) -> dict[str, Any]:
     """The JSON object in `path`; raises ValueError with the reason when it is not one."""
     try:
@@ -45,6 +76,15 @@ def _read_schema(path: Path) -> dict[str, Any]:
         raise ValueError(f"{path.name} is not valid JSON ({exc})") from exc
     if not isinstance(data, dict):
         raise ValueError(f"{path.name} is not a JSON Schema: the top level is not an object")
+    if not data.keys() & _SCHEMA_KEYWORDS:
+        raise ValueError(
+            f"{path.name} is not a JSON Schema: none of its keys is a schema keyword "
+            "(type, properties, $ref, ...); it looks like a data document"
+        )
+    try:
+        validator_for(data).check_schema(data)
+    except SchemaError as exc:
+        raise ValueError(f"{path.name} is not a valid JSON Schema: {exc.message}") from exc
     return data
 
 
