@@ -14,6 +14,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+# the files of a case, by name: `<case>.input.json` (the case exists when it is there),
+# `<case>.expected.json`, `<case>.expected_errors.json`
+INPUT_SUFFIX = ".input.json"
+EXPECTED_SUFFIX = ".expected.json"
+ERRORS_SUFFIX = ".expected_errors.json"
 GOLDEN_DIR = Path("tests/golden")
 
 
@@ -60,10 +65,10 @@ def discover_cases(golden_dir: Path = GOLDEN_DIR, mapping: str | None = None) ->
     for mdir in sorted(p for p in golden_dir.iterdir() if p.is_dir()):
         if mapping is not None and mdir.name != mapping:
             continue
-        for inp in sorted(mdir.glob("*.input.json")):
-            name = inp.name.removesuffix(".input.json")
-            expected = mdir / f"{name}.expected.json"
-            errors = mdir / f"{name}.expected_errors.json"
+        for inp in sorted(mdir.glob(f"*{INPUT_SUFFIX}")):
+            name = inp.name.removesuffix(INPUT_SUFFIX)
+            expected = mdir / f"{name}{EXPECTED_SUFFIX}"
+            errors = mdir / f"{name}{ERRORS_SUFFIX}"
             cases.append(
                 TestCase(
                     mdir.name,
