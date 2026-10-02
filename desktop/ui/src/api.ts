@@ -176,8 +176,9 @@ export const mappingGolden = (project: string, name: string) =>
 export const mappingRemoval = (project: string, name: string) =>
   reviewRequest<{ files: string[] }>({ op: "mapping_removal", project, name });
 
-export const mappingDelete = (project: string, name: string) =>
-  reviewRequest<{ files: string[] }>({ op: "mapping_delete", project, name });
+/** With `golden` the golden cases (`tests/golden/<name>/`) go too. */
+export const mappingDelete = (project: string, name: string, golden = false) =>
+  reviewRequest<{ files: string[] }>({ op: "mapping_delete", project, name, golden });
 
 /** `fileId` sets the file's `id` (it names the PL/SQL package); without it the id follows the
  * name when it was the old name. */

@@ -143,7 +143,8 @@ export function App() {
   const [question, setQuestion] = useState<{
     message: string;
     choices: Choice[];
-    resolve: (id: string) => void;
+    option?: string;
+    resolve: (id: string, checked: boolean) => void;
   } | null>(null);
   const [prompt, setPrompt] = useState<{
     title: string;
@@ -227,7 +228,15 @@ export function App() {
 
   const ask = useCallback(
     (message: string, choices: Choice[]) =>
-      new Promise<string>((resolve) => setQuestion({ message, choices, resolve })),
+      new Promise<string>((resolve) => setQuestion({ message, choices, resolve: (id) => resolve(id) })),
+    [],
+  );
+  /** A question with a checkbox: resolves to the choice and whether the box was ticked. */
+  const askWithOption = useCallback(
+    (message: string, choices: Choice[], option?: string) =>
+      new Promise<{ id: string; checked: boolean }>((resolve) =>
+        setQuestion({ message, choices, option, resolve: (id, checked) => resolve({ id, checked }) }),
+      ),
     [],
   );
 
@@ -444,23 +453,26 @@ export function App() {
     const name = mappingName(current);
     try {
       const { files: plan } = await mappingRemoval(project, name);
-      const choice = await ask(
+      const golden = await mappingGolden(project, name);
+      const { id: choice, checked } = await askWithOption(
         `Delete the mapping '${name}'? This removes:\n${plan.map((f) => `  ${f}`).join("\n")}\n\n` +
-          `The golden cases (tests/golden/${name}/) stay, and the compiled packages go at the next build. ` +
-          "Unsaved changes in it are lost.",
+          "The compiled packages go at the next build. Unsaved changes in it are lost.",
         [
           // the last choice is what Escape answers, and the one focused
           { id: "delete", label: "Delete" },
           { id: "cancel", label: "Cancel", primary: true },
         ],
+        golden.files > 0
+          ? `Delete also the golden records (${golden.files} file${golden.files === 1 ? "" : "s"})`
+          : undefined,
       );
       if (choice !== "delete") return;
-      await mappingDelete(project, name);
+      await mappingDelete(project, name, checked && golden.files > 0);
       await reloadFiles(null);
     } catch (e) {
       setStatus(String(e instanceof Error ? e.message : e));
     }
-  }, [project, current, ask, reloadFiles]);
+  }, [project, current, askWithOption, reloadFiles]);
 
   const openProject = useCallback(async () => {
     if (!(await switchGuard())) return;
@@ -1315,8 +1327,9 @@ export function App() {
         <Confirm
           message={question.message}
           choices={question.choices}
-          onChoose={(id) => {
-            question.resolve(id);
+          option={question.option}
+          onChoose={(id, checked) => {
+            question.resolve(id, checked);
             setQuestion(null);
           }}
         />

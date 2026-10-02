@@ -170,6 +170,7 @@ button.primary:hover:not(:disabled) { background: #3468b3; }
 .toolbar button { white-space: nowrap; flex: none; }
 .toolbar .state-filter, .toolbar .schema-status { flex: none; }
 .modal p { white-space: pre-line; }
+.modal-option { display: flex; gap: 8px; align-items: center; margin: -4px 0 16px; }
 .modal.prompt { min-width: 380px; }
 .modal h3 { margin: 0 0 12px; font-size: 15px; }
 .prompt-field { display: flex; flex-direction: column; gap: 3px; margin-bottom: 10px; }
