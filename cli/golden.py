@@ -111,3 +111,66 @@ def delete_case(project: Path, mapping: str, name: str) -> list[str]:
     for path in files:
         path.unlink()
     return [str(p.relative_to(project)) for p in files]
+
+
+# the three files of a case, by the role the editor names them
+ROLES = {"input": INPUT_SUFFIX, "expected": EXPECTED_SUFFIX, "errors": ERRORS_SUFFIX}
+
+
+def _role_path(project: Path, mapping: str, case: str, role: str) -> Path:
+    if role not in ROLES:
+        raise FnYamlError(f"unknown file of a case: {role!r} (one of {', '.join(ROLES)})")
+    return _folder(project, mapping) / f"{case}{ROLES[role]}"
+
+
+def _check_text(role: str, text: str) -> None:
+    """The text a role's file may hold: JSON, and for the errors a list of rule ids."""
+    try:
+        value = json.loads(text)
+    except ValueError as exc:
+        raise FnYamlError(f"{role}: not valid JSON ({exc})") from exc
+    if role == "errors" and not (
+        isinstance(value, list) and all(isinstance(e, str) for e in value)
+    ):
+        raise FnYamlError("expected errors: must be a list of rule ids")
+
+
+def read_case(project: Path, mapping: str, case: str) -> dict[str, str | None]:
+    """The text of each file of the case, as it is on disk; None where a file is not there."""
+    if not _files(project, mapping, case):
+        raise FnYamlError(f"the mapping has no case called {case!r}")
+    out: dict[str, str | None] = {}
+    for role in ROLES:
+        path = _role_path(project, mapping, case, role)
+        try:
+            out[role] = path.read_text() if path.is_file() else None
+        except OSError as exc:
+            raise FnYamlError(f"{path.name}: {exc.strerror or exc}") from exc
+    return out
+
+
+def write_case_file(project: Path, mapping: str, case: str, role: str, text: str | None) -> None:
+    """Saves one file of an existing case after checking it. `text` None removes the file (only
+    the input cannot go: it is what makes the case)."""
+    _check_name(case)
+    if not _files(project, mapping, case):
+        raise FnYamlError(f"the mapping has no case called {case!r}")
+    path = _role_path(project, mapping, case, role)
+    if text is None:
+        if role == "input":
+            raise FnYamlError("a case needs its input")
+        path.unlink(missing_ok=True)
+        return
+    _check_text(role, text)
+    path.write_text(text if text.endswith("\n") else text + "\n")
+
+
+def create_case(project: Path, mapping: str, name: str, text: str = "{}") -> None:
+    """A new case holding just an input (`{}` unless given), to be filled in."""
+    _check_name(name)
+    if _files(project, mapping, name):
+        raise FnYamlError(f"the mapping already has a case called {name!r}")
+    _check_text("input", text)
+    folder = _folder(project, mapping)
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / f"{name}{INPUT_SUFFIX}").write_text(text if text.endswith("\n") else text + "\n")

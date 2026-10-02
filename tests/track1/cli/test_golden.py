@@ -105,3 +105,48 @@ def test_serve_golden_ops(tmp_path: Path) -> None:
     answers = [json.loads(line) for line in out.getvalue().splitlines()]
     assert [a["ok"] for a in answers] == [True, True, True, True, False]
     assert answers[1]["cases"] == [{"name": "c", "expected": False, "errors": False}]
+
+
+def test_a_case_is_created_read_edited_and_its_files_removed(tmp_path: Path) -> None:
+    from cli.golden import create_case, read_case, write_case_file
+
+    create_case(tmp_path, "orders", "first")
+    assert read_case(tmp_path, "orders", "first") == {
+        "input": "{}\n",
+        "expected": None,
+        "errors": None,
+    }
+    write_case_file(tmp_path, "orders", "first", "input", '{"id": "A1"}')
+    write_case_file(tmp_path, "orders", "first", "expected", '{"OrderId": "A1"}\n')
+    write_case_file(tmp_path, "orders", "first", "errors", '["rules[0]"]')
+    got = read_case(tmp_path, "orders", "first")
+    assert got["input"] == '{"id": "A1"}\n' and got["errors"] == '["rules[0]"]\n'
+    assert [c["name"] for c in list_cases(tmp_path, "orders")] == ["first"]
+    assert discover_cases(tmp_path / "tests/golden", "orders")  # the names every backend reads
+    write_case_file(tmp_path, "orders", "first", "errors", None)
+    assert read_case(tmp_path, "orders", "first")["errors"] is None
+
+
+def test_a_file_that_is_not_valid_is_refused_and_the_old_one_stays(tmp_path: Path) -> None:
+    from cli.golden import create_case, read_case, write_case_file
+
+    create_case(tmp_path, "orders", "first", '{"a": 1}')
+    for role, text in (
+        ("input", "{"),
+        ("expected", "nope"),
+        ("errors", '{"a": 1}'),
+        ("errors", "[1]"),
+    ):
+        with pytest.raises(FnYamlError):
+            write_case_file(tmp_path, "orders", "first", role, text)
+    with pytest.raises(FnYamlError, match="needs its input"):
+        write_case_file(tmp_path, "orders", "first", "input", None)
+    with pytest.raises(FnYamlError, match="no case"):
+        write_case_file(tmp_path, "orders", "ghost", "input", "{}")
+    with pytest.raises(FnYamlError, match="already has"):
+        create_case(tmp_path, "orders", "first")
+    assert read_case(tmp_path, "orders", "first") == {
+        "input": '{"a": 1}\n',
+        "expected": None,
+        "errors": None,
+    }
