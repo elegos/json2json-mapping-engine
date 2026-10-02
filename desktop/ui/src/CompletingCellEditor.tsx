@@ -1,5 +1,7 @@
 import type { CustomCellEditorProps } from "ag-grid-react";
-import { useEffect } from "react";
+import type { EditorView } from "@codemirror/view";
+import { useEffect, useRef } from "react";
+import { setActiveCellEditor } from "./cellEditor";
 import { CodeEditor } from "./CodeEditor";
 import type { Row } from "./model";
 
@@ -28,8 +30,12 @@ export function CompletingCellEditor(props: CustomCellEditorProps<Row, string, G
     // once, when the editor opens
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  const view = useRef<EditorView | null>(null);
+  // the function explorer can put a call into this cell while it is open
+  useEffect(() => (view.current ? setActiveCellEditor(view.current, column) : undefined), [column]);
   return (
     <CodeEditor
+      viewRef={view}
       value={start}
       autoFocus
       completer={complete ? (text, cursor) => complete(path, column, text, cursor) : undefined}

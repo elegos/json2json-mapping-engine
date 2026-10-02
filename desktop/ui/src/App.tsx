@@ -20,6 +20,7 @@ import { ProjectButton } from "./ProjectButton";
 import { Wizard } from "./Wizard";
 import { Guide } from "./Guide";
 import { HelpMenu } from "./HelpMenu";
+import { FunctionExplorer } from "./FunctionExplorer";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   changeStructure,
@@ -164,6 +165,7 @@ export function App() {
   const [recent, setRecent] = useState<string[]>(loadRecent);
   const [wizard, setWizard] = useState(false);
   const [guide, setGuide] = useState<string | null>(null);
+  const [explorer, setExplorer] = useState(false);
   const [wizardStartup, setWizardStartup] = useState(wizardAtStartup);
   const grid = useRef<AgGridReact<Row>>(null);
   const [question, setQuestion] = useState<{
@@ -1234,7 +1236,7 @@ export function App() {
             {c[0].toUpperCase() + c.slice(1)}
           </button>
         ))}
-        <HelpMenu onGuide={() => setGuide("functional")} />
+        <HelpMenu onGuide={() => setGuide("functional")} onExplorer={() => setExplorer((on) => !on)} />
       </header>
       {python && !python.available && (
         <div className="banner">
@@ -1446,6 +1448,7 @@ export function App() {
             <div className="empty">{project ? "Pick a mapping" : "Open a project to begin"}</div>
           )}
         </main>
+        {explorer && <FunctionExplorer project={project} onClose={() => setExplorer(false)} />}
       </div>
       <div className="switches">
         <label>
@@ -1494,7 +1497,14 @@ export function App() {
           onClose={() => setWizard(false)}
         />
       )}
-      {guide !== null && <Guide start={guide} onClose={() => setGuide(null)} />}
+      {guide !== null && <Guide
+          start={guide}
+          onClose={() => setGuide(null)}
+          onExplorer={() => {
+            setGuide(null);
+            setExplorer(true);
+          }}
+        />}
       {question && (
         <Confirm
           message={question.message}

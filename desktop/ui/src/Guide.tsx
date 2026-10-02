@@ -8,13 +8,15 @@ interface Props {
   onClose: () => void;
   /** `tour:<book>` links. */
   onTour?: (book: Book) => void;
+  /** `explorer:open` links. */
+  onExplorer?: () => void;
 }
 
 const byId = (id: string) => PAGES.find((p) => p.id === id);
 const firstOf = (book: Book) => PAGES.find((p) => p.book === book);
 
 /** The guide: two books with a table of contents, a page, search, back and forward. */
-export function Guide({ start, onClose, onTour }: Props) {
+export function Guide({ start, onClose, onTour, onExplorer }: Props) {
   const first = (start && (byId(start) ?? firstOf(start as Book))) || PAGES[0];
   const [trail, setTrail] = useState<string[]>([first?.id ?? ""]);
   const [at, setAt] = useState(0);
@@ -43,6 +45,9 @@ export function Guide({ start, onClose, onTour }: Props) {
     if (href.startsWith("page:")) {
       e.preventDefault();
       go(href.slice(5));
+    } else if (href.startsWith("explorer:")) {
+      e.preventDefault();
+      onExplorer?.();
     } else if (href.startsWith("tour:")) {
       e.preventDefault();
       onTour?.(href.slice(5) as Book);

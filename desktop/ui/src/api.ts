@@ -296,6 +296,24 @@ export async function configWrite(project: string, values: ConfigValues): Promis
   await configRequest({ op: "config_write", project, values });
 }
 
+export interface FunctionEntry {
+  name: string;
+  signature: string;
+  params: { name: string; annotation: string; default: string | null; variadic: boolean }[];
+  returns: string;
+  doc: string;
+  /** `built-in`, or the project file (`fn/text.fn`). */
+  origin: string;
+  builtin: boolean;
+  replaces_builtin: boolean;
+  targets: string[];
+}
+
+/** Every function a mapping can call (built-ins and the project's own), by name. */
+export async function functionList(project: string | null): Promise<FunctionEntry[]> {
+  return (await configRequest<{ functions: FunctionEntry[] }>({ op: "functions", project })).functions;
+}
+
 /** The backends and their options (what the start wizard draws its project form from). */
 export const projectBackends = () => configRequest<ConfigSchema>({ op: "project_backends" });
 

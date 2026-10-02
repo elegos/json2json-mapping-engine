@@ -260,3 +260,21 @@ button.primary:hover:not(:disabled) { background: #3468b3; }
 @media (prefers-reduced-motion: no-preference) { .guide-page article { animation: guide-in 120ms ease-out; } }
 @keyframes guide-in { from { opacity: 0; } to { opacity: 1; } }
 .help-menu { left: auto; right: 0; min-width: 160px; }
+
+/* function explorer */
+.explorer { width: 340px; flex: none; display: flex; flex-direction: column; gap: 8px; padding: 10px; border-left: 1px solid #8884; overflow-y: auto; }
+.explorer-bar { display: flex; justify-content: space-between; align-items: center; }
+.explorer-search { font: inherit; color: inherit; padding: 4px 8px; background: color-mix(in srgb, CanvasText 6%, Canvas); border: 1px solid color-mix(in srgb, CanvasText 22%, transparent); border-radius: 4px; }
+.explorer-list { list-style: none; margin: 0; padding: 0; max-height: 40%; overflow-y: auto; border: 1px solid color-mix(in srgb, CanvasText 22%, transparent); border-radius: 4px; }
+.explorer-list li.empty { padding: 6px 8px; opacity: 0.6; }
+.explorer-list button { width: 100%; display: flex; justify-content: space-between; gap: 8px; text-align: left; background: none; border: none; color: inherit; padding: 4px 8px; cursor: pointer; font: inherit; }
+.explorer-list button:hover { background: #2a5a9f33; }
+.explorer-list button.current { background: #2a5a9f66; }
+.explorer-list small { opacity: 0.6; white-space: nowrap; }
+.explorer-detail code { display: block; margin-bottom: 6px; word-break: break-word; }
+.explorer-detail p { margin: 6px 0; line-height: 1.4; white-space: pre-line; }
+.explorer-detail dl { margin: 6px 0; }
+.explorer-detail dl div { display: flex; gap: 8px; }
+.explorer-detail dt { font-family: monospace; min-width: 70px; }
+.explorer-detail dd { margin: 0; opacity: 0.75; }
+.explorer-origin { opacity: 0.7; font-size: 12px; }
