@@ -572,6 +572,7 @@ Sliced; each slice is usable on its own:
         schema*, each with a light, green when the schema is found and readable, red when it is
         missing or does not parse (the tooltip gives the path, or the reason). Clicking one opens
         the picker to load it, or to load another in its place.
+      - Done: the status buttons in the rules toolbar (`SchemaStatus.tsx`; `schemas_status` / `schema_import` ops of `mapper serve`, `compiler/schema_files.py`): green when the schema is found and readable, red when missing or not valid JSON; a click picks a file, which is copied into `schemas/` under the mapping's name (a `schemas:` override of that kind is dropped, as it would hide the copy). The list on the left shows the mapping's name (`orders`), not the file's.
       - Still open: what "rule validated" becomes for rules the new schema invalidates; the
         picker (the project's schemas, or a file from outside).
 - [ ] **M6.6 — Create and delete mappings.** Every session so far has used the `orders` fixture:
@@ -579,6 +580,9 @@ Sliced; each slice is usable on its own:
       that loads) nor delete one (with a confirmation; what depends on it: `build/`, `generated/`,
       the golden cases). Also rename, and the unsaved-changes guard that already exists for
       switching files.
+      Renaming the `.fn.yaml` renames its schema files too (`<name>_input.schema.json`,
+      `<name>_output.schema.json`), and a `schemas:` override that pointed at them. The tool shows the
+      mapping's name, never the file name.
 - [ ] **M6.7 — In-app guide and function explorer.** A help panel in the tool: what each part
       does, the syntax of Target (`A.B`, `Lines[*]`), Source (`$`, `@`, `@label`, constants,
       selectors `list[cond]`, aliases), Expression (`value`, anchors, blocks, `Null`, bare `return`,
