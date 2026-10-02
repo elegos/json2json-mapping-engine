@@ -37,7 +37,8 @@ class FunctionImpl:
             template = self.target_templates[target]
         except KeyError as exc:
             raise FunctionLinkError(
-                f"function '{self.name}' has no implementation for target {target!r}"
+                f"function '{self.name}' has no implementation for target {target!r} "
+                f'(a project function needs `@override({target}="...")`)'
             ) from exc
         if callable(template):
             return template(arg_exprs)

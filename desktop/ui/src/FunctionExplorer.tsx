@@ -85,6 +85,12 @@ export function FunctionExplorer({ project, onClose }: Props) {
             {current.builtin ? "Built-in." : `Project function, in ${current.origin}.`}
             {current.replaces_builtin && " It replaces the built-in of the same name."}
             {current.targets.length > 0 && ` Written out for: ${current.targets.join(", ")}.`}
+            {!current.python_code && (
+              <span className="golden-doubt">
+                {" "}
+                No code for Python: a rule that calls it cannot run in the golden cases.
+              </span>
+            )}
           </p>
           <button
             className="primary"

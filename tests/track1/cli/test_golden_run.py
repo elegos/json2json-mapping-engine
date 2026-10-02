@@ -110,3 +110,49 @@ def test_a_rule_that_uses_a_regular_expression_is_marked_as_such(project: Path) 
     assert result["target"] == "plsql" and result["passed"] is False
     other = [e for r in run_cases(project, "orders", ["no_lines"]) for e in r["errors"]]
     assert all(e["regex"] for e in other)  # `cur` again, nothing else
+
+
+def _with_functions(project: Path, source: str, expression: str) -> None:
+    """The tutorial project with `fn/text.fn` replaced and the Warehouse rule calling `expression`."""
+    (project / "fn/text.fn").write_text(source)
+    mapping = project / "mappings/functional/orders.fn.yaml"
+    mapping.write_text(mapping.read_text().replace('split_nth(value, ",", 2)', expression))
+
+
+def test_a_project_function_with_python_code_runs(project: Path) -> None:
+    _with_functions(
+        project,
+        "def first_word(s: str) -> str | None:\n"
+        "    parts = s.split(',')\n    return parts[0] if parts else None\n",
+        "first_word(value)",
+    )
+    result = run_cases(project, "orders", ["two_lines"])[0]
+    assert result["output"]["Warehouse"] == "EU"  # first part of "EU,IT,MI"
+    assert result["errors"] == [] and result["inconclusive"] is False
+
+
+def test_a_python_override_is_the_code_of_a_project_function(project: Path) -> None:
+    _with_functions(
+        project,
+        "from __mapping__ import override\n\n"
+        '@override(python="{s}.lower()", plsql="LOWER({s})")\n'
+        "def shout(s: str) -> str:\n    ...\n",
+        "shout(value)",
+    )
+    assert run_cases(project, "orders", ["two_lines"])[0]["output"]["Warehouse"] == "eu,it,mi"
+
+
+def test_a_project_function_without_python_code_makes_its_rules_unavailable(project: Path) -> None:
+    _with_functions(
+        project,
+        "from __mapping__ import override\n\n"
+        "@override(plsql=\"REGEXP_SUBSTR({s}, '[^,]+', 1, 1)\")\n"
+        "def first_word(s: str) -> str | None:\n    ...\n",
+        "first_word(value)",
+    )
+    result = run_cases(project, "orders", ["two_lines"])[0]
+    (error,) = result["errors"]
+    assert error["rule"] == "wh" and error["unavailable"] == ["first_word"]
+    assert result["inconclusive"] is True and "Warehouse" not in result["output"]
+    with pytest.raises(FnYamlError, match="not recorded"):
+        record_case(project, "orders", "two_lines")

@@ -235,6 +235,9 @@ export interface GoldenResult {
   message: string;
   /** The project's backend: the cases run on Python's whatever it is. */
   target: string;
+  /** A rule called a project function that has no code for Python: it did not run, so the
+   * verdict says nothing about the mapping. */
+  inconclusive: boolean;
 }
 
 /** A rule that reported an error in a run. `path` is its row in the grid (null for a `.map.py`),
@@ -246,6 +249,8 @@ export interface GoldenError {
   path: string | null;
   regex: boolean;
   expected: boolean;
+  /** The project functions this rule calls that have no code for Python (it did not run). */
+  unavailable: string[];
 }
 
 /** Runs cases of a mapping on the Python backend (all of them without names). The saved file of
@@ -371,6 +376,8 @@ export interface FunctionEntry {
   builtin: boolean;
   replaces_builtin: boolean;
   targets: string[];
+  /** Has code the Python backend can run (the golden cases run on it). */
+  python_code: boolean;
 }
 
 /** Every function a mapping can call (built-ins and the project's own), by name. */

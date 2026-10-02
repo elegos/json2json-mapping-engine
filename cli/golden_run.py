@@ -59,13 +59,18 @@ def rule_index(path: Path) -> dict[str, dict[str, Any]]:
 
 
 def _result_json(
-    result: CaseResult, index: dict[str, dict[str, Any]], target: str
+    result: CaseResult,
+    index: dict[str, dict[str, Any]],
+    target: str,
+    unavailable: dict[str, list[str]],
 ) -> dict[str, Any]:
     case = result.case
     expected_errors = case.expected_errors or []
     errors = [
         {
             **e,
+            # project functions this rule calls that have no code for Python: it did not run
+            "unavailable": unavailable.get(e["rule"], []),
             "path": index.get(e["rule"], {}).get("path"),
             # a pattern is in the dialect of the project's backend, and the cases run on Python's
             "regex": index.get(e["rule"], {}).get("regex", False),
@@ -81,6 +86,8 @@ def _result_json(
         "errors": errors,
         "expected_errors": case.expected_errors,
         "target": target,
+        # some rule could not run on Python: the verdict says nothing about the mapping
+        "inconclusive": any(e["unavailable"] for e in errors),
         "diff": result.diff,
         "message": result.message,
     }
@@ -88,7 +95,7 @@ def _result_json(
 
 def _run(
     project: Path, mapping: str, names: list[str] | None
-) -> tuple[list[CaseResult], dict[str, dict[str, Any]], str]:
+) -> tuple[list[CaseResult], dict[str, dict[str, Any]], str, dict[str, list[str]]]:
     """Compiles the mapping and runs the named cases (all of them without names)."""
     project = project.resolve()
     with contextlib.chdir(project):
@@ -103,6 +110,7 @@ def _run(
             files = backend.assemble([unit])
             index = rule_index(path)
             target = config.project.target
+            unavailable = getattr(unit, "unavailable", {})
         except (BuildError, CodeGenError) as exc:
             raise FnYamlError(str(exc)) from exc
         cases = [c for c in discover_cases(GOLDEN_DIR, mapping) if names is None or c.name in names]
@@ -124,13 +132,13 @@ def _run(
             mapping_ids={mapping: mapping_id},
             log=lambda _m: None,
         )
-        return backend.run_integration(context), index, target
+        return backend.run_integration(context), index, target, unavailable
 
 
 def run_cases(project: Path, mapping: str, names: list[str] | None = None) -> list[dict[str, Any]]:
     """The results of the cases: pass / fail, the output, the rule errors and the diff."""
-    results, index, target = _run(project, mapping, names)
-    return [_result_json(r, index, target) for r in results]
+    results, index, target, unavailable = _run(project, mapping, names)
+    return [_result_json(r, index, target, unavailable) for r in results]
 
 
 def record_case(project: Path, mapping: str, name: str) -> dict[str, Any]:
@@ -138,7 +146,13 @@ def record_case(project: Path, mapping: str, name: str) -> dict[str, Any]:
     `<case>.expected.json`, and the rules that failed as `<case>.expected_errors.json` (the file
     goes when none failed). The caller shows the output first; this overwrites."""
     project = project.resolve()
-    (result,), _index, _target = _run(project, mapping, [name])
+    (result,), _index, _target, unavailable = _run(project, mapping, [name])
+    skipped = sorted({f for e in result.rule_errors for f in unavailable.get(e["rule"], [])})
+    if skipped:
+        raise FnYamlError(
+            f"not recorded: rules did not run on Python (no Python code for {', '.join(skipped)}), "
+            "so what they would give is missing from the output"
+        )
     folder = _folder(project, mapping)
     (folder / f"{name}{EXPECTED_SUFFIX}").write_text(
         json.dumps(result.output, indent=2, ensure_ascii=False) + "\n"

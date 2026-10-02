@@ -12,6 +12,7 @@ const fn = (name: string, doc: string, params: [string, string | null, boolean?]
   builtin: true,
   replaces_builtin: false,
   targets: [],
+  python_code: true,
 });
 
 const all = [

@@ -1,6 +1,15 @@
 import { useEffect, useState } from "react";
 import type { GoldenCase, GoldenResult } from "./api";
-import { diffLines, falsePositiveNote, maybeFalsePositive, tally, verdict, whyFailed } from "./goldenResult";
+import {
+  diffLines,
+  falsePositiveNote,
+  maybeFalsePositive,
+  tally,
+  unavailableNote,
+  type Verdict,
+  verdict,
+  whyFailed,
+} from "./goldenResult";
 import { GoldenEditor } from "./GoldenEditor";
 
 interface Props {
@@ -175,13 +184,20 @@ export function Golden({
   );
 }
 
+const LABEL: Record<Verdict, string> = {
+  pass: "PASS",
+  fail: "FAIL",
+  shown: "output only",
+  inconclusive: "NOT RUN",
+};
+
 function ResultBadge(props: { result?: GoldenResult; running: boolean; onClick: () => void }) {
   if (props.running) return <span className="muted">running…</span>;
   if (!props.result) return <span className="golden-none">not run</span>;
   const v = verdict(props.result);
   return (
     <button className={`result-badge ${v}`} onClick={props.onClick} title="Show the details">
-      {v === "pass" ? "PASS" : v === "fail" ? "FAIL" : "output only"}
+      {LABEL[v]}
     </button>
   );
 }
@@ -192,6 +208,7 @@ function Summary({ results }: { results: GoldenResult[] }) {
     <span className="golden-summary">
       <span className="pass">{t.pass} passed</span>
       {t.fail > 0 && <span className="fail">{t.fail} failed</span>}
+      {t.inconclusive > 0 && <span className="doubt">{t.inconclusive} not run (no Python code)</span>}
       {t.shown > 0 && <span className="muted">{t.shown} without expected output</span>}
     </span>
   );
@@ -205,12 +222,16 @@ function ResultDetail(props: { result: GoldenResult; busy: boolean; onRecord: ()
     <section className="golden-result" aria-label={`Result of ${r.name}`}>
       <header>
         <strong className="golden-name">{r.name}</strong>
-        <span className={`result-badge ${v}`}>{v === "pass" ? "PASS" : v === "fail" ? "FAIL" : "output only"}</span>
+        <span className={`result-badge ${v}`}>{LABEL[v]}</span>
         <span className="grow" />
         <button
-          disabled={props.busy}
+          disabled={props.busy || v === "inconclusive"}
           onClick={props.onRecord}
-          title="Make this output, and these rule errors, the expected result of the case"
+          title={
+            v === "inconclusive"
+              ? "Some rules did not run on Python: recording would leave them out of the expected output"
+              : "Make this output, and these rule errors, the expected result of the case"
+          }
         >
           Record as expected…
         </button>
@@ -218,7 +239,7 @@ function ResultDetail(props: { result: GoldenResult; busy: boolean; onRecord: ()
           ✕
         </button>
       </header>
-      {v === "fail" && (
+      {(v === "fail" || v === "inconclusive") && (
         <ul className="golden-why">
           {whyFailed(r).map((w) => (
             <li key={w}>{w}</li>
@@ -234,8 +255,12 @@ function ResultDetail(props: { result: GoldenResult; busy: boolean; onRecord: ()
                 <tr key={e.rule}>
                   <td className="golden-name">{e.rule}</td>
                   <td>
-                    {e.cause}
-                    {e.expected && <span className="muted"> — expected</span>}
+                    {e.unavailable.length > 0 ? (
+                      <span className="golden-doubt">{unavailableNote(e.unavailable)}</span>
+                    ) : (
+                      e.cause
+                    )}
+                    {e.expected && e.unavailable.length === 0 && <span className="muted"> — expected</span>}
                     {maybeFalsePositive(e, r.target) && <div className="golden-doubt">{falsePositiveNote(r.target)}</div>}
                   </td>
                 </tr>

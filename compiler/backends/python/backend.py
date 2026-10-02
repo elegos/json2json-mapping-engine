@@ -14,6 +14,7 @@ from typing import Any, ClassVar
 from compiler.backends.base import Backend, CodeGenError, CompiledUnit, Option
 from compiler.backends.integration import CaseResult, IntegrationContext, judge
 from compiler.backends.python import codegen, runtime
+from compiler.function_registry import project_functions
 from compiler.scope_resolver import ScopeResolution
 
 RUNTIME_FILE = "j2jme_runtime.py"
@@ -85,7 +86,8 @@ class PythonBackend(Backend):
     def compile_module(
         self, tree: ast.Module, mapping_id: str, scope_resolution: ScopeResolution | None = None
     ) -> codegen.PythonUnit:
-        return codegen.compile_module(tree, mapping_id)
+        # the project is the working directory (a build and a golden run both start there)
+        return codegen.compile_module(tree, mapping_id, project_functions(Path.cwd()))
 
     def unit_from_json(self, data: dict[str, Any]) -> codegen.PythonUnit:
         return codegen.PythonUnit.from_json(data)

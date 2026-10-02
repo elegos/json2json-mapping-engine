@@ -67,6 +67,12 @@ are of the saved mapping that was run: editing and saving it, or opening another
 A loop or an object is marked as a whole: its fields are computed together, so the mark says which
 case failed and why, not which field.
 
+> **Functions without Python code.** A project function (in `fn/`) may be written out for the
+> backend only, with nothing the golden cases can run on Python. A rule that calls one **did not
+> run**: its row is marked amber and says which functions are missing, and the case is **NOT RUN**,
+> not failed: the result says nothing about the mapping. A case in that state cannot be recorded.
+> Ask a developer to give the function Python code.
+
 > **Regular expressions.** The cases run on Python's engine, whatever the project's backend is. A
 > pattern is written in the dialect of the backend (Oracle's, for instance), so when a rule that
 > uses `regexp_replace` or `regexp_group` fails on a project that is not on Python, the mark is

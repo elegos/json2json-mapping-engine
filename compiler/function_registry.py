@@ -34,6 +34,10 @@ class FunctionInfo:
     origin: str = "built-in"  # "built-in" or the project file it comes from
     special: bool = False  # typed by hand (`@special`)
     overrides: dict[str, str] = field(default_factory=dict)  # target -> verbatim template
+    source: str = ""  # the function as written, without its decorators
+    # runnable as Python: its body is code (not a stub), or it has an `@override(python=...)`;
+    # a function only written out for another target is not, and the Python backend cannot run it
+    python_code: bool = True
 
     def signature(self) -> str:
         """`split_first(s, sep)`, as shown while typing."""
@@ -66,6 +70,32 @@ def _decorators(node: ast.FunctionDef) -> tuple[bool, dict[str, str]]:
     return special, overrides
 
 
+def _is_stub(node: ast.FunctionDef) -> bool:
+    """A body that does nothing: only `...`, `pass`, `raise NotImplementedError` (after a docstring)."""
+    body = node.body
+    if (
+        body
+        and isinstance(body[0], ast.Expr)
+        and isinstance(body[0].value, ast.Constant)
+        and isinstance(body[0].value.value, str)
+    ):
+        body = body[1:]
+    if not body:
+        return True
+
+    def trivial(stmt: ast.stmt) -> bool:
+        if isinstance(stmt, ast.Pass):
+            return True
+        if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant):
+            return stmt.value.value is ...
+        if isinstance(stmt, ast.Raise) and stmt.exc is not None:
+            target = stmt.exc.func if isinstance(stmt.exc, ast.Call) else stmt.exc
+            return isinstance(target, ast.Name) and target.id == "NotImplementedError"
+        return False
+
+    return all(trivial(stmt) for stmt in body)
+
+
 def read_functions(source: str, origin: str = "built-in") -> dict[str, FunctionInfo]:
     """The public top-level functions of a source text (names starting with `_` are helpers)."""
     found: dict[str, FunctionInfo] = {}
@@ -87,6 +117,9 @@ def read_functions(source: str, origin: str = "built-in") -> dict[str, FunctionI
             ann = ast.unparse(a.vararg.annotation) if a.vararg.annotation else ""
             params.append(Param(a.vararg.arg, ann, None, variadic=True))
         special, overrides = _decorators(node)
+        decorators, node.decorator_list = node.decorator_list, []
+        source_text = ast.unparse(node)
+        node.decorator_list = decorators
         found[node.name] = FunctionInfo(
             name=node.name,
             params=tuple(params),
@@ -95,6 +128,9 @@ def read_functions(source: str, origin: str = "built-in") -> dict[str, FunctionI
             origin=origin,
             special=special,
             overrides=overrides,
+            source=source_text,
+            # the built-ins run on every backend (`parse_date` is given its code by the Python runtime)
+            python_code=origin == "built-in" or "python" in overrides or not _is_stub(node),
         )
     return found
 

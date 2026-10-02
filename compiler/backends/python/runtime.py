@@ -47,6 +47,10 @@ class MappingError(Exception):
         )
 
 
+class MissingImplementation(Exception):
+    """A function the project declares has no code for Python: the rule that calls it did not run."""
+
+
 def _rule(name: str, function: Any, *args: Any) -> Any:
     """Calls a rule function; a failure is recorded (the first one of the rule) and the rule
     gives OMIT."""

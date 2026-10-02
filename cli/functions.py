@@ -28,6 +28,8 @@ def _entry(info: FunctionInfo, replaces: bool) -> dict[str, Any]:
         "builtin": info.origin == "built-in",
         "replaces_builtin": replaces,
         "targets": sorted(info.overrides),
+        # runnable on Python (the golden cases): a body that is code, or `@override(python=...)`
+        "python_code": info.python_code,
     }
 
 

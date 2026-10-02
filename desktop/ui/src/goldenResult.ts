@@ -1,16 +1,17 @@
 import type { GoldenError, GoldenResult } from "./api";
 import type { Diagnostic } from "./model";
 
-export type Verdict = "pass" | "fail" | "shown";
+export type Verdict = "pass" | "fail" | "shown" | "inconclusive";
 
 /** pass / fail, or "shown" when the case has no expected output to judge against. */
 export function verdict(r: GoldenResult): Verdict {
+  if (r.inconclusive) return "inconclusive";
   return r.passed === true ? "pass" : r.passed === false ? "fail" : "shown";
 }
 
 /** How many cases passed, failed or were only shown. */
 export function tally(results: GoldenResult[]): Record<Verdict, number> {
-  const count: Record<Verdict, number> = { pass: 0, fail: 0, shown: 0 };
+  const count: Record<Verdict, number> = { pass: 0, fail: 0, shown: 0, inconclusive: 0 };
   for (const r of results) count[verdict(r)]++;
   return count;
 }
@@ -18,6 +19,10 @@ export function tally(results: GoldenResult[]): Record<Verdict, number> {
 /** The line of a one-case summary: what failed, in words. */
 export function whyFailed(r: GoldenResult): string[] {
   const reasons: string[] = [];
+  const skipped = unavailableFunctions(r);
+  if (skipped.length) {
+    reasons.push(`some rules did not run: no Python code for ${skipped.join(", ")}`);
+  }
   if (r.diff) reasons.push("the output is not the expected one");
   const reported = r.errors.map((e) => e.rule).sort();
   if (r.expected_errors === null) {
@@ -29,6 +34,18 @@ export function whyFailed(r: GoldenResult): string[] {
   }
   if (r.message && !reasons.length) reasons.push(r.message);
   return reasons;
+}
+
+/** The project functions without Python code that stopped some rule of the case. */
+export function unavailableFunctions(r: GoldenResult): string[] {
+  return [...new Set(r.errors.flatMap((e) => e.unavailable))].sort();
+}
+
+export function unavailableNote(functions: string[]): string {
+  return (
+    `Not run: ${functions.length === 1 ? "this function has" : "these functions have"} no code for Python ` +
+    `(${functions.join(", ")}), and the golden cases run on Python. The result says nothing about the mapping.`
+  );
 }
 
 /** A diff's lines with what each is: added, removed, or neither. */
@@ -61,7 +78,18 @@ export function goldenDiagnostics(results: GoldenResult[], file: string): Diagno
   const marks: Diagnostic[] = [];
   for (const r of results) {
     for (const e of r.errors) {
-      if (e.expected || e.path === null) continue;
+      if (e.path === null) continue;
+      if (e.unavailable.length > 0) {
+        marks.push({
+          severity: "warning",
+          file,
+          rule: e.path,
+          column: null,
+          message: `Golden case ${r.name}: ${unavailableNote(e.unavailable)}`,
+        });
+        continue;
+      }
+      if (e.expected) continue;
       const doubtful = maybeFalsePositive(e, r.target);
       marks.push({
         severity: doubtful ? "warning" : "error",

@@ -885,8 +885,12 @@ field out, `return Null` or a null value puts a null; a whole number is written 
 (5, not 5.0). The four golden mappings and all their cases pass on it (track 1, no container); `mapper
 build` / `check` / `test --integration` work with `[project] target = "python"`
 (`Backend.artifact_suffix`). Option `[target.python] python` (the interpreter version) is
-declared and not used yet. Still to do, as listed below: project `fn/*.fn` functions in the
-module, `@parallel`, the target interpreter handling, the conformance run against PL/SQL, and the
+declared and not used yet. Project `fn/*.fn` functions: the module carries the ones a mapping calls (their Python
+code, or `@override(python="...")`); one with neither (a stub written out for another target) raises
+`MissingImplementation`, and the unit says which rules call it (`PythonUnit.unavailable`): the golden run
+reports those rules as not run (amber row, case NOT RUN, not recordable), not as failures. The PL/SQL
+backend now links `@override(plsql=...)` of project functions (it did not before) and stops the build
+when a project function has none. Still to do, as listed below: `@parallel`, the target interpreter handling, the conformance run against PL/SQL, and the
 points where the two could differ, once written down (rounding, null against empty string, dates).
 
 **The rule that governs it: results are backend-independent.** The same input must give the

@@ -16,10 +16,11 @@ const server = await createServer({
 await server.listen();
 const browser = await chromium.launch();
 
-async function run(label, expression) {
+async function run(label, expression, fnSource, field = "Currency") {
   const project = makeCopy();
   const file = join(project, "mappings/functional/orders.fn.yaml");
   writeFileSync(file, readFileSync(file, "utf8").replace('lookup(value, @countryCurrency, "N/A")', expression));
+  if (fnSource) writeFileSync(join(project, "fn/text.fn"), fnSource);
   setInitial(project);
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   await context.addInitScript(shim);
@@ -35,9 +36,9 @@ async function run(label, expression) {
   await page.click('.golden-bar button:has-text("Execute all")');
   await page.waitForSelector(".golden-summary");
   await page.click('.golden-table tr:has-text("two_lines") .result-badge');
-  console.log(label, "| panel:", (await page.textContent(".golden-errors")).replace(/\s+/g, " ").trim());
+  console.log(label, "| badge:", (await page.textContent(".golden-result .result-badge")).trim(), "| panel:", (await page.textContent(".golden-errors")).replace(/\s+/g, " ").trim());
   await page.click('.tab:text-is("Rules")');
-  const row = page.locator('.ag-row:has-text("Currency")');
+  const row = page.locator(`.ag-row:has-text("${field}")`);
   const cls = await row.first().getAttribute("class");
   console.log("   row class:", /row-error/.test(cls) ? "row-error" : /row-warning/.test(cls) ? "row-warning" : "none", "| marker:", (await row.first().locator('[col-id="warn"]').textContent()).trim() || "(none)");
   await context.close();
@@ -45,6 +46,13 @@ async function run(label, expression) {
 
 await run("invalid regex   ", 'regexp_replace(value, "(", "")'); // regex rule, project target is plsql
 await run("not a number    ", 'format_decimal(to_number(value), 1)');
+// a project function with code for PL/SQL only: the rule that calls it did not run on Python
+await run(
+  "no python code  ",
+  "first_word(value)",
+  'from __mapping__ import override\n\n@override(plsql="REGEXP_SUBSTR({s}, \'[^,]+\', 1, 1)")\ndef first_word(s: str) -> str | None:\n    ...\n',
+  "Currency",
+);
 await browser.close();
 await server.close();
 stop();

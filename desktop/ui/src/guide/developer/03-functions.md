@@ -33,6 +33,20 @@ and non-capturing groups, for example, exist in Python and not in Oracle. When a
 backend, keep to the common part (classes, groups, anchors, alternation, the usual quantifiers).
 This is the documented exception to "the same input gives the same output on every backend".
 
+## What a project function says for each backend
+
+A function in `fn/*.fn` is used by every backend, and each takes what the function says **for it**:
+
+| For | Where it comes from |
+|---|---|
+| **PL/SQL** | `@override(plsql="UPPER({s})")`: a template, the parameters written as `{name}`. Without it the build stops: no implementation for PL/SQL. |
+| **Python** | `@override(python="{s}.upper()")`, or else the Python body of the function (its code, with the types dropped). A body that is only `...`, `pass` or `raise NotImplementedError` is not code. |
+
+A function that replaces a built-in of the same name replaces it for every backend. One with no
+code for Python still builds for PL/SQL, but the golden cases cannot run the rules that call it: the
+tool says so (amber row, case NOT RUN) instead of reporting a failure. The function explorer shows
+whether a function has Python code.
+
 ## Writing a function
 
 A `.fn` file holds functions in the same restricted Python subset as the rest. They work on typed

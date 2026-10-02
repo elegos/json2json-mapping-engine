@@ -10,6 +10,7 @@ Every mapping becomes its own package, written to `<package lower>.sql`.
 from __future__ import annotations
 
 import ast
+from pathlib import Path
 from typing import Any, ClassVar
 
 from compiler.backends.base import Backend, CodeGenError, Option
@@ -19,7 +20,8 @@ from compiler.backends.plsql.builtins import BUILTIN_FUNCTIONS
 from compiler.backends.plsql.codegen import PlsqlCodeGenerator, PlsqlUnit
 from compiler.backends.plsql.naming import PlsqlNaming
 from compiler.backends.plsql.package import assemble_packages
-from compiler.function_linker import FunctionLinker
+from compiler.function_linker import FunctionImpl, FunctionLinker, Renderer
+from compiler.function_registry import project_functions
 from compiler.scope_resolver import ScopeResolution
 
 DEFAULT_ERROR_CODE = -20000
@@ -29,6 +31,26 @@ _IDENT = r"[A-Za-z][A-Za-z0-9_$#]*"
 _IDENT_HINT = "an Oracle identifier: letters, digits, _ $ #, starting with a letter"
 _PART = r"[A-Za-z0-9_$#]*"
 _PART_HINT = "letters, digits, _ $ # only"
+
+
+def project_implementations() -> dict[str, FunctionImpl]:
+    """The project's functions (`fn/*.fn`, of the project in the working directory) as the linker
+    sees them: what they say for PL/SQL, `@override(plsql="...")` with the parameters as `{name}`.
+    One with nothing for PL/SQL is still listed: it replaces a built-in of its name, so the build
+    stops (no implementation) instead of quietly using the built-in."""
+    impls: dict[str, FunctionImpl] = {}
+    for name, info in project_functions(Path.cwd()).items():
+        templates: dict[str, Renderer] = {}
+        if "plsql" in info.overrides:
+            names = [p.name for p in info.params if not p.variadic]
+            template = info.overrides["plsql"]
+
+            def render(args: list[str], template: str = template, names: list[str] = names) -> str:
+                return template.format(**dict(zip(names, args, strict=False)))
+
+            templates["plsql"] = render
+        impls[name] = FunctionImpl(name, templates)
+    return impls
 
 
 class PlsqlBackend(Backend):
@@ -152,7 +174,7 @@ class PlsqlBackend(Backend):
         self, tree: ast.Module, mapping_id: str, scope_resolution: ScopeResolution | None = None
     ) -> PlsqlUnit:
         generator = PlsqlCodeGenerator(
-            function_linker=FunctionLinker(BUILTIN_FUNCTIONS),
+            function_linker=FunctionLinker(BUILTIN_FUNCTIONS, project_implementations()),
             error_code=int(self.config.get("error_code", DEFAULT_ERROR_CODE)),
             naming=self.naming,
         )
