@@ -2,11 +2,17 @@
 
 Expressions call functions. Two kinds exist, and they are used in the same way:
 
-- **Built-ins**, which come with the tool and exist for every backend: `coalesce`, `round`,
-  `concat`, `if_else`, `split_first`, `split_nth`, `lookup`, `parse_date`, and the aggregations
-  `max`, `min`, `sum`, `avg`, `count`.
+- **Built-ins**, which come with the tool and exist for every backend.
 - **Project functions**, written by you in `fn/*.fn`. A project function with the name of a
   built-in replaces it.
+
+The complete, current list of both is in the **function explorer**, which reads it from the
+project itself: name, signature, description and where each comes from. This page only gives a
+taste of it, since the list grows with the tool.
+
+Some examples: `coalesce` (first value that is not null), `round`, `concat`, `if_else`,
+`split_first` / `split_nth`, `lookup` (recode with a table), `parse_date`; and the aggregations
+`max`, `min`, `sum`, `avg`, `count`.
 
 ## Writing a function
 
