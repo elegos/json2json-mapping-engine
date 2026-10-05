@@ -82,29 +82,30 @@ def _into(containers: list[dict[str, Any]], keys: list[str]) -> list[Any]:
 
 def output_values(rules: list[Rule], output: Any, prefix: str = "") -> dict[str, Any]:
     """Rule path -> the value the rule gave in `output`: a field's value, an object's, a loop's
-    list. A rule inside a loop has one value per element, as a list. A rule that left nothing in
-    the output (a guard, a failure, no match) has no entry."""
+    list. A rule inside a loop has one value per element, as a list (a loop inside a loop: a
+    list of lists, one per outer element). A rule that left nothing in the output (a guard, a
+    failure, no match) has no entry."""
     values: dict[str, Any] = {}
-
-    def visit(rules: list[Rule], containers: list[Any], many: bool, prefix: str) -> None:
-        for i, rule in enumerate(rules):
-            path = f"{prefix}rules[{i}]"
-            if isinstance(rule, FieldRule):
-                found = _into(containers, _step(rule.field))
-                if found:
-                    values[path] = found if many else found[0]
-            elif isinstance(rule, ObjectRule | LoopRule):
-                found = _into(containers, _step(rule.output))
-                if not found:
-                    continue
-                values[path] = found if many else found[0]
-                if isinstance(rule, LoopRule):
-                    elements = [e for lst in found if isinstance(lst, list) for e in lst]
-                    visit(rule.rules, elements, True, f"{path}.")
-                else:
-                    visit(rule.rules, found, many, f"{path}.")
-
-    visit(rules, [output] if isinstance(output, dict) else [], False, prefix)
+    if not isinstance(output, dict):
+        return values
+    for i, rule in enumerate(rules):
+        path = f"{prefix}rules[{i}]"
+        if isinstance(rule, FieldRule):
+            found = _into([output], _step(rule.field))
+            if found:
+                values[path] = found[0]
+        elif isinstance(rule, ObjectRule | LoopRule):
+            found = _into([output], _step(rule.output))
+            if not found:
+                continue
+            values[path] = found[0]
+            if isinstance(rule, LoopRule):
+                elements = found[0] if isinstance(found[0], list) else []
+                per_element = [output_values(rule.rules, e, f"{path}.") for e in elements]
+                for key in {k for sub in per_element for k in sub}:
+                    values[key] = [sub[key] for sub in per_element if key in sub]
+            else:
+                values.update(output_values(rule.rules, found[0], f"{path}."))
     return values
 
 

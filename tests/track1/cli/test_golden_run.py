@@ -9,9 +9,9 @@ from pathlib import Path
 
 import pytest
 
-from cli.golden_run import _result_json, record_case, run_cases, run_input
+from cli.golden_run import _result_json, output_values, record_case, run_cases, run_input
 from cli.serve import serve
-from transpiler.model import FnYamlError
+from transpiler.model import FieldRule, FnYamlError, LoopRule
 
 FIXTURE = Path(__file__).resolve().parents[3] / "desktop/fixtures/tour-project"
 
@@ -202,3 +202,12 @@ def test_any_json_file_runs_without_a_case_and_writes_nothing(
     assert sorted(p.name for p in project.rglob("*")) == before
     with pytest.raises(FnYamlError, match="no such file"):
         run_input(project, "orders", tmp_path / "ghost.json")
+
+
+def test_a_loop_inside_a_loop_gives_a_list_of_lists() -> None:
+    inner = LoopRule("in", "@.parts[*]", "Parts[*]", rules=[FieldRule("n", "N", "str")])
+    outer = LoopRule("out", "$.items[*]", "Items[*]", rules=[inner])
+    output = {"Items": [{"Parts": [{"N": "a"}, {"N": "b"}]}, {"Parts": [{"N": "c"}]}]}
+    values = output_values([outer], output)
+    assert values["rules[0].rules[0].rules[0]"] == [["a", "b"], ["c"]]
+    assert values["rules[0].rules[0]"] == [[{"N": "a"}, {"N": "b"}], [{"N": "c"}]]

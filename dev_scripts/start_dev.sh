@@ -7,4 +7,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/../desktop"
 export GDK_BACKEND=x11 WEBKIT_DISABLE_DMABUF_RENDERER=1
-exec cargo tauri dev "$@"
+# a change to the Python engine restarts the app (the worker `mapper serve` loads it once): the
+# watch is on the dev side only, the app itself carries no reload code
+root="$(cd .. && pwd)"
+exec cargo tauri dev --additional-watch-folders "$root/cli" --additional-watch-folders "$root/compiler" --additional-watch-folders "$root/transpiler" "$@"

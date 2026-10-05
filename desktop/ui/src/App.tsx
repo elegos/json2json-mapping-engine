@@ -1512,9 +1512,11 @@ export function App() {
       {
         headerName: "Output",
         colId: "output",
-        hide: !outputSource,
         width: 200,
         valueGetter: (p) => (p.data ? (outputCell(outputResult, p.data.path)?.text ?? "") : ""),
+        // nothing chosen yet: the first row says what the column is for
+        cellRenderer: (p: ICellRendererParams<Row>) =>
+          !outputSource && p.node.rowIndex === 0 ? <span className="muted">Select an output file…</span> : p.value,
         cellClass: (p) => `output-cell ${p.data ? (outputCell(outputResult, p.data.path)?.state ?? "") : ""}`,
         tooltipValueGetter: (p) => (p.data ? (outputCell(outputResult, p.data.path)?.tooltip ?? "") : ""),
       },

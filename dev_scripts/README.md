@@ -10,6 +10,6 @@ Scripts the development reuses; add one here when a command sequence is run more
 | `e2e.sh [name…]` | the headless-browser UI checks (`shots/*-check.mjs`), all or by name (`wizard`, `golden-run`…) |
 | `rebuild.sh` | clears `build/cache`, `mapper build`, `mapper check`, shows what changed in `build/` |
 | `shots.sh [name…]` | regenerates the guide's screenshots |
-| `start_dev.sh [args…]` | the desktop app in dev mode (`cargo tauri dev`: Vite hot reload for the UI, Rust rebuild), with the settings Wayland needs |
+| `start_dev.sh [args…]` | the desktop app in dev mode (`cargo tauri dev`: Vite hot reload for the UI, Rust rebuild), restarting it when the Python engine changes, with the settings Wayland needs |
 
 Not scripts, on purpose: file edits go through the editor tools, not `python - <<EOF` rewrites.

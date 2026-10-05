@@ -62,10 +62,10 @@ console.log("diff:", (await diff.getAttribute("class")).includes("diff"), "| sam
 if ((await page.locator(".output-cell.same").count()) === 0) fail("no cell agrees with the expected output");
 if (!(await button.getAttribute("class")).includes("ok")) fail("light is not green for the case");
 
-// no output: the column goes
+// no output: the column stays, with its placeholder
 await button.click();
 await page.click('.output-menu button:has-text("No output")');
-await page.waitForSelector('.ag-header-cell[col-id="output"]', { state: "detached" });
+await page.waitForSelector('.ag-row[row-index="0"] .ag-cell[col-id="output"] .muted');
 if (!(await button.getAttribute("class")).includes("unknown")) fail("light is not off with no input");
 console.log(process.exitCode ? "FAILED" : "ok");
 await browser.close();

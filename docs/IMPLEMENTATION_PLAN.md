@@ -947,5 +947,4 @@ build in:
       schema buttons; the file last used is kept per project and mapping in the app's config
       folder (`input-files.json`), not in the project (a path differs per user). Done:
       `cli/golden_run.py` (`output_values`, `run_input`), op `input_run`, Tauri commands
-      `input_file_get/set`, `ruleOutput.ts`, `shots/output-check.mjs`. Still open: the value of a
-      rule that is a `.map.py` (no grid), and a value per element for nested loops is a flat list.
+      `input_file_get/set`, `ruleOutput.ts`, `shots/output-check.mjs`. A loop inside a loop gives a list of lists.

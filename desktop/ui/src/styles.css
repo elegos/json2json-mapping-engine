@@ -162,9 +162,9 @@ button.primary:hover:not(:disabled) { background: #3468b3; }
 
 .schema-status { display: flex; gap: 6px; margin-left: auto; }
 .schema-button { display: flex; align-items: center; gap: 6px; }
-.output-input { position: relative; }
-.output-menu { position: absolute; right: 0; top: 100%; z-index: 20; min-width: 220px; max-height: 320px; overflow: auto; margin-top: 2px; padding: 4px; display: flex; flex-direction: column; gap: 2px; background: var(--bg, #fff); border: 1px solid #8884; border-radius: 6px; box-shadow: 0 4px 14px #0003; }
-.output-menu button { text-align: left; border: none; background: none; }
+.output-input { position: relative; display: flex; }
+.output-menu { position: absolute; right: 0; top: 100%; z-index: 20; min-width: 220px; max-height: 320px; overflow: auto; margin-top: 2px; padding: 4px; display: flex; flex-direction: column; gap: 2px; background: Canvas; color: CanvasText; border: 1px solid #8886; border-radius: 6px; box-shadow: 0 4px 14px #0003; }
+.output-menu button { text-align: left; border: none; background: none; color: inherit; }
 .output-menu button:hover, .output-menu button.current { background: #8882; }
 .output-group { padding: 4px 8px 0; font-size: 11px; opacity: .6; text-transform: uppercase; }
 .output-cell { font-family: ui-monospace, monospace; }
