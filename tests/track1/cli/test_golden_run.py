@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from cli.golden_run import record_case, run_cases
+from cli.golden_run import _result_json, record_case, run_cases
 from cli.serve import serve
 from transpiler.model import FnYamlError
 
@@ -110,6 +110,21 @@ def test_a_rule_that_uses_a_regular_expression_is_marked_as_such(project: Path) 
     assert result["target"] == "plsql" and result["passed"] is False
     other = [e for r in run_cases(project, "orders", ["no_lines"]) for e in r["errors"]]
     assert all(e["regex"] for e in other)  # `cur` again, nothing else
+
+
+def test_only_a_pattern_python_cannot_compile_is_marked(project: Path) -> None:
+    from compiler.backends.integration import CaseResult, TestCase
+
+    case = TestCase("orders", "c", project / "x", None, None)
+    index = {"cur": {"path": "rules[1]", "regex": True}}
+
+    def marked(cause: str) -> bool:
+        result = CaseResult(case, False, rule_errors=[{"rule": "cur", "cause": cause}])
+        return _result_json(result, index, "plsql", {})["errors"][0]["regex"]
+
+    assert marked("error: missing ), unterminated subpattern at position 0")
+    assert marked("PatternError: missing ), unterminated subpattern at position 0")
+    assert not marked("ValueError: bad value")  # same rule, another cause: a real failure
 
 
 def _with_functions(project: Path, source: str, expression: str) -> None:

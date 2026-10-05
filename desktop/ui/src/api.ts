@@ -242,7 +242,7 @@ export interface GoldenResult {
 
 /** A rule that reported an error in a run. `path` is its row in the grid (null for a `.map.py`),
  * `expected` says the case expects it to fail, `regex` that it (or a rule inside it) uses a
- * regular expression. */
+ * regular expression and failed because Python could not compile the pattern. */
 export interface GoldenError {
   rule: string;
   cause: string;

@@ -75,9 +75,9 @@ case failed and why, not which field.
 
 > **Regular expressions.** The cases run on Python's engine, whatever the project's backend is. A
 > pattern is written in the dialect of the backend (Oracle's, for instance), so when a rule that
-> uses `regexp_replace` or `regexp_group` fails on a project that is not on Python, the mark is
-> amber and the tool says it **may be a false positive**: the pattern might be fine for the
-> backend and not for Python. Check it in both before changing it.
+> uses `regexp_replace` or `regexp_group` fails because Python cannot compile the pattern, on a
+> project that is not on Python, the mark is amber and the tool says it **may be a false
+> positive**: the pattern might be fine for the backend and not for Python. Check it in both before changing it.
 
 **Record as expected…** makes the output of a case, and the rules that failed, its expected
 result. Look at the output first: recording what is wrong makes the case pass for the wrong

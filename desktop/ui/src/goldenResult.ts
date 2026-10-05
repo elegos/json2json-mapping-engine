@@ -67,8 +67,8 @@ export function maybeFalsePositive(e: GoldenError, target: string): boolean {
 
 export function falsePositiveNote(target: string): string {
   return (
-    `May be a false positive: a regular expression is written in the dialect of the project's backend (${target}), ` +
-    "and the golden cases run on Python's. Check the pattern in both."
+    `May be a false positive: Python could not compile a regular expression, which is written in the dialect of the project's backend (${target}) ` +
+    "while the golden cases run on Python's. Check the pattern in both."
   );
 }
 

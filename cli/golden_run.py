@@ -38,6 +38,8 @@ from transpiler.review import paths_by_id
 from transpiler.serialize import rule_to_raw
 
 _REGEX_CALL = re.compile(r"\bregexp_(replace|group)\s*\(")
+# `re.error` is named `PatternError` from Python 3.13: the pattern does not compile
+_PATTERN_ERROR = re.compile(r"^(error|PatternError):")
 
 
 def rule_index(path: Path) -> dict[str, dict[str, Any]]:
@@ -72,8 +74,10 @@ def _result_json(
             # project functions this rule calls that have no code for Python: it did not run
             "unavailable": unavailable.get(e["rule"], []),
             "path": index.get(e["rule"], {}).get("path"),
-            # a pattern is in the dialect of the project's backend, and the cases run on Python's
-            "regex": index.get(e["rule"], {}).get("regex", False),
+            # a pattern is in the dialect of the project's backend, and the cases run on Python's:
+            # one that Python cannot compile says nothing about the mapping
+            "regex": index.get(e["rule"], {}).get("regex", False)
+            and bool(_PATTERN_ERROR.match(e["cause"])),
             "expected": e["rule"] in expected_errors,
         }
         for e in result.rule_errors

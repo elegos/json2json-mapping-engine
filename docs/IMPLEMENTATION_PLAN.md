@@ -794,8 +794,8 @@ Sliced; each slice is usable on its own:
         are marked on their grid rows (`golden_run` answers, for each error, the row path of the rule
         whose generated function failed, whether the case expected it, and whether the rule uses
         `regexp_*`; the marks belong to the saved file that was run and go on a save or a change
-        of mapping). A failure of a rule with a regular expression, on a project whose backend is not
-        Python, is an amber warning flagged as a possible false positive (the pattern is in the
+        of mapping). A failure of a rule with a regular expression because Python cannot compile the
+        pattern (`re.error`), on a project whose backend is not Python, is an amber warning flagged as a possible false positive (the pattern is in the
         backend's dialect, the cases run on Python's). A loop or an object is marked as a whole.
         Walked through by `ui/shots/golden-marks-check.mjs`. Still to do: the output of a run shown
         next to the input (the *Extra mile* of M6).
