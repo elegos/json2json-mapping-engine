@@ -165,9 +165,9 @@ def test_an_overridden_built_in_shows_what_the_backends_write_for_it(project: Pa
     assert "@override(plsql='TRUNC({x}, {digits})')" in text
     # variadic: the backend's rendering is not a template of the parameters
     assert '# plsql: written by the backend; add @override(plsql="...")' in text
-    assert (
-        _messages(project, text, "builtin_overrides")
-        == ["no code for the project's backend 'plsql': add @override(plsql=...)"]
-        or True
-    )
+    # trunc has its PL/SQL code now; only the variadic concat still needs the developer's
+    issues = fn_files.check_text(project, "builtin_overrides", text)
+    assert [i["function"] for i in issues if "no code for the project" in i["message"]] == [
+        "concat"
+    ]
     assert fn_files.call_function(project, "trunc", [2.678, 2]) == {"ok": True, "result": 2.67}
