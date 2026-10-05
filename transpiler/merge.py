@@ -216,12 +216,15 @@ def _blocks(text: str, who: str) -> dict[str, str]:
     return out
 
 
-def merge_fn_texts(base: str, ours: str, theirs: str) -> tuple[str, list[Conflict]]:
+def merge_fn_texts(
+    base: str, ours: str, theirs: str, choices: dict[str, Side] | None = None
+) -> tuple[str, list[Conflict]]:
     """Merge three versions of a `fn/*.fn` file function by function (docs/ARCHITECTURE.md,
     §The merge engine): a function changed on one side only, added or deleted, merges; the same
     function changed differently on both sides is a conflict (`functions[name]`), with ours kept.
+    `choices` settle a conflict by path, as in `merge3`.
     Raises `MergeError` if one of the versions is not Python."""
-    merger = _Merger({})
+    merger = _Merger(choices or {})
     b = _blocks(base, "base") if base.strip() else {}
     merged = merger.rules("functions", b, _blocks(ours, "ours"), _blocks(theirs, "theirs"))
     return "".join(merged), merger.conflicts
