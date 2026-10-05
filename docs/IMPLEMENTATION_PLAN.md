@@ -941,3 +941,11 @@ build in:
       case, and *Execute all…*) run the cases on this backend, and the tool shows the results
       (PASS / FAIL per case, the output diff, the per-rule errors on the grid rows). How the
       results are shown is still to be designed.
+- [x] The Output column (M6.11): the grid shows, per rule, the value it gave on a golden case
+      (compared with `expected.json`: red where it differs) or on any JSON file (shown only).
+      Decided: one selector (`OutputInputButton`, with a light like the schema buttons) beside the
+      schema buttons; the file last used is kept per project and mapping in the app's config
+      folder (`input-files.json`), not in the project (a path differs per user). Done:
+      `cli/golden_run.py` (`output_values`, `run_input`), op `input_run`, Tauri commands
+      `input_file_get/set`, `ruleOutput.ts`, `shots/output-check.mjs`. Still open: the value of a
+      rule that is a `.map.py` (no grid), and a value per element for nested loops is a flat list.

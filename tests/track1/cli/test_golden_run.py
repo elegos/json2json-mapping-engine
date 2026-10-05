@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from cli.golden_run import _result_json, record_case, run_cases
+from cli.golden_run import _result_json, record_case, run_cases, run_input
 from cli.serve import serve
 from transpiler.model import FnYamlError
 
@@ -171,3 +171,34 @@ def test_a_project_function_without_python_code_makes_its_rules_unavailable(proj
     assert result["inconclusive"] is True and "Warehouse" not in result["output"]
     with pytest.raises(FnYamlError, match="not recorded"):
         record_case(project, "orders", "two_lines")
+
+
+def test_each_rule_has_the_value_it_gave_and_the_one_the_case_expects(project: Path) -> None:
+    result = run_cases(project, "orders", ["two_lines"])[0]
+    values = result["values"]
+    assert values["rules[0]"] == "A1" and values["rules[6].rules[0]"] == ["X-1", "Y-9"]
+    assert "rules[5]" not in values  # no CUSTOMER party: the object left nothing out
+    assert result["expected_values"] == values
+    expected = project / "tests/golden/orders/two_lines.expected.json"
+    data = json.loads(expected.read_text())
+    data["OrderId"] = "WRONG"
+    expected.write_text(json.dumps(data))
+    changed = run_cases(project, "orders", ["two_lines"])[0]
+    assert (
+        changed["expected_values"]["rules[0]"] == "WRONG" and changed["values"]["rules[0]"] == "A1"
+    )
+
+
+def test_any_json_file_runs_without_a_case_and_writes_nothing(
+    project: Path, tmp_path: Path
+) -> None:
+    source = project / "tests/golden/orders/two_lines.input.json"
+    free = tmp_path / "somewhere.json"
+    free.write_text(source.read_text())
+    before = sorted(p.name for p in project.rglob("*"))
+    result = run_input(project, "orders", free)
+    assert result["passed"] is None and result["expected_values"] is None
+    assert result["values"]["rules[0]"] == "A1" and result["name"] == "somewhere.json"
+    assert sorted(p.name for p in project.rglob("*")) == before
+    with pytest.raises(FnYamlError, match="no such file"):
+        run_input(project, "orders", tmp_path / "ghost.json")

@@ -11,6 +11,8 @@ import { goldenDiagnostics } from "./goldenResult";
 import { GoldenImport } from "./GoldenImport";
 import { nameProblem } from "./mappings";
 import { PromptDialog, type PromptField } from "./PromptDialog";
+import { OutputInputButton } from "./OutputInput";
+import { outputCell, type OutputSource } from "./ruleOutput";
 import { SchemaStatusButtons } from "./SchemaStatus";
 import {
   type ConfigIssue,
@@ -43,6 +45,10 @@ import {
   goldenImport,
   goldenRecord,
   goldenRun,
+  inputFileGet,
+  inputFileSet,
+  inputRun,
+  chooseJsonFile,
   type GoldenResult,
   goldenRename,
   type GoldenCase,
@@ -1039,8 +1045,68 @@ export function App() {
     }
   }, [project, current]);
   useEffect(() => {
-    if (view === "golden") void loadCases();
+    void loadCases();
   }, [view, loadCases]);
+
+  // the Output column: what the rules give on a golden case or on any JSON file
+  const [outputSource, setOutputSource] = useState<OutputSource | null>(null);
+  const [outputResult, setOutputResult] = useState<GoldenResult | null>(null);
+  const [outputFileMissing, setOutputFileMissing] = useState(false);
+  const [rememberedFile, setRememberedFile] = useState<string | null>(null);
+  useEffect(() => {
+    // the file used last time on this mapping (kept outside the project)
+    setOutputSource(null);
+    setOutputResult(null);
+    setRememberedFile(null);
+    if (!project || !current) return;
+    let stale = false;
+    inputFileGet(project, mappingName(current)).then(
+      (file) => {
+        if (stale || !file) return;
+        setRememberedFile(file);
+        setOutputSource({ kind: "file", path: file });
+      },
+      () => undefined,
+    );
+    return () => {
+      stale = true;
+    };
+  }, [project, current]);
+  // the run is on the saved file: a save, another mapping or another input runs it again
+  const outputKey = JSON.stringify(outputSource);
+  useEffect(() => {
+    setOutputFileMissing(false);
+    if (!project || !current || !outputSource) {
+      setOutputResult(null);
+      return;
+    }
+    let stale = false;
+    const mapping = mappingName(current);
+    const run =
+      outputSource.kind === "case"
+        ? goldenRun(project, mapping, [outputSource.name]).then((got) => got[0] ?? null)
+        : inputRun(project, mapping, outputSource.path);
+    run.then(
+      (result) => !stale && setOutputResult(result),
+      (e) => {
+        if (stale) return;
+        setOutputResult(null);
+        if (outputSource.kind === "file") setOutputFileMissing(true);
+        setStatus(String(e instanceof Error ? e.message : e));
+      },
+    );
+    return () => {
+      stale = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project, current, saved, outputKey]);
+  const pickOutputFile = useCallback(async () => {
+    const file = await chooseJsonFile("Input to run the mapping on");
+    if (!file || !project || !current) return;
+    setRememberedFile(file);
+    setOutputSource({ kind: "file", path: file });
+    await inputFileSet(project, mappingName(current), file).catch(() => undefined);
+  }, [project, current]);
 
   const importCase = useCallback(
     async (v: { name: string; input: string; expected: string | null; errors: string | null }) => {
@@ -1444,6 +1510,15 @@ export function App() {
         },
       },
       {
+        headerName: "Output",
+        colId: "output",
+        hide: !outputSource,
+        width: 200,
+        valueGetter: (p) => (p.data ? (outputCell(outputResult, p.data.path)?.text ?? "") : ""),
+        cellClass: (p) => `output-cell ${p.data ? (outputCell(outputResult, p.data.path)?.state ?? "") : ""}`,
+        tooltipValueGetter: (p) => (p.data ? (outputCell(outputResult, p.data.path)?.tooltip ?? "") : ""),
+      },
+      {
         headerName: "Description",
         colId: "description",
         width: 260,
@@ -1498,7 +1573,7 @@ export function App() {
         },
       },
     ];
-  }, [edit, remoteEdit, showIds, developerMode, diagnostics, flags, invalidColumns, collapsed, toggleFold]);
+  }, [edit, remoteEdit, showIds, developerMode, diagnostics, flags, invalidColumns, collapsed, toggleFold, outputSource, outputResult]);
 
   return (
     <div className="app">
@@ -1698,7 +1773,21 @@ export function App() {
                 onChange={(e) => setFilterText(e.target.value)}
                 onKeyDown={(e) => e.key === "Escape" && setFilterText("")}
               />
-              <SchemaStatusButtons status={schemas} onPick={(kind) => void pickSchema(kind)} />
+              <SchemaStatusButtons status={schemas} onPick={(kind) => void pickSchema(kind)}>
+                <OutputInputButton
+                  cases={cases}
+                  source={outputSource}
+                  fileMissing={outputFileMissing}
+                  rememberedFile={rememberedFile}
+                  onPick={(next) => {
+                    setOutputSource(next);
+                    if (next?.kind === "file" && project && current) {
+                      void inputFileSet(project, mappingName(current), next.path).catch(() => undefined);
+                    }
+                  }}
+                  onChooseFile={() => void pickOutputFile()}
+                />
+              </SchemaStatusButtons>
             </div>
           )}
           {tree && view === "rules" ? (

@@ -20,6 +20,8 @@ const result = (over: Partial<GoldenResult>): GoldenResult => ({
   message: "",
   target: "plsql",
   inconclusive: false,
+  values: {},
+  expected_values: null,
   ...over,
 });
 

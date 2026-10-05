@@ -85,3 +85,18 @@ reason. It replaces the expected files of that case.
 
 The same cases are what the developers' tests and the automatic build run, on every backend, so
 what you keep here is what protects the mapping.
+
+## What each rule gives
+
+The button **Output from…**, beside the schema buttons of the Rules view, adds an **Output** column
+to the grid: what each rule gave when the mapping ran on an input, right next to the rule. Choose:
+
+- **a golden case**: the column also compares with the case's expected output. A cell that gave
+  something else is red (the tooltip says what was expected), one that agrees is green;
+- **any JSON file**: the values are only shown, nothing is compared, and nothing is written into
+  the project. The tool remembers the last file for each mapping, on your computer only (it is a
+  path, and the project is shared).
+
+The button's light is green while the case or the file is there, red when it is gone. Like the
+cases, the column is computed from the **saved** mapping: it refreshes when you save. A rule inside
+a loop shows one value per element, as a list; a rule that left nothing in the output is blank.

@@ -76,7 +76,18 @@ export function makeCopy(name) {
   return dir;
 }
 
+/** What `input_file_set` keeps (the app keeps it in its config folder): "project|mapping" -> path. */
+const inputFiles = new Map();
+export function setInputFile(project, mapping, path) {
+  inputFiles.set(`${project}|${mapping}`, path);
+}
+
 const commands = {
+  input_file_get: async ({ project, mapping }) => inputFiles.get(`${project}|${mapping}`) ?? null,
+  input_file_set: async ({ project, mapping, path }) => {
+    if (path) inputFiles.set(`${project}|${mapping}`, path);
+    else inputFiles.delete(`${project}|${mapping}`);
+  },
   python_status: async () => ({ available: true, python, engine: root, version: "3.12" }),
   initial_project: async () => initial,
   list_fn_files: async ({ project }) =>

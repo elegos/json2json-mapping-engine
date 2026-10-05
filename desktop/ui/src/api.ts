@@ -238,6 +238,10 @@ export interface GoldenResult {
   /** A rule called a project function that has no code for Python: it did not run, so the
    * verdict says nothing about the mapping. */
   inconclusive: boolean;
+  /** Rule path -> the value the rule gave in the output (a rule inside a loop: one per element). */
+  values: Record<string, unknown>;
+  /** The same for the case's expected output; null when it has none. */
+  expected_values: Record<string, unknown> | null;
 }
 
 /** A rule that reported an error in a run. `path` is its row in the grid (null for a `.map.py`),
@@ -257,6 +261,18 @@ export interface GoldenError {
  * the mapping is what runs. */
 export const goldenRun = async (project: string, mapping: string, names?: string[]) =>
   (await reviewRequest<{ results: GoldenResult[] }>({ op: "golden_run", project, mapping, names })).results;
+
+/** Runs the mapping on any JSON file (not a case): nothing is written, nothing is expected. */
+export const inputRun = async (project: string, mapping: string, input: string) =>
+  (await reviewRequest<{ result: GoldenResult }>({ op: "input_run", project, mapping, input })).result;
+
+/** The file this mapping was last run on, kept per user outside the project (a path differs
+ * from one machine to the next). */
+export const inputFileGet = (project: string, mapping: string) =>
+  invoke<string | null>("input_file_get", { project, mapping });
+
+export const inputFileSet = (project: string, mapping: string, path: string | null) =>
+  invoke<void>("input_file_set", { project, mapping, path });
 
 /** Makes the output the mapping gives now the expected result of the case. */
 export const goldenRecord = (project: string, mapping: string, name: string) =>

@@ -3,6 +3,7 @@
 // §Desktop tool, §Python runtime).
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod input_files;
 mod python;
 mod tour;
 mod window_size;
@@ -105,6 +106,25 @@ fn ask_worker(state: &EditWorker, request: &str) -> Result<String, String> {
 }
 
 /// A fresh copy of the tutorial project in a temporary folder; its path.
+/// The file `mapping` was last run on in the grid's Output column (kept per user, per project).
+#[tauri::command]
+fn input_file_get(app: tauri::AppHandle, project: String, mapping: String) -> Option<String> {
+    use tauri::Manager;
+    input_files::get(app.path().app_config_dir().ok()?, &project, &mapping)
+}
+
+#[tauri::command]
+fn input_file_set(
+    app: tauri::AppHandle,
+    project: String,
+    mapping: String,
+    path: Option<String>,
+) -> Result<(), String> {
+    use tauri::Manager;
+    let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    input_files::set(dir, &project, &mapping, path)
+}
+
 #[tauri::command]
 fn tour_project_prepare() -> Result<String, String> {
     tour::prepare().map(|p| p.display().to_string())
@@ -150,6 +170,8 @@ fn main() {
             read_fn,
             write_fn,
             edit_request,
+            input_file_get,
+            input_file_set,
             tour_project_prepare,
             tour_project_cleanup
         ])

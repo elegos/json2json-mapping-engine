@@ -162,6 +162,14 @@ button.primary:hover:not(:disabled) { background: #3468b3; }
 
 .schema-status { display: flex; gap: 6px; margin-left: auto; }
 .schema-button { display: flex; align-items: center; gap: 6px; }
+.output-input { position: relative; }
+.output-menu { position: absolute; right: 0; top: 100%; z-index: 20; min-width: 220px; max-height: 320px; overflow: auto; margin-top: 2px; padding: 4px; display: flex; flex-direction: column; gap: 2px; background: var(--bg, #fff); border: 1px solid #8884; border-radius: 6px; box-shadow: 0 4px 14px #0003; }
+.output-menu button { text-align: left; border: none; background: none; }
+.output-menu button:hover, .output-menu button.current { background: #8882; }
+.output-group { padding: 4px 8px 0; font-size: 11px; opacity: .6; text-transform: uppercase; }
+.output-cell { font-family: ui-monospace, monospace; }
+.output-cell.diff { background: #c0392b26; }
+.output-cell.same { background: #2e9e4f1a; }
 .light { width: 9px; height: 9px; border-radius: 50%; background: #888; flex: none; }
 .light.ok { background: #2e9e4f; }
 .light.missing, .light.invalid { background: #c0392b; }
