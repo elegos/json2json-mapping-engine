@@ -120,7 +120,7 @@ expression that calls a function **you deploy** in the database:
 
 ```python
 @override(plsql="MY_PKG.mean({items}, {field})")
-def avg(items: list[Any], field: str = '') -> Any:
+def avg(items: list[Any], field: str = "") -> Any:
     return sum(i[field] for i in items) / len(items)
 ```
 

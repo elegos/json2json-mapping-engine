@@ -82,7 +82,7 @@ def _is_number(v: Any) -> bool:
 def _multiple_of(value: float, step: Any) -> bool:
     try:
         return Decimal(str(value)) % Decimal(str(step)) == 0
-    except (InvalidOperation, ZeroDivisionError):
+    except InvalidOperation, ZeroDivisionError:
         return True
 
 

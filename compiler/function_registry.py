@@ -150,7 +150,7 @@ def project_functions(project: Path | None) -> dict[str, FunctionInfo]:
     for file in sorted(folder.glob("*.fn")):
         try:
             found.update(read_functions(file.read_text(), f"fn/{file.name}"))
-        except (SyntaxError, OSError, UnicodeDecodeError):
+        except SyntaxError, OSError, UnicodeDecodeError:
             continue
     return found
 

@@ -57,7 +57,7 @@ from compiler.backends.base import Backend, CodeGenError, CompiledUnit, Option
 
 
 @dataclass
-class OutlineUnit(CompiledUnit):          # 1. what compiling one mapping gives
+class OutlineUnit(CompiledUnit):  # 1. what compiling one mapping gives
     mapping_id: str
     rules: list[str] = field(default_factory=list)
     writes: list[str] = field(default_factory=list)
@@ -67,28 +67,28 @@ class OutlineUnit(CompiledUnit):          # 1. what compiling one mapping gives
 
 
 class OutlineBackend(Backend):
-    target: ClassVar[str] = "outline"           # the name used in mapper.toml
-    artifact_suffix: ClassVar[str] = ".txt"     # extension of the files assemble() gives
-    options: ClassVar[tuple[Option, ...]] = (   # the keys of [target.outline]
+    target: ClassVar[str] = "outline"  # the name used in mapper.toml
+    artifact_suffix: ClassVar[str] = ".txt"  # extension of the files assemble() gives
+    options: ClassVar[tuple[Option, ...]] = (  # the keys of [target.outline]
         Option("title", "string", "First line of every file", default="Mapping", max_length=40),
     )
     defaults: ClassVar[dict[str, Any]] = {"title": "Mapping"}
 
-    def compile_module(self, tree, mapping_id, scope_resolution=None):   # 2. one mapping
+    def compile_module(self, tree, mapping_id, scope_resolution=None):  # 2. one mapping
         unit = OutlineUnit(mapping_id)
         for stmt in tree.body:
-            if isinstance(stmt, ast.FunctionDef):                  # a rule
+            if isinstance(stmt, ast.FunctionDef):  # a rule
                 unit.rules.append(stmt.name)
             elif isinstance(stmt, ast.Assign) and isinstance(stmt.targets[0], ast.Attribute):
-                unit.writes.append(ast.unparse(stmt.targets[0]))   # `out.OrderId = ...`
+                unit.writes.append(ast.unparse(stmt.targets[0]))  # `out.OrderId = ...`
         if not unit.writes:
-            raise CodeGenError(f"{mapping_id}: the mapping writes nothing")   # a build error
+            raise CodeGenError(f"{mapping_id}: the mapping writes nothing")  # a build error
         return unit
 
-    def unit_from_json(self, data):                                # 3. back from the cache
+    def unit_from_json(self, data):  # 3. back from the cache
         return OutlineUnit(data["mapping_id"], data["rules"], data["writes"])
 
-    def assemble(self, units):                                     # 4. all mappings
+    def assemble(self, units):  # 4. all mappings
         files = {}
         for unit in units:
             lines = [f"{self.config['title']} {unit.mapping_id}", "rules: " + ", ".join(unit.rules)]
@@ -140,23 +140,29 @@ input `compile_module` receives, as an `ast.Module`:
 
 ```python
 from __mapping__ import *
-__id__ = 'orders'
+
+__id__ = "orders"
+
 
 @dataclass
-class Customer:                       # a shape of the output (an object)
+class Customer:  # a shape of the output (an object)
     Name: str
     Code: str
 
-def oid(root: Orders) -> str:         # a RULE: one function per rule
+
+def oid(root: Orders) -> str:  # a RULE: one function per rule
     return root.id
 
-def wh(root: Orders) -> str | None:   # built-ins are plain calls, by name
-    return split_nth(root.ref, ',', 2)
 
-def lines(root: Orders, src: Ordersitem) -> LinesItem:   # a rule inside a loop gets `src`
-    return LinesItem(Sku=src.sku, Qty=src.qty, Family=split_first(src.sku, '-'))
+def wh(root: Orders) -> str | None:  # built-ins are plain calls, by name
+    return split_nth(root.ref, ",", 2)
 
-out.OrderId = oid(root)               # the statements that run the rules and write the output
+
+def lines(root: Orders, src: Ordersitem) -> LinesItem:  # a rule inside a loop gets `src`
+    return LinesItem(Sku=src.sku, Qty=src.qty, Family=split_first(src.sku, "-"))
+
+
+out.OrderId = oid(root)  # the statements that run the rules and write the output
 for src in root.items:
     out.Lines.append(lines(root, src))
 ```
@@ -187,11 +193,27 @@ Declare every key your backend reads as an `Option`. In return you get, for free
 - `defaults` merged into your `self.config` (a missing key is never a `KeyError` if it is there).
 
 ```python
-Option("schema", "string", "Owner of the generated packages", required=True,
-       max_length=128, pattern=r"[A-Za-z][A-Za-z0-9_$#]*", pattern_hint="letters, digits, _ $ #")
-Option("error_code", "int", "Code of the raised error", required=True, suggest=-20000,
-       minimum=-20999, maximum=-20000)
-Option("parallel", "choice", "How @parallel loops run", default="thread", choices=("thread", "none"))
+Option(
+    "schema",
+    "string",
+    "Owner of the generated packages",
+    required=True,
+    max_length=128,
+    pattern=r"[A-Za-z][A-Za-z0-9_$#]*",
+    pattern_hint="letters, digits, _ $ #",
+)
+Option(
+    "error_code",
+    "int",
+    "Code of the raised error",
+    required=True,
+    suggest=-20000,
+    minimum=-20999,
+    maximum=-20000,
+)
+Option(
+    "parallel", "choice", "How @parallel loops run", default="thread", choices=("thread", "none")
+)
 ```
 
 Kinds: `string`, `int`, `bool`, `choice`, `table` (text to text). A rule that spans several keys
@@ -216,13 +238,14 @@ backend must say what each one is in the target. There are three sources, in thi
 from compiler.function_linker import FunctionImpl
 
 BUILTINS = {
-    "trunc": FunctionImpl("trunc", {"mytarget": "TRUNC({0}, {1})"}),     # fixed arity: {0}, {1}...
+    "trunc": FunctionImpl("trunc", {"mytarget": "TRUNC({0}, {1})"}),  # fixed arity: {0}, {1}...
     "concat": FunctionImpl("concat", {"mytarget": lambda args: " || ".join(args)}),  # variadic
 }
 
+
 class MyBackend(Backend):
     @classmethod
-    def builtin_implementations(cls):     # lets the tool show your templates in "Override…"
+    def builtin_implementations(cls):  # lets the tool show your templates in "Override…"
         return BUILTINS
 ```
 
@@ -264,13 +287,13 @@ class MyBackend(Backend):
     has_integration = True
 
     def integration_unavailable(self) -> str | None:
-        return None if shutil.which("mytool") else "mytool is not installed"   # a reason, or None
+        return None if shutil.which("mytool") else "mytool is not installed"  # a reason, or None
 
-    def run_integration(self, context):          # context.cases, context.files, context.mapping_ids
+    def run_integration(self, context):  # context.cases, context.files, context.mapping_ids
         results = []
         for case in context.cases:
-            output, errors = run_it_somehow(context.files, case.input_path)    # your environment
-            results.append(judge(case, output, errors))      # judge compares and builds the verdict
+            output, errors = run_it_somehow(context.files, case.input_path)  # your environment
+            results.append(judge(case, output, errors))  # judge compares and builds the verdict
         return results
 ```
 

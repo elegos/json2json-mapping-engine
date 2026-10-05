@@ -365,10 +365,10 @@ the developer's responsibility and can only be verified against actual runtime o
 ```python
 @dataclass
 class OrderLine:
-    order_id:     int
+    order_id: int
     product_code: str
-    unit_price:   number
-    shipped_at:   date | None    # optional
+    unit_price: number
+    shipped_at: date | None  # optional
 ```
 
 ---
@@ -519,6 +519,7 @@ They operate only on typed scalar parameters — no access to `root`, `src`, or 
 ```python
 # fn/string_fns.fn
 from __mapping__ import override
+
 
 @override(plsql="REGEXP_SUBSTR({s}, '[^ ]+', 1, {n})")
 def split_part(s: str, n: int) -> str | None:
@@ -1040,16 +1041,18 @@ from generated.stubs.order_event import OrderEvent
 from generated.dataclasses.order_line import OrderLine
 from typing import Any
 
-root: OrderEvent      # typed from input schema; Any without schema (reads unchecked)
-src:  Order           # element type derived from source path ($.events[*] → Event);
-                      # Any without schema (reads unchecked)
-out:  OrderLine       # typed from output schema; untyped object without schema
-                      # (writes accepted as-is, no field or type validation)
-Null: type         # DSL sentinel — not Python None; usable in annotations as T | Null
+root: OrderEvent  # typed from input schema; Any without schema (reads unchecked)
+src: Order  # element type derived from source path ($.events[*] → Event);
+# Any without schema (reads unchecked)
+out: OrderLine  # typed from output schema; untyped object without schema
+# (writes accepted as-is, no field or type validation)
+Null: type  # DSL sentinel — not Python None; usable in annotations as T | Null
+
 
 def override(*, plsql: str = ..., **targets: str) -> Any: ...
 def parallel(degree: int) -> Any: ...
 def dataclass(cls: type) -> type: ...
+
 
 __all__ = ["root", "src", "out", "Null", "override", "parallel", "dataclass"]
 ```
@@ -1747,7 +1750,7 @@ rules:
   variable at the top of its function, however many times the rule reads it:
 
   ```python
-  def pick_items(root: Any) -> Any: ...      # shared by every rule reading this selection
+  def pick_items(root: Any) -> Any: ...  # shared by every rule reading this selection
   def total(root: Any) -> number:
       total_items_pick = pick_items(root)
       return total_items_pick.qty
@@ -2014,9 +2017,9 @@ transform:
 Generates:
 
 ```python
-ord_lin_base     = order.price * order.qty
+ord_lin_base = order.price * order.qty
 ord_lin_discount = order.discountRate if order.discountRate is not None else root.defaults.discount
-out.amount       = round(ord_lin_base * (1 - ord_lin_discount), 2)
+out.amount = round(ord_lin_base * (1 - ord_lin_discount), 2)
 ```
 
 Single-line expressions remain the common case; the multi-line form is available
@@ -2166,7 +2169,7 @@ function's name (still one rule = one function). A project can override the mapp
 explicitly with a single reserved module-level assignment:
 
 ```python
-__id__ = 'order_event_48'
+__id__ = "order_event_48"
 ```
 
 `__id__ = '<string literal>'` is the one exception to the module-scope assignment ban
