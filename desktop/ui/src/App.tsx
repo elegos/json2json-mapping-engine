@@ -1783,8 +1783,9 @@ export function App() {
                   rememberedFile={rememberedFile}
                   onPick={(next) => {
                     setOutputSource(next);
-                    if (next?.kind === "file" && project && current) {
-                      void inputFileSet(project, mappingName(current), next.path).catch(() => undefined);
+                    // a file is remembered for next time; "No output" forgets it
+                    if (project && current && next?.kind !== "case") {
+                      void inputFileSet(project, mappingName(current), next?.path ?? null).catch(() => undefined);
                     }
                   }}
                   onChooseFile={() => void pickOutputFile()}

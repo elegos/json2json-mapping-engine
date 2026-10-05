@@ -31,7 +31,8 @@ export function OutputInputButton({ cases, source, fileMissing, rememberedFile, 
   }, [open]);
 
   const light = outputLight(source, cases.map((c) => c.name), fileMissing);
-  const label = !source ? "Output from…" : source.kind === "case" ? source.name : baseName(source.path);
+  // the name of the file or case is in the tooltip: the label is the same whatever is chosen
+  const label = "Expected Output file";
   const title = !source
     ? "Show what each rule gives on an input: a golden case or any JSON file"
     : source.kind === "case"

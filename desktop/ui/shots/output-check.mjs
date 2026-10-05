@@ -47,7 +47,8 @@ const fail = (m) => {
 // the remembered file: green light, values, no comparison
 await page.waitForSelector('.ag-cell[col-id="output"].output-cell');
 if (!(await button.getAttribute("class")).includes("ok")) fail("light is not green for the file");
-if ((await button.textContent()).trim() !== "free-input.json") fail("button does not name the file");
+if ((await button.textContent()).trim() !== "Expected Output file") fail("button label changed");
+if (!(await button.getAttribute("title")).includes("free-input.json")) fail("the tooltip does not name the file");
 const first = await page.locator('.ag-row[row-index="0"] .ag-cell[col-id="output"]').textContent();
 if (first.trim() !== "A1") fail(`first rule gave ${first}`);
 if ((await page.locator(".output-cell.diff, .output-cell.same").count()) !== 0) fail("a file is compared");
@@ -67,6 +68,11 @@ await button.click();
 await page.click('.output-menu button:has-text("No output")');
 await page.waitForSelector('.ag-row[row-index="0"] .ag-cell[col-id="output"] .muted');
 if (!(await button.getAttribute("class")).includes("unknown")) fail("light is not off with no input");
+// "No output" is remembered: the file does not come back when the app is reopened
+await page.reload();
+await page.waitForSelector(".ag-row");
+await page.waitForTimeout(500);
+if (!(await page.locator(".output-input > button").getAttribute("class")).includes("unknown")) fail("the file came back");
 console.log(process.exitCode ? "FAILED" : "ok");
 await browser.close();
 await server.close();
