@@ -430,6 +430,10 @@ export const fnCreate = async (project: string, file: string, text?: string) => 
 };
 export const fnDelete = async (project: string, file: string) =>
   (await configRequest<{ functions: string[] }>({ op: "fn_delete", project, file })).functions;
+/** Appends a stub function (Python and the project's backend) to a file, made when missing. */
+export const fnAdd = async (project: string, file: string, name: string) => {
+  await configRequest({ op: "fn_add", project, file, name });
+};
 /** Copies a built-in into the overrides file; answers the file to edit. */
 export const fnOverride = (project: string, name: string) =>
   configRequest<{ file: string; created: boolean }>({ op: "fn_override", project, name });

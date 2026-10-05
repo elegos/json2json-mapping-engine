@@ -65,10 +65,11 @@ list of functions, so they never disagree.
 
 ## Creating and editing project functions
 
-You do not need an external editor. In the [function explorer](explorer:open):
+You do not need an external editor. The **fn** tab on the right edge (or Help → Function explorer) slides the [function explorer](explorer:open) over the tool, and the editor slides out to its left; the grid keeps its size.
+
 
 - **New function…** asks for a name and the file (`fn/<file>.fn`, made when it does not exist) and
-  opens the file with a typed skeleton.
+  opens the file with a stub: a body that raises `NotImplementedError("python stub")` and, when the project's backend is not Python, `@override(<backend>="NOT_IMPLEMENTED('<backend> stub')")`. The issues list keeps flagging both until you write the real code.
 - **Edit…** on a project function opens its file. The explorer grows to the left to hold the
   editor: a whole `.fn` file, with Python colours and the function names to complete. The issues
   list is live: syntax errors, a parameter or a result with no type, no description, no code for

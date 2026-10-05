@@ -1,15 +1,4 @@
-/** The text side of the project-function editor: skeletons, names in a file, test-call arguments. */
-
-/** The skeleton of a new function: typed, with the description line the explorer shows. */
-export function functionSkeleton(name: string): string {
-  return `def ${name}(value: str) -> str:\n    """Say what it does, in one line."""\n    return value\n`;
-}
-
-/** `text` with a new function at the end. */
-export function appendFunction(text: string, name: string): string {
-  const head = text.trimEnd();
-  return `${head ? `${head}\n\n\n` : ""}${functionSkeleton(name)}`;
-}
+/** The text side of the project-function editor: names in a file, test-call arguments. */
 
 const HEADER = /^def\s+([A-Za-z]\w*)\s*\(([^)]*)\)/gm;
 

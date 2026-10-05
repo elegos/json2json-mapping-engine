@@ -24,6 +24,7 @@ from compiler.backends.python.backend import runtime_text
 from compiler.backends.python.codegen import _project_definitions
 from compiler.backends.registry import backends
 from compiler.function_registry import (
+    all_functions,
     builtin_functions,
     project_functions,
     read_functions,
@@ -39,6 +40,7 @@ OVERRIDES_WARNING = (
     "# project. Delete a function (or this file) to get the built-in back.\n"
 )
 CALL_TIMEOUT = 10
+STUB_PREFIX = "NOT_IMPLEMENTED("
 
 _NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
 
@@ -133,6 +135,9 @@ def check_text(project: Path, name: str, text: str) -> list[dict[str, Any]]:
             add("error", node, fname, "no return type")
         for key in sorted(set(info.overrides) - known):
             add("error", node, fname, f"@override for {key!r}: not a backend of this tool")
+        for key, template in sorted(info.overrides.items()):
+            if template.startswith(STUB_PREFIX):
+                add("error", node, fname, f"stub for {key}: write the real code")
         if not info.python_code:
             add(
                 "error",
@@ -167,6 +172,32 @@ def create_file(project: Path, name: str, text: str | None = None) -> None:
     if path.exists():
         raise FnYamlError(f"fn/{name}{SUFFIX} exists already")
     write_file(project, name, text if text is not None else _template(name))
+
+
+def function_stub(project: Path, name: str) -> str:
+    """A new function: typed, with a stub for Python (a body that raises) and for the project's
+    backend (a template that calls a name no backend has), so none is forgotten."""
+    target = _target(project)
+    lines = []
+    if target and target != "python":
+        lines.append(f"@override({target}=\"{STUB_PREFIX}'{target} stub')\")")
+    lines += [
+        f"def {name}(value: str) -> str:",
+        '    """Say what it does, in one line."""',
+        '    raise NotImplementedError("python stub")',
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def add_function(project: Path, file: str, name: str) -> None:
+    """Appends a stub function to `fn/<file>.fn` (made when it does not exist)."""
+    if name in all_functions(project):
+        raise FnYamlError(f"a function called {name!r} exists already")
+    path = _path(project, file)
+    text = path.read_text() if path.is_file() else _template(file)
+    if _target(project) not in ("", "python") and "import override" not in text:
+        text = text.rstrip("\n") + "\nfrom __mapping__ import override\n"
+    write_file(project, file, text.rstrip("\n") + "\n\n\n" + function_stub(project, name))
 
 
 def _template(name: str) -> str:

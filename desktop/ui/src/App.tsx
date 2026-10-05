@@ -1864,7 +1864,18 @@ export function App() {
             <div className="empty">{project ? "Pick a mapping" : "Open a project to begin"}</div>
           )}
         </main>
-        {explorer && <FunctionExplorer project={project} onClose={() => setExplorer(false)} />}
+        <FunctionExplorer project={project} open={explorer} onClose={() => setExplorer(false)} />
+        <div className="side-rail" role="tablist" aria-label="Side panels">
+          <button
+            role="tab"
+            aria-selected={explorer}
+            className={explorer ? "active" : undefined}
+            title="Functions: the built-ins and the project's own, and their editor"
+            onClick={() => setExplorer((on) => !on)}
+          >
+            fn
+          </button>
+        </div>
       </div>
       <div className="switches">
         <label>

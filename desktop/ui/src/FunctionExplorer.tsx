@@ -1,19 +1,21 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { type FunctionEntry, fnCreate, fnFiles, fnOverride, fnRead, fnWrite, functionList } from "./api";
+import { type FunctionEntry, fnAdd, fnOverride, functionList } from "./api";
 import { insertableColumn, insertIntoCellEditor, subscribeCellEditor } from "./cellEditor";
 import { callOf, filterFunctions } from "./functionExplorer";
-import { appendFunction, validFunctionName } from "./fnEditor";
+import { validFunctionName } from "./fnEditor";
 import { FunctionEditor } from "./FunctionEditor";
 import { PromptDialog } from "./PromptDialog";
 
 interface Props {
   project: string | null;
+  /** Slid in; the panels stay mounted (and keep their state) while it is out. */
+  open: boolean;
   onClose: () => void;
 }
 
 /** A panel beside the grid listing the functions a mapping can call: searchable, with the
  * signature and description of each, and an Insert button for the cell being edited. */
-export function FunctionExplorer({ project, onClose }: Props) {
+export function FunctionExplorer({ project, open, onClose }: Props) {
   const [all, setAll] = useState<FunctionEntry[]>([]);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
@@ -52,9 +54,7 @@ export function FunctionExplorer({ project, onClose }: Props) {
   const create = async (name: string, file: string) => {
     if (!project) return;
     try {
-      const exists = (await fnFiles(project)).some((f) => f.name === file);
-      if (exists) await fnWrite(project, file, appendFunction(await fnRead(project, file), name));
-      else await fnCreate(project, file, appendFunction("", name));
+      await fnAdd(project, file, name);
       await reload();
       setChosen(name);
       edit(file, name);
@@ -67,20 +67,22 @@ export function FunctionExplorer({ project, onClose }: Props) {
   const current = shown.find((f) => f.name === chosen) ?? shown[0];
 
   return (
-    <aside className={editing ? "explorer editing" : "explorer"} aria-label="Function explorer">
-      {editing && project && (
-        <FunctionEditor
-          key="editor"
-          project={project}
-          file={editing.file}
-          focus={editing.focus}
-          functions={all}
-          onChanged={() => void reload()}
-          onOpen={(file) => edit(file)}
-          onClose={() => setEditing(null)}
-        />
-      )}
-      <div className="explorer-main">
+    <div className={`fx${open ? " open" : ""}${editing ? " editing" : ""}`}>
+      <div className="fx-editor" aria-hidden={!editing}>
+        {editing && project && (
+          <FunctionEditor
+            key="editor"
+            project={project}
+            file={editing.file}
+            focus={editing.focus}
+            functions={all}
+            onChanged={() => void reload()}
+            onOpen={(file) => edit(file)}
+            onClose={() => setEditing(null)}
+          />
+        )}
+      </div>
+      <aside className="explorer" aria-label="Function explorer">
       <div className="explorer-bar">
         <strong>Functions</strong>
         {project && (
@@ -181,7 +183,7 @@ export function FunctionExplorer({ project, onClose }: Props) {
           )}
         </div>
       )}
-      </div>
+      </aside>
       {creating && project && (
         <PromptDialog
           title="New function"
@@ -201,6 +203,6 @@ export function FunctionExplorer({ project, onClose }: Props) {
           }}
         />
       )}
-    </aside>
+    </div>
   );
 }

@@ -6,7 +6,7 @@ header > * { flex: none; white-space: nowrap; }
 .project { flex: 1 1 0; min-width: 0; opacity: 0.7; overflow: hidden; white-space: nowrap; }
 header > .project { flex: 1 1 0; }
 .banner { background: #b8860b33; padding: 6px 12px; }
-.body { display: flex; flex: 1; min-height: 0; }
+.body { display: flex; flex: 1; min-height: 0; position: relative; }
 nav { width: 200px; border-right: 1px solid #8884; overflow: auto; }
 .file { padding: 6px 12px; cursor: pointer; }
 .file:hover { background: #8882; }
@@ -270,7 +270,7 @@ button.primary:hover:not(:disabled) { background: #3468b3; }
 .help-menu { left: auto; right: 0; min-width: 160px; }
 
 /* function explorer */
-.explorer { width: 340px; flex: none; display: flex; flex-direction: column; gap: 8px; padding: 10px; border-left: 1px solid #8884; overflow-y: auto; }
+.explorer { width: 340px; display: flex; flex-direction: column; gap: 8px; padding: 10px; overflow-y: auto; box-sizing: border-box; }
 .explorer-bar { display: flex; justify-content: space-between; align-items: center; }
 .explorer-search { font: inherit; color: inherit; padding: 4px 8px; background: color-mix(in srgb, CanvasText 6%, Canvas); border: 1px solid color-mix(in srgb, CanvasText 22%, transparent); border-radius: 4px; }
 .explorer-list { list-style: none; margin: 0; padding: 0; max-height: 40%; overflow-y: auto; border: 1px solid color-mix(in srgb, CanvasText 22%, transparent); border-radius: 4px; }
@@ -348,9 +348,7 @@ span.result-badge { cursor: default; }
 .lookup-section { margin: 12px 8px 2px; font-size: 11px; font-weight: 600; text-transform: uppercase; opacity: 0.7; }
 .wide-flag { display: flex; gap: 6px; align-items: center; margin-top: 14px; font-size: 12px; }
 .lookup-readers, .lookup-note { font-size: 12px; opacity: 0.8; margin: 0 0 8px; }
-.explorer.editing { width: min(1000px, 60vw); flex-direction: row; overflow: hidden; }
-.explorer-main { width: 320px; flex: none; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
-.fn-editor { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; border-right: 1px solid #8884; padding-right: 10px; overflow-y: auto; }
+.fn-editor { height: 100%; box-sizing: border-box; padding: 10px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
 .fn-bar { display: flex; gap: 6px; align-items: center; }
 .fn-bar .grow { flex: 1; }
 .fn-bar select { min-width: 0; max-width: 55%; font: inherit; color: inherit; background: color-mix(in srgb, CanvasText 6%, Canvas); }
@@ -366,6 +364,18 @@ span.result-badge { cursor: default; }
 .fn-call-row input { flex: 1; min-width: 0; font: 12px monospace; color: inherit; padding: 4px 6px; background: color-mix(in srgb, CanvasText 6%, Canvas); border: 1px solid color-mix(in srgb, CanvasText 22%, transparent); border-radius: 4px; }
 .fn-result { margin: 0; padding: 6px 8px; max-height: 120px; overflow: auto; background: #4f9d5e22; border-radius: 4px; font-size: 12px; white-space: pre-wrap; }
 .fn-result.failed { background: #d94a4a22; }
-.explorer { position: relative; z-index: 1; background: Canvas; }
 .explorer-detail > button + button { margin-left: 8px; }
 .toolbar .schema-status { flex: 0 1 auto; flex-wrap: wrap; min-width: 0; }
+
+/* the side rail and the panels that slide out of it, over the tool: main < editor < list */
+.side-rail { width: 30px; flex: none; display: flex; flex-direction: column; align-items: center; padding-top: 6px; gap: 6px; border-left: 1px solid #8884; position: relative; z-index: 4; background: Canvas; }
+.side-rail button { writing-mode: vertical-rl; padding: 10px 4px; font: inherit; font-weight: 600; cursor: pointer; border: 1px solid transparent; border-radius: 4px; background: none; color: inherit; }
+.side-rail button:hover { background: #8883; }
+.side-rail button.active { background: #2a5a9f66; }
+.fx { position: absolute; top: 0; bottom: 0; right: 30px; width: 0; z-index: 3; pointer-events: none; }
+.fx > .explorer, .fx > .fx-editor { position: absolute; top: 0; bottom: 0; background: Canvas; visibility: hidden; pointer-events: none; transition: transform .22s ease, visibility 0s linear .22s; box-shadow: -6px 0 14px #0004; border-left: 1px solid #8886; }
+.fx .explorer { right: 0; z-index: 2; transform: translateX(110%); }
+.fx .fx-editor { right: 340px; width: min(660px, calc(100vw - 340px - 130px)); z-index: 1; transform: translateX(calc(100% + 340px + 20px)); }
+.fx.open .explorer { visibility: visible; pointer-events: auto; transform: none; transition-delay: 0s; }
+.fx.open.editing .fx-editor { visibility: visible; pointer-events: auto; transform: none; transition-delay: 0s; }
+@media (prefers-reduced-motion: reduce) { .fx > .explorer, .fx > .fx-editor { transition: none; } }

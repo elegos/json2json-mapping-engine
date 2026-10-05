@@ -61,7 +61,8 @@ def test_a_name_that_is_a_builtin_or_in_another_file_is_a_warning(project: Path)
         "replaces the built-in of the same name"
     ]
     assert (
-        "also defined in fn/text.fn" in _messages(project, body.replace("{n}", "first_word"), "more")[0]
+        "also defined in fn/text.fn"
+        in _messages(project, body.replace("{n}", "first_word"), "more")[0]
     )
 
 
@@ -129,3 +130,22 @@ def test_a_call_that_never_ends_is_stopped(project: Path, monkeypatch: pytest.Mo
 def test_a_copied_built_in_runs_as_it_did(project: Path) -> None:
     fn_files.override_builtin(project, "round")
     assert fn_files.call_function(project, "round", [2.675, 2]) == {"ok": True, "result": 2.68}
+
+
+def test_a_new_function_is_a_stub_for_python_and_the_projects_backend(project: Path) -> None:
+    fn_files.add_function(project, "money", "to_cents")
+    text = fn_files.read_file(project, "money")
+    assert "from __mapping__ import override" in text
+    assert "@override(plsql=\"NOT_IMPLEMENTED('plsql stub')\")" in text
+    assert 'raise NotImplementedError("python stub")' in text
+    assert _messages(project, text, "money") == [
+        "stub for plsql: write the real code",
+        "no code for Python: write a body or @override(python=...) (the tool and the golden cases "
+        "run Python)",
+    ]
+    fn_files.add_function(project, "money", "to_units")
+    assert "def to_units" in fn_files.read_file(project, "money")
+    with pytest.raises(FnYamlError, match="exists already"):
+        fn_files.add_function(project, "money", "to_cents")
+    with pytest.raises(FnYamlError, match="exists already"):
+        fn_files.add_function(project, "money", "split_first")

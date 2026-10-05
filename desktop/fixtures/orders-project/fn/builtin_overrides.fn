@@ -1,0 +1,18 @@
+# Built-in functions: changing them might break the mappings that call them!
+# Each function here replaces the built-in of the same name, in every mapping of the
+# project. Delete a function (or this file) to get the built-in back.
+
+
+def _column(items: list[Any], field: str) -> list[Any]:
+    return [i[field] if field else i for i in items]
+
+
+def avg(items: list[Any], field: str='') -> Any:
+    """The average of the `field` of the elements of a list."""
+    values = _column(items, field)
+    return _py.sum(values) / _py.len(values)
+
+
+def if_else(condition: Any, then: Any, otherwise: Any) -> Any:
+    """`then` when `condition` is true (as in Python), otherwise `otherwise`."""
+    return then if condition else otherwise

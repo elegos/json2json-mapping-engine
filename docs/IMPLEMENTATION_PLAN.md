@@ -748,6 +748,7 @@ Sliced; each slice is usable on its own:
         `fn_create` / `fn_delete` / `fn_override` / `fn_call`; `FunctionEditor.tsx` (file select,
         New file / Delete file, Save / Ctrl+S, live issues, test call, name completion);
         *Edit…* / *Override…* / *New function…* in the explorer; e2e `functions`.
+      - Done (second pass): a side rail (tab *fn*) slides the explorer and, to its left, the editor over the tool (main < editor < list, no resize of the grid); *New function…* writes a stub for Python (`raise NotImplementedError`) and the project's backend (`NOT_IMPLEMENTED('<t> stub')`), both flagged as errors until replaced (`fn_add`).
       - Still open: the issues are not clickable (no jump to the line); no rename of a function
         across the mappings that call it.
 

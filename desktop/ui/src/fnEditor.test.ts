@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appendFunction, argsTemplate, functionNames, parseArgs, validFunctionName } from "./fnEditor";
+import { argsTemplate, functionNames, parseArgs, validFunctionName } from "./fnEditor";
 
 const TEXT = `# fn/text.fn
 def first_word(s: str) -> str | None:
@@ -16,13 +16,6 @@ def pad(s: str, n: int, fill: str = " ", *rest: str) -> str:
 describe("project function editor text", () => {
   it("lists the public functions of a file", () => {
     expect(functionNames(TEXT)).toEqual(["first_word", "pad"]);
-  });
-
-  it("appends a skeleton after what is there", () => {
-    const text = appendFunction(TEXT, "shout");
-    expect(text.startsWith(TEXT.trimEnd())).toBe(true);
-    expect(functionNames(text)).toEqual(["first_word", "pad", "shout"]);
-    expect(appendFunction("", "f")).toMatch(/^def f\(value: str\) -> str:/);
   });
 
   it("proposes one placeholder per required parameter, by type", () => {

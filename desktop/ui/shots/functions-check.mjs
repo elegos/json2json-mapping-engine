@@ -34,17 +34,27 @@ const fail = (m) => {
 };
 const file = (name) => readFileSync(join(project, "fn", name), "utf8");
 
+// the rail opens the panel as an overlay: the tool keeps its size; Help gives the same panel
+const mainWidth = (await page.locator("main").boundingBox()).width;
+await page.click('.side-rail button:has-text("fn")');
+await page.waitForFunction(() => document.querySelector(".fx.open"));
+await page.click('.side-rail button:has-text("fn")');
+await page.waitForFunction(() => !document.querySelector(".fx.open"));
 await page.click('button[aria-label="Help"]');
 await page.click('.help-menu li:text-is("Function explorer")');
-const wide = async () => (await page.locator(".explorer").boundingBox()).width;
-const narrow = await wide();
+await page.waitForFunction(() => document.querySelector(".fx.open"));
 
 // a project function: Edit… opens its file, the panel grows to the left
 await page.fill(".explorer-search", "first_word");
 await page.click('.explorer-list button:has-text("first_word")');
 await page.click('.explorer-detail button:has-text("Edit…")');
 await page.waitForSelector(".fn-editor .cm-content");
-if ((await wide()) <= narrow) fail("the panel did not widen");
+await page.waitForTimeout(400);
+if ((await page.locator("main").boundingBox()).width !== mainWidth) fail("the tool shrank");
+const editorBox = await page.locator(".fx-editor").boundingBox();
+const listBox = await page.locator(".explorer").boundingBox();
+if (editorBox.x + editorBox.width > listBox.x + 1 + 340) fail("the editor is not beside the list");
+if (!(await page.locator(".fx-editor").isVisible())) fail("the editor is not shown");
 if (!(await page.locator(".fn-text").textContent()).includes("def first_word")) fail("the file text is not shown");
 // the plsql project has no code for its backend: an error is listed
 await page.waitForSelector(".fn-issues li.error");
@@ -89,6 +99,8 @@ await page.fill('.prompt input >> nth=1', "text");
 await page.keyboard.press("Enter");
 await page.waitForFunction(() => document.querySelector(".fn-text")?.textContent.includes("def shout"));
 if (!file("text.fn").includes("def shout(value: str)")) fail("the new function is not in its file");
+if (!file("text.fn").includes("NOT_IMPLEMENTED('plsql stub')") || !file("text.fn").includes('NotImplementedError("python stub")')) fail("no stubs");
+await page.waitForSelector(".fn-issues li.error:has-text('stub for plsql')");
 console.log(process.exitCode ? "FAILED" : "ok");
 await browser.close();
 await server.close();
