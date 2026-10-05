@@ -336,16 +336,34 @@ def publish(
         help="Folder to publish to (relative to the project, or absolute); else "
         "$J2JME_PUBLISH_DIR, else [publish] dir of mapper.toml, else build/compiled",
     ),
+    no_check: bool = typer.Option(
+        False,
+        "--no-check",
+        help="Publish even if the committed build/compiled does not match the sources",
+    ),
     json_output: bool = JSON_OPTION,
 ) -> None:
-    """Build, then publish the generated files and manifest.json to the publish directory.
-    Nothing is published when the build fails. The folder is never emptied: only files the
-    previous manifest listed are removed; the manifest is removed first and written last."""
+    """Check, build, then publish the generated files and manifest.json to the publish directory.
+    Nothing is published when the check or the build fails (the check is `mapper check`: with the
+    artifacts committed they must match the sources, so what is published is what is in git).
+    The folder is never emptied: only files the previous manifest listed are removed; the
+    manifest is removed first and written last."""
     from cli.build import compiled_files
     from cli.publish import PublishError, publish_dir
     from cli.publish import publish as write_set
 
     config = _load_config_or_exit()
+    if not no_check:
+        problems, _ = _artifact_state(config)
+        if problems:
+            for line in problems:
+                typer.echo(f"error: {line}", err=True)
+            typer.echo(
+                "error: the committed build/compiled does not match the sources: run `mapper "
+                "build` and commit, or publish anyway with --no-check",
+                err=True,
+            )
+            raise typer.Exit(code=1)
     generate_stubs()
     _compile_and_package(config, None)
     manifest = read_manifest(BUILD_COMPILED_DIR)
@@ -362,6 +380,34 @@ def publish(
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
     typer.echo(f"published: {len(written) - 1} file(s) and {written[-1].name} in {dest}")
+
+
+@app.command()
+@json_capable
+def verify(
+    folder: Annotated[
+        Path | None,
+        typer.Argument(
+            help="A published folder; default: the project's publish directory. "
+            "Needs no project when given."
+        ),
+    ] = None,
+    json_output: bool = JSON_OPTION,
+) -> None:
+    """Check a published folder against its manifest.json: every file it lists is there and is
+    what was published. For whoever reads the folder, before deploying it. Exit 1 when the set
+    is unfinished (no manifest), or a file is missing or changed. Files it does not list are
+    not looked at."""
+    from cli.publish import publish_dir, verify_folder
+
+    if folder is None:
+        folder = publish_dir(_load_config_or_exit(), None, BUILD_COMPILED_DIR)
+    problems, count = verify_folder(folder)
+    if problems:
+        for line in problems:
+            typer.echo(f"error: {line}", err=True)
+        raise typer.Exit(code=1)
+    typer.echo(f"OK — {count} file(s) in {folder} are what manifest.json says")
 
 
 @app.command()
@@ -439,25 +485,19 @@ def test(
         raise typer.Exit(code=1)
 
 
-@app.command()
-@json_capable
-def check(json_output: bool = JSON_OPTION) -> None:
-    """Verify build/compiled/ is in sync with current sources. Never
-    modifies sources or committed files; always recompiles fresh (does not
-    trust the build cache, which only tracks source hashes — not whether
-    committed output still matches what current sources produce)."""
-    config = _load_config_or_exit()
+def _artifact_state(config) -> tuple[list[str] | None, int]:
+    """What is wrong with the committed `build/compiled` against what the current sources give,
+    and how many mappings there are: None instead of a list when git ignores the folder (the
+    artifacts are built in CI, so there is nothing to compare). Always recompiles fresh, ignoring
+    the build cache; exits when a mapping does not compile."""
     mappings = discover_mappings(config)
     try:
         fresh = assemble([compile_fresh(p, config) for p in mappings], config)
     except Exception as exc:
         typer.echo(f"error compiling: {exc}", err=True)
         raise typer.Exit(code=1) from exc
-    manifest = build_manifest(config.project.target, fresh)
     if artifacts_ignored(BUILD_COMPILED_DIR):
-        # built in CI, not committed: nothing to compare
-        typer.echo(f"OK — {len(mappings)} mapping(s) build ({BUILD_COMPILED_DIR} is git-ignored)")
-        return
+        return None, len(mappings)
     suffix = backend_for(config).artifact_suffix
     on_disk = {p.name: p for p in BUILD_COMPILED_DIR.glob(f"*{suffix}")}
     problems = [f"missing: {BUILD_COMPILED_DIR / n}" for n in fresh if n not in on_disk]
@@ -465,13 +505,29 @@ def check(json_output: bool = JSON_OPTION) -> None:
     problems += [
         f"out of sync: {p}" for n, p in on_disk.items() if n in fresh and p.read_text() != fresh[n]
     ]
-    problems += compare(read_manifest(BUILD_COMPILED_DIR), manifest)
+    problems += compare(
+        read_manifest(BUILD_COMPILED_DIR), build_manifest(config.project.target, fresh)
+    )
+    return problems, len(mappings)
+
+
+@app.command()
+@json_capable
+def check(json_output: bool = JSON_OPTION) -> None:
+    """Verify build/compiled/ is in sync with current sources. Never
+    modifies sources or committed files; always recompiles fresh (does not
+    trust the build cache, which only tracks source hashes — not whether
+    committed output still matches what current sources produce)."""
+    problems, count = _artifact_state(_load_config_or_exit())
+    if problems is None:  # built in CI, not committed: nothing to compare
+        typer.echo(f"OK — {count} mapping(s) build ({BUILD_COMPILED_DIR} is git-ignored)")
+        return
     if problems:
         for line in problems:
             typer.echo(line)
         typer.echo("run `mapper build`")
         raise typer.Exit(code=1)
-    typer.echo(f"OK — {BUILD_COMPILED_DIR} is in sync ({len(mappings)} mapping(s))")
+    typer.echo(f"OK — {BUILD_COMPILED_DIR} is in sync ({count} mapping(s))")
 
 
 fn_app = typer.Typer(

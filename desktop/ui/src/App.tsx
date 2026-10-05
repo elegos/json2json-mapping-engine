@@ -49,6 +49,8 @@ import {
   goldenRun,
   inputFileGet,
   inputFileSet,
+  publishDirGet,
+  publishDirSet,
   inputRun,
   chooseJsonFile,
   type GoldenResult,
@@ -602,6 +604,37 @@ export function App() {
       setStatus(String(e instanceof Error ? e.message : e));
     }
   }, [project, current, askWithOption, reloadFiles]);
+
+  /** The folder `Publish` writes to for this user: one of their own, or the project's setting. */
+  const choosePublishDir = useCallback(async () => {
+    if (!project) return;
+    try {
+      const mine = await publishDirGet(project);
+      const choices: Choice[] = [{ id: "choose", label: "Choose a folder…", primary: true }];
+      if (mine) choices.push({ id: "reset", label: "Use the project's setting" });
+      choices.push({ id: "cancel", label: "Cancel" });
+      const choice = await ask(
+        mine
+          ? `Publish writes to ${mine}, the folder you chose for this project on this machine. ` +
+              "It beats the folder in the project's properties."
+          : "Publish writes to the folder in the project's properties (Publish › dir), or to build/compiled " +
+              "when it has none. Choose a folder of your own for this project on this machine?",
+        choices,
+      );
+      if (choice === "choose") {
+        const dir = await chooseProject(mine ?? project, "Folder to publish to");
+        if (dir) {
+          await publishDirSet(project, dir);
+          setStatus(`Publish now writes to ${dir}`);
+        }
+      } else if (choice === "reset") {
+        await publishDirSet(project, null);
+        setStatus("Publish writes to the project's setting again");
+      }
+    } catch (e) {
+      setStatus(String(e instanceof Error ? e.message : e));
+    }
+  }, [project, ask]);
 
   const openProject = useCallback(async () => {
     if (!(await switchGuard())) return;
@@ -1659,12 +1692,21 @@ export function App() {
             <button
               key={c}
               disabled={!canBuild}
-              title={c === "publish" ? "Build, then write the files and manifest.json to the publish folder" : undefined}
+              title={c === "publish" ? "Check and build, then write the files and manifest.json to the publish folder" : undefined}
               onClick={() => run(c)}
             >
               {c[0].toUpperCase() + c.slice(1)}
             </button>
           ))}
+          {developerMode && (
+            <button
+              disabled={!canBuild || busy}
+              title="Choose the folder Publish writes to, on this machine"
+              onClick={() => void choosePublishDir()}
+            >
+              Publish folder…
+            </button>
+          )}
         </span>
         <HelpMenu
           onGuide={() => setGuide("functional")}

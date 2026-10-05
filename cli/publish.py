@@ -78,17 +78,27 @@ def publish(files: dict[str, str], manifest: dict, folder: Path) -> list[Path]:
     return [*written, folder / MANIFEST_NAME]
 
 
-def verify(folder: Path) -> list[str]:
-    """What is wrong with a published folder: no manifest (unfinished or never published), a file
-    it lists missing or changed. Empty when the set is complete."""
+def verify_folder(folder: Path) -> tuple[list[str], int]:
+    """What is wrong with a published folder, and how many files it lists: no manifest
+    (unfinished, or never published), a file it lists missing or changed. Empty when the set is
+    complete."""
     manifest = read_manifest(folder)
     if manifest is None:
-        return [f"no readable {MANIFEST_NAME} in {folder}: not published, or being published"]
+        return [f"no readable {MANIFEST_NAME} in {folder}: not published, or being published"], 0
+    outputs = manifest.get("outputs", {})
     problems = []
-    for name, wanted in manifest.get("outputs", {}).items():
+    for name, wanted in outputs.items():
+        if Path(name).name != name:  # a manifest cannot point outside its folder
+            problems.append(f"{name}: not a file name")
+            continue
         try:
             if digest((folder / name).read_bytes()) != wanted:
                 problems.append(f"{name} changed since it was published")
         except OSError:
             problems.append(f"{name} is missing")
-    return problems
+    return problems, len(outputs)
+
+
+def verify(folder: Path) -> list[str]:
+    """The problems of `verify_folder`."""
+    return verify_folder(folder)[0]

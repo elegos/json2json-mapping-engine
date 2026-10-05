@@ -1028,14 +1028,23 @@ mapper upgrade
 # Work on a project whose mapper.toml names a newer engine than this tool (otherwise refused):
 mapper --allow-older-engine build           # env J2JME_ALLOW_OLDER_ENGINE=1; mapper.toml is not changed
 
-# Publish: build (nothing is published if it fails), then write the generated files and
-# manifest.json to the publish directory. Which one: --to, else $J2JME_PUBLISH_DIR (a per-user
-# choice), else `[publish] dir` of mapper.toml (relative to the project, or absolute), else
-# build/compiled, where the build already put them. The folder is never emptied or replaced
-# (it may be a guest project's, or a synced library): each file is written whole (temporary file
-# + rename) and read back against its hash, the old manifest is removed first and the new one
-# written last, and only files the old manifest listed and the new one does not are removed.
-mapper publish [--to DIR]
+# Publish: check, build, then write the generated files and manifest.json to the publish
+# directory; nothing is published if either fails. The check is `mapper check`: with the artifacts
+# committed they must match the sources, so what is published is what is in git (--no-check skips
+# it; with the artifacts git-ignored there is nothing to compare). Which directory: --to, else
+# $J2JME_PUBLISH_DIR (a per-user choice; the desktop tool keeps its own per project, in its
+# config folder, and passes it as --to), else `[publish] dir` of mapper.toml (relative to the
+# project, or absolute), else build/compiled, where the build already put them. The folder is
+# never emptied or replaced (it may be a guest project's, or a synced library): each file is
+# written whole (temporary file + rename) and read back against its hash, the old manifest is
+# removed first and the new one written last, and only files the old manifest listed and the new
+# one does not are removed.
+mapper publish [--to DIR] [--no-check]
+
+# Verify a published folder, for whoever reads it before deploying it: every file its
+# manifest.json lists is there and has the hash listed; no manifest = unfinished. Needs no
+# project when the folder is given (else it is the project's publish directory). Exit 1 on a problem.
+mapper verify [DIR]
 
 # Run tests
 mapper test --offline          # offline tests, = --track 1 (no runtime needed)

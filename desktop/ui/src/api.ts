@@ -282,6 +282,14 @@ export const inputFileGet = (project: string, mapping: string) =>
 export const inputFileSet = (project: string, mapping: string, path: string | null) =>
   invoke<void>("input_file_set", { project, mapping, path });
 
+/** The folder this user publishes the project to (kept in the app's config, not the project;
+ * it beats `[publish] dir` of mapper.toml), or null for the project's own setting. */
+export const publishDirGet = (project: string) =>
+  invoke<string | null>("publish_dir_get", { project });
+
+export const publishDirSet = (project: string, path: string | null) =>
+  invoke<void>("publish_dir_set", { project, path });
+
 /** Makes the output the mapping gives now the expected result of the case. */
 export const goldenRecord = (project: string, mapping: string, name: string) =>
   reviewRequest<{ output: unknown; errors: string[] }>({ op: "golden_record", project, mapping, name });

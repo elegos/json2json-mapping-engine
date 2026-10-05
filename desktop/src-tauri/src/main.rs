@@ -7,6 +7,7 @@ mod bundle;
 #[cfg(target_os = "linux")]
 mod desktop_entry;
 mod input_files;
+mod publish_dirs;
 mod python;
 mod tour;
 mod window_size;
@@ -70,23 +71,56 @@ fn run_mapper(project: &str, args: &[&str], stdin: Option<&str>) -> Result<Mappe
 }
 
 /// `mapper <command> --json` (build, check, transpile, compile, publish).
-#[tauri::command]
 ///
 /// `allow_older`: the user accepted to work on a project whose `mapper.toml` names a newer engine
-/// than this one (`--allow-older-engine`); the file is never moved back.
+/// than this one (`--allow-older-engine`); the file is never moved back. `publish` goes to the
+/// folder this user chose for the project, if any (`--to`, which beats `[publish] dir`).
+#[tauri::command]
 fn mapper_command(
+    app: tauri::AppHandle,
     project: String,
     command: String,
     allow_older: Option<bool>,
 ) -> Result<MapperOutput, String> {
+    use tauri::Manager;
     if !["build", "check", "transpile", "compile", "publish"].contains(&command.as_str()) {
         return Err(format!("unsupported command: {command}"));
     }
+    let mut args: Vec<String> = Vec::new();
     if allow_older == Some(true) {
-        run_mapper(&project, &["--allow-older-engine", &command, "--json"], None)
-    } else {
-        run_mapper(&project, &[&command, "--json"], None)
+        args.push("--allow-older-engine".into());
     }
+    args.push(command.clone());
+    args.push("--json".into());
+    if command == "publish" {
+        let chosen = app
+            .path()
+            .app_config_dir()
+            .ok()
+            .and_then(|dir| publish_dirs::get(dir, &project));
+        if let Some(dir) = chosen {
+            args.extend(["--to".into(), dir]);
+        }
+    }
+    let args: Vec<&str> = args.iter().map(String::as_str).collect();
+    run_mapper(&project, &args, None)
+}
+
+/// The folder this user publishes `project` to (kept in the app's configuration, not the project).
+#[tauri::command]
+fn publish_dir_get(app: tauri::AppHandle, project: String) -> Option<String> {
+    use tauri::Manager;
+    publish_dirs::get(app.path().app_config_dir().ok()?, &project)
+}
+
+#[tauri::command]
+fn publish_dir_set(
+    app: tauri::AppHandle,
+    project: String,
+    path: Option<String>,
+) -> Result<(), String> {
+    use tauri::Manager;
+    publish_dirs::set(app.path().app_config_dir().map_err(|e| e.to_string())?, &project, path)
 }
 
 #[tauri::command]
@@ -196,6 +230,8 @@ fn main() {
             initial_project,
             list_fn_files,
             mapper_command,
+            publish_dir_get,
+            publish_dir_set,
             read_fn,
             write_fn,
             edit_request,

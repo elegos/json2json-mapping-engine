@@ -656,9 +656,15 @@ Sliced; each slice is usable on its own:
         and the new one does not are removed (a path outside the folder in a manifest is ignored).
         `publish.verify(folder)` checks a published folder against its manifest. `[publish] dir` is a
         field of the project-properties form; a **Publish** button (developer mode) next to
-        Build. Tests: `tests/track1/cli/test_publish.py`. Not done: the per-user folder in the
-        app's own config (today the environment variable), a `mapper verify` command for readers,
-        and the check that the committed artifacts equal the sources before publishing.
+        Build. Tests: `tests/track1/cli/test_publish.py`.
+        Also done: the **check before publishing** (`mapper publish` runs `mapper check` first: with
+        the artifacts committed they must match the sources, else nothing is published and it says
+        to build and commit; `--no-check` skips it; git-ignored artifacts have nothing to compare);
+        **`mapper verify [DIR]`** (a published folder against its manifest: files missing or changed,
+        unfinished = no manifest; needs no project when given a folder; `--json`); and the **per-user
+        folder** in the desktop tool: *Publish folder…* (developer mode) keeps a folder per project
+        in the app's config folder (`publish-dirs.json`, `publish_dirs.rs`), and Publish passes it as
+        `--to`, so it beats `[publish] dir`.
 - [ ] **M6.4 — LLM assist.** Validation suggestions, expression builder (Ollama / API).
 - [ ] **M6.5 — Schemas per mapping.** Each mapping owns its input and output JSON Schema, chosen
       in the tool; changing one forces the Targets and Sources to be validated again (the check

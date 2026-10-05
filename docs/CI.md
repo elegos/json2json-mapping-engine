@@ -296,23 +296,29 @@ project that keeps its own SQL. Which folder:
 dir = "../acme-deploy/sql"
 ```
 
-A build that fails publishes nothing and leaves the last published set as it was. The folder is
+`mapper publish` first runs `mapper check`: with the artifacts committed they must match the
+sources, so what is published is what is in git, and a stale `build/compiled` stops it (`--no-check`
+publishes anyway; with the artifacts git-ignored there is nothing to compare). The desktop tool keeps
+its own folder per project and per user (*Publish folder…*), which it passes as `--to`.
+
+A check or build that fails publishes nothing and leaves the last published set as it was. The folder is
 **never emptied or replaced**: it may hold other people's files. Each file is written whole and read
 back against the hash in the manifest; the old `manifest.json` is removed first and the new one
 written last, and only files the old manifest listed and the new one does not are removed. So a
 reader that finds a `manifest.json` has a complete set, and one that finds none must wait: the set is
-being published, or never was. A reader verifies a folder by comparing each file with the hash its
-manifest lists:
+being published, or never was. A reader verifies a folder with `mapper verify`, which needs no project, only the
+folder and the `mapper` that `install-mapper.sh` brings:
 
 ```sh
 # in a deploy job of the consuming side, before deploying what was published
-cd published/sql
-jq -r '.outputs | to_entries[] | "\(.value)  \(.key)"' manifest.json | sha256sum -c -
+sh install-mapper.sh --version 0.5.0     # the consumer names the version it trusts
+mapper verify published/sql              # exit 1: unfinished (no manifest), a file missing or changed
 ```
 
-(The manifest's hashes read a CRLF as an LF, so that a Windows checkout hashes like a Linux one;
-`sha256sum` compares bytes. On files with LF line ends, as a Linux build writes them, the two agree;
-files written on Windows may need the line ends normalised first. Checked on a Linux build.)
+It looks only at the files the manifest lists (the rest of the folder is not its business) and
+refuses a manifest that names a path outside the folder. Without `mapper`, the same check is
+`jq -r '.outputs | to_entries[] | "\(.value)  \(.key)"' manifest.json | sha256sum -c -`, exact for
+files with LF line ends (the manifest's hashes read a CRLF as an LF).
 
 Publishing from CI, artifacts not committed, GitHub (the Forgejo job differs only in its header, as
 above):
@@ -370,10 +376,9 @@ development checkout) has no archive.
 
 - Archives for Windows and macOS runners: only Linux x86-64.
 - `mapper test` from the archive: the offline suite runs through `pytest`, which the bundled Python
-  does not have (it ships only what `build`, `check` and `publish` need).
+  does not have (it ships only what `build`, `check`, `publish` and `verify` need).
 - The tool's action that puts the artifacts in `.gitignore` and removes them from the repository
   (docs/IMPLEMENTATION_PLAN.md, M6.3b): today you edit `.gitignore` and `git rm --cached` by hand.
-- A per-user publish folder kept by the desktop tool itself: today `J2JME_PUBLISH_DIR`.
 - A run of these examples in real pipelines: they are written from the pieces that exist and that
   were tested one by one (`mapper check`, the manifest, `install-mapper.sh` against a local
   release), not from a green run on GitHub or Forgejo.
