@@ -1,0 +1,26 @@
+[
+ {
+  "n": 1,
+  "x": 29.2,
+  "y": 9.9,
+  "w": 44.4,
+  "h": 5.3,
+  "text": "A built-in override replaces the built-in in every mapping of the project: a warning, and the file can be deleted to get the built-in back."
+ },
+ {
+  "n": 2,
+  "x": 29.2,
+  "y": 16.1,
+  "w": 44.6,
+  "h": 65.6,
+  "text": "A copy of the built-in. The @override line is what the backend writes for it: the code the project's backend gets."
+ },
+ {
+  "n": 3,
+  "x": 29.2,
+  "y": 6.2,
+  "w": 20.3,
+  "h": 2.6,
+  "text": "The overrides live in their own file, fn/builtin_overrides.fn; new functions never go there."
+ }
+]

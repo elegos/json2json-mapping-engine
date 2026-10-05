@@ -19,6 +19,7 @@ The `.fn.yaml` file is the **only source of truth**: the tool writes it from the
 
 - [Developer mode and overrides](page:developer/overrides): the code of a single rule, by hand.
 - [Functions](page:developer/functions): the built-ins and your own.
+- [Writing functions and overrides](page:developer/writing-functions): step by step, with a summary.
 - [Project settings and backends](page:developer/project).
 - [Build, check and test](page:developer/build).
 

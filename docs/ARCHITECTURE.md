@@ -707,6 +707,8 @@ A backend contributes:
 | Configuration | Its `[target.<name>]` section: `options` lists every key with its kind (`string`, `int`, `bool`, `choice`, `table`), help text, default and valid values (and, for an `int` or a `string`, limits: `minimum` / `maximum`, `min_length` / `max_length`, a `pattern` with a `pattern_hint` in words, `choices`; `suggest` is what a new project proposes for a key it cannot default); the loader rejects unknown keys and wrong kinds, and `validate_config` keeps the rules that span keys. The desktop tool draws the project-properties form from `options`, so a backend that declares them gets its form for free |
 | Integration tests | Its own golden-case tests and test environment (image or runner), §Testing |
 
+How to write one, step by step: [docs/backends/writing-a-backend.md](backends/writing-a-backend.md).
+
 **Backends are interchangeable.** For the same mapping and input, every backend must
 produce the same output and report the same rule errors; the golden cases are the shared
 contract and every backend runs all of them. A behaviour that differs between targets

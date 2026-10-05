@@ -9,7 +9,7 @@
  },
  {
   "n": 2,
-  "x": 81.5,
+  "x": 89.4,
   "y": 13.3,
   "w": 6.8,
   "h": 5.3,
@@ -27,7 +27,7 @@
   "n": 4,
   "x": 10.6,
   "y": 68.7,
-  "w": 89.4,
+  "w": 87.8,
   "h": 26.8,
   "text": "The code of the selected rule. Left: what the tool generates from Source and Expression. Right: the override, when the rule is manual."
  }

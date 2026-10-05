@@ -99,12 +99,54 @@ export const SHOTS = [
   },
   {
     name: "functions",
-    setup: (p) => help(p, "Function explorer"),
+    setup: async (p) => {
+      await p.click(".side-rail button");
+      await p.waitForTimeout(500);
+    },
     callouts: [
+      { sel: ".side-rail", text: "The fn tab opens this panel over the tool (Help → Function explorer does the same); the grid keeps its size." },
       { sel: ".explorer-search", text: "Search by name or by what a function does." },
       { sel: ".explorer-list", text: "Every function a mapping can call. The grey tag tells whether it is built in or from a file of the project (fn/…)." },
       { sel: ".explorer-detail code", text: "The signature and what it returns." },
-      { sel: ".explorer-detail button", text: "Insert puts the call in the cell, or the override, you are editing." },
+      { sel: ".explorer-detail button", text: "Insert puts the call in the cell, or the override, you are editing; Edit… (or Override… on a built-in) opens the editor." },
+      { sel: ".explorer-bar button:first-of-type", text: "New function… adds a stub function to a file of the project, or to a new one." },
+    ],
+  },
+  {
+    name: "function-editor",
+    setup: async (p) => {
+      await p.click(".side-rail button");
+      await p.fill(".explorer-search", "first_word");
+      await p.click('.explorer-list button:has-text("first_word")');
+      await p.click('.explorer-detail button:has-text("Edit…")');
+      await p.waitForSelector(".fn-text .cm-content");
+      await p.fill('.fn-call input[aria-label="Arguments"]', '["hello big world"]');
+      await p.click('.fn-call button:has-text("Run")');
+      await p.waitForSelector(".fn-result");
+      await p.waitForTimeout(500);
+    },
+    callouts: [
+      { sel: ".fn-bar", text: "The file being edited (a whole fn/*.fn), and Save (Ctrl+S). A text that does not parse is not saved." },
+      { sel: ".fn-text", text: "The code: Python colours, and completion of function names and of @override." },
+      { sel: ".fn-issues", text: "What is wrong, live: types, description, and the code each backend needs (here, none for PL/SQL yet)." },
+      { sel: ".fn-call", text: "Test call: runs a function on Python, with the text as it is, with the arguments as a JSON array." },
+      { sel: ".explorer", text: "The list stays beside the editor; the editor slides out from behind it." },
+    ],
+  },
+  {
+    name: "function-override",
+    setup: async (p) => {
+      await p.click(".side-rail button");
+      await p.fill(".explorer-search", "trunc");
+      await p.click('.explorer-list button:has-text("trunc")');
+      await p.click('.explorer-detail button:has-text("Override…")');
+      await p.waitForSelector(".fn-warning");
+      await p.waitForTimeout(500);
+    },
+    callouts: [
+      { sel: ".fn-warning", text: "A built-in override replaces the built-in in every mapping of the project: a warning, and the file can be deleted to get the built-in back." },
+      { sel: ".fn-text", text: "A copy of the built-in. The @override line is what the backend writes for it: the code the project's backend gets." },
+      { sel: ".fn-bar select", text: "The overrides live in their own file, fn/builtin_overrides.fn; new functions never go there." },
     ],
   },
   {

@@ -73,23 +73,4 @@ list of functions, so they never disagree.
 
 ## Creating and editing project functions
 
-You do not need an external editor. The **fn** tab on the right edge (or Help → Function explorer) slides the [function explorer](explorer:open) over the tool, and the editor slides out to its left; the grid keeps its size.
-
-
-- **New function…** asks for a name and the file (`fn/<file>.fn`, made when it does not exist) and
-  opens the file with a stub: a body that raises `NotImplementedError("python stub")` and, when the project's backend is not Python, `@override(<backend>="NOT_IMPLEMENTED('<backend> stub')")`. The issues list keeps flagging both until you write the real code.
-- **Edit…** on a project function opens its file. The explorer grows to the left to hold the
-  editor: a whole `.fn` file, with Python colours and the function names to complete. The issues
-  list is live: syntax errors, a parameter or a result with no type, no description, no code for
-  Python, and no code for the project's backend (`@override(plsql="…")`, say). A text that does not
-  parse is not saved, so `fn/` always reads. **Save** (or Ctrl+S) writes the file.
-- **Test call** runs a function of the file on the Python backend with arguments you type as a JSON
-  array (`["hello big world"]`), with the text as it is: no save needed. A function with no Python
-  code says so.
-- **Override…** on a built-in copies its source (with the helpers it uses) into
-  `fn/builtin_overrides.fn`, under a warning: *changing a built-in might break the mappings that
-  call it*. The copy replaces the built-in in every mapping of the project. Delete the function, or
-  the file, to get the built-in back.
-
-Every function needs code for Python (the tool and the golden cases run on it, whatever the
-project's backend) and for the project's own backend, when that is not Python.
+You do it in the tool, from the **fn** tab: see [Writing functions and overrides](page:developer/writing-functions).

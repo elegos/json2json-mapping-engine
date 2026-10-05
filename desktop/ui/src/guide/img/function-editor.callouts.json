@@ -1,0 +1,42 @@
+[
+ {
+  "n": 1,
+  "x": 29,
+  "y": 6,
+  "w": 44.4,
+  "h": 3,
+  "text": "The file being edited (a whole fn/*.fn), and Save (Ctrl+S). A text that does not parse is not saved."
+ },
+ {
+  "n": 2,
+  "x": 29,
+  "y": 9.9,
+  "w": 44.6,
+  "h": 65.1,
+  "text": "The code: Python colours, and completion of function names and of @override."
+ },
+ {
+  "n": 3,
+  "x": 29,
+  "y": 75.9,
+  "w": 44.4,
+  "h": 2.3,
+  "text": "What is wrong, live: types, description, and the code each backend needs (here, none for PL/SQL yet)."
+ },
+ {
+  "n": 4,
+  "x": 29,
+  "y": 81.9,
+  "w": 44.4,
+  "h": 12.4,
+  "text": "Test call: runs a function on Python, with the text as it is, with the arguments as a JSON array."
+ },
+ {
+  "n": 5,
+  "x": 74.3,
+  "y": 4.9,
+  "w": 23.6,
+  "h": 90.6,
+  "text": "The list stays beside the editor; the editor slides out from behind it."
+ }
+]
