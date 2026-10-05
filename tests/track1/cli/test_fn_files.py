@@ -165,9 +165,16 @@ def test_an_overridden_built_in_shows_what_the_backends_write_for_it(project: Pa
     assert "@override(plsql='TRUNC({x}, {digits})')" in text
     # variadic: the backend's rendering is not a template of the parameters
     assert '# plsql: written by the backend; add @override(plsql="...")' in text
-    # trunc has its PL/SQL code now; only the variadic concat still needs the developer's
+    # trunc has its PL/SQL code now; the variadic concat is a stub for the developer to fill
     issues = fn_files.check_text(project, "builtin_overrides", text)
-    assert [i["function"] for i in issues if "no code for the project" in i["message"]] == [
+    assert [i["function"] for i in issues if i["message"].startswith("stub for plsql")] == [
         "concat"
     ]
     assert fn_files.call_function(project, "trunc", [2.678, 2]) == {"ok": True, "result": 2.67}
+
+
+def test_a_built_in_the_backend_lowers_gets_a_stub_for_the_projects_backend(project: Path) -> None:
+    fn_files.override_builtin(project, "avg")
+    text = fn_files.read_file(project, "builtin_overrides")
+    assert "@override(plsql=\"NOT_IMPLEMENTED('plsql stub')\")" in text
+    assert "def _column" in text

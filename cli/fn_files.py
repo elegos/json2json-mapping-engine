@@ -233,10 +233,11 @@ def _parses(path: Path) -> bool:
     return True
 
 
-def _builtin_copy(name: str) -> str:
+def _builtin_copy(project: Path, name: str) -> str:
     """The source of a built-in as written in `compiler/builtins.py`, with the private helpers
     it uses, and without the `@special` marker (a project function is typed by its own
     annotations)."""
+    target = _target(project)
     source = Path(registry.__file__).with_name("builtins.py").read_text()
     tree = ast.parse(source)
     defs = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
@@ -259,23 +260,24 @@ def _builtin_copy(name: str) -> str:
         ]
         notes = []
         if fname == name:
-            decorators, notes = _backend_overrides(name)
+            decorators, notes = _backend_overrides(name, target)
             node.decorator_list = [*decorators, *node.decorator_list]
         parts.append("".join(f"{n}\n" for n in notes) + ast.unparse(node))
     return "\n\n\n".join(parts) + "\n"
 
 
-def _backend_overrides(name: str) -> tuple[list[ast.expr], list[str]]:
+def _backend_overrides(name: str, target: str) -> tuple[list[ast.expr], list[str]]:
     """What each backend (but Python, which runs the body) writes for the built-in, as
     `@override(<backend>="...")` decorators with the parameters as `{name}`; and notes for the
-    ones that cannot be shown that way."""
+    ones that cannot be shown that way. The project's own backend always gets one: a stub when
+    the backend has no template to show (an aggregate it lowers to a loop, say)."""
     info = builtin_functions()[name]
     names = [p.name for p in info.params if not p.variadic]
     decorators: list[ast.expr] = []
     notes: list[str] = []
-    for target, backend in sorted(backends().items()):
+    for backend_name, backend in sorted(backends().items()):
         impl = backend.builtin_implementations().get(name)
-        template = impl.target_templates.get(target) if impl else None
+        template = impl.target_templates.get(backend_name) if impl else None
         if template is None:
             continue
         shown = [f"{{{n}}}" for n in names]
@@ -284,14 +286,26 @@ def _backend_overrides(name: str) -> tuple[list[ast.expr], list[str]]:
         except Exception:  # noqa: BLE001 - a renderer of its own kind: shown as a note
             text = None
         if text is None or any(p.variadic for p in info.params):
-            notes.append(f'# {target}: written by the backend; add @override({target}="...")')
+            notes.append(
+                f'# {backend_name}: written by the backend; add @override({backend_name}="...")'
+            )
             continue
         call = ast.Call(
             func=ast.Name("override", ast.Load()),
             args=[],
-            keywords=[ast.keyword(target, ast.Constant(text))],
+            keywords=[ast.keyword(backend_name, ast.Constant(text))],
         )
         decorators.append(call)
+    shown = {k.arg for d in decorators if isinstance(d, ast.Call) for k in d.keywords}
+    if target and target != "python" and target not in shown:
+        stub = f"{STUB_PREFIX}'{target} stub')"
+        decorators.append(
+            ast.Call(
+                func=ast.Name("override", ast.Load()),
+                args=[],
+                keywords=[ast.keyword(target, ast.Constant(stub))],
+            )
+        )
     return decorators, notes
 
 
@@ -302,7 +316,7 @@ def override_builtin(project: Path, name: str) -> dict[str, Any]:
     existing = path.read_text() if path.is_file() else OVERRIDES_WARNING
     if name in read_functions(existing, path.name):
         return {"file": path.stem, "created": False}
-    copy = _builtin_copy(name)
+    copy = _builtin_copy(project, name)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(existing.rstrip("\n") + "\n\n\n" + copy)
     return {"file": path.stem, "created": True}
