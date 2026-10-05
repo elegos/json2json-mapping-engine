@@ -1,9 +1,9 @@
 #!/bin/sh
 # Installs the `mapper` of the version a project was built with, and puts it in the PATH (for CI).
 #
-#   install-mapper.sh [--manifest FILE] [--version X.Y.Z] [--releases URL] [--dir DIR]
+#   install-mapper.sh [--config FILE] [--version X.Y.Z] [--releases URL] [--dir DIR]
 #
-# The version is `engine` in the project's build/compiled/manifest.json (or --version). The
+# The version is `engine` under [project] in the project's mapper.toml (or --version). The
 # archive is taken from <releases>/v<version>/j2jme-cli-linux-x86_64.tar.gz, checked against the
 # .sha256 beside it, and unpacked in <dir>/<version> (a version already there is reused).
 #   --releases  the releases' download address, the same on GitHub and Forgejo:
@@ -15,7 +15,7 @@
 # and sha256sum; no Python: the archive brings its own.
 set -eu
 
-manifest=build/compiled/manifest.json
+config=mapper.toml
 version=
 releases="${J2JME_RELEASES_URL:-}"
 home="${J2JME_HOME:-${HOME:-.}/.local/share/j2jme}"
@@ -24,7 +24,7 @@ asset=j2jme-cli-linux-x86_64.tar.gz
 die() { echo "install-mapper: $*" >&2; exit 1; }
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --manifest) manifest="${2:?--manifest needs a file}"; shift 2 ;;
+    --config)   config="${2:?--config needs a file}"; shift 2 ;;
     --version)  version="${2:?--version needs a version}"; shift 2 ;;
     --releases) releases="${2:?--releases needs an address}"; shift 2 ;;
     --dir)      home="${2:?--dir needs a folder}"; shift 2 ;;
@@ -34,9 +34,13 @@ while [ "$#" -gt 0 ]; do
 done
 
 if [ -z "$version" ]; then
-  [ -f "$manifest" ] || die "no $manifest (build the project first, or give --version)"
-  version="$(sed -n 's/^[[:space:]]*"engine"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$manifest" | head -n 1)"
-  [ -n "$version" ] || die "no \"engine\" in $manifest"
+  [ -f "$config" ] || die "no $config (run in the project's folder, or give --version)"
+  version="$(awk '
+    /^[[:space:]]*\[/ { in_project = ($0 ~ /^[[:space:]]*\[project\][[:space:]]*(#.*)?$/) }
+    in_project && /^[[:space:]]*engine[[:space:]]*=/ {
+      if (match($0, /"[^"]*"/)) { print substr($0, RSTART + 1, RLENGTH - 2); exit }
+    }' "$config")"
+  [ -n "$version" ] || die "no engine version under [project] in $config (\`mapper upgrade\` writes it)"
 fi
 case "$version" in
   *[!0-9A-Za-z.+-]*|"") die "not a version: $version" ;;

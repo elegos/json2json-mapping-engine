@@ -71,8 +71,16 @@ export async function writeFn(
   return out.json.decayed ?? [];
 }
 
-export async function runMapper(project: string, command: string): Promise<CommandReport> {
-  const out = await invoke<MapperOutput<CommandReport>>("mapper_command", { project, command });
+export async function runMapper(
+  project: string,
+  command: string,
+  allowOlder = false,
+): Promise<CommandReport> {
+  const out = await invoke<MapperOutput<CommandReport>>("mapper_command", {
+    project,
+    command,
+    allowOlder,
+  });
   return (
     out.json ?? {
       ok: false,
@@ -371,6 +379,24 @@ export async function configRead(
   project: string,
 ): Promise<{ schema: ConfigSchema; values: ConfigValues }> {
   return configRequest({ op: "config_read", project });
+}
+
+/** The engine version a project declares against the tool's (`mapper.toml`, `[project] engine`):
+ * `current`; `upgrade` (the tool is newer: opening moves the project up); `older` (the tool is
+ * older than the project); `unversioned` (the project has none, taken like an upgrade). */
+export interface EngineStatus {
+  status: "current" | "upgrade" | "older" | "unversioned";
+  project: string | null;
+  tool: string;
+}
+
+export async function engineStatus(project: string): Promise<EngineStatus> {
+  return configRequest<EngineStatus>({ op: "engine_status", project });
+}
+
+/** Writes the tool's version into the project's `mapper.toml`; never lowers it. */
+export async function engineUpgrade(project: string): Promise<EngineStatus> {
+  return configRequest<EngineStatus>({ op: "engine_upgrade", project });
 }
 
 export async function configCheck(values: ConfigValues): Promise<ConfigIssue[]> {

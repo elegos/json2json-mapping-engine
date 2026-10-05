@@ -28,3 +28,8 @@ required ones (*) for you to fill in.
 
 The tab shows every setting with a short help, and checks what you type before saving it. Comments
 and the order of `mapper.toml` are kept.
+
+`mapper.toml` also records the version of the tool that last opened the project (`engine`); it is
+not a setting you edit here. A newer tool tells you that opening the project updates it to its
+version; an older tool will not open it unless you tick that you accept the risk of incompatibility,
+and the file is never taken back to an older version.

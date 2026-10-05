@@ -581,22 +581,31 @@ Sliced; each slice is usable on its own:
           The sources a commit and a manifest cover are the mappings, the schemas, `mapper.toml`
           **and `fn/*.fn`** (overrides and new functions), which also change what is generated.
         - **Generated artifacts (decided).** `build/compiled/*.sql` stay committed by default, with
-          a `manifest.json` next to them: the engine version that produced them, the hash of each
-          source (mapping, schemas, functions, `mapper.toml`) and of each output. On request the
+          a `manifest.json` next to them: the hash of each source (mapping, schemas, functions,
+          `mapper.toml`) and of each output (the engine version is in `mapper.toml`, see below). On request the
           tool puts them in `.gitignore` and removes them from the repo (CI then builds and
           deploys). With them committed, CI regenerates and **fails on a difference**; with them
-          ignored the build simply runs and **raises nothing for a version mismatch** (only a
-          warning). Output is deterministic only for the same mappings **and** the same engine
-          version, hence the manifest. This closes the open point of the CI diff check (see Release).
+          ignored the build simply runs. Output is deterministic only for the same mappings **and**
+          the same engine version, hence `[project] engine`. This closes the open point of the CI diff check (see Release).
           Done: `cli/manifest.py` and `cli/_version.py`. `build/compiled/manifest.json` is written by
-          every build (`write_package`): `manifest` (format), `engine`, `target`, `sources` (hash of
+          every build (`write_package`): `manifest` (format), `target`, `sources` (hash of
           `mapper.toml`, `mappings/*.map.py`, `mappings/functional/*.fn.yaml`, `schemas/**/*.json`,
           `lookups/*.lookup.yaml`, `fn/*.fn`; CRLF read as LF) and `outputs` (hash of each artifact);
           no date or machine, so building twice gives the same file. `mapper check` also compares it:
-          a source or output that is new, gone or changed is a problem, a different engine version
-          alone a warning; with `build/compiled` git-ignored (`git check-ignore`) it only builds. The
-          engine's version is `cli/_version.py` (the engine is shipped without package metadata),
-          which `packaging/release.py prepare` replaces with the tag's version. `mapper check` is
+          a source or output that is new, gone or changed is a problem; with `build/compiled`
+          git-ignored (`git check-ignore`) it only builds. The tool's version is `cli/_version.py`
+          (the engine is shipped without package metadata), which `packaging/release.py prepare`
+          replaces with the tag's version.
+          **Engine version in `mapper.toml` (decided and done).** `[project] engine`, the only place
+          the version is recorded (not in the manifest), written by the tool; `cli/engine_version.py`
+          (semver order), `mapper upgrade`, the global `--allow-older-engine` /
+          `J2JME_ALLOW_OLDER_ENGINE`, worker ops `engine_status` / `engine_upgrade`, a new project
+          carries it, the properties form cannot change it. A newer tool warns and, in the desktop
+          tool, asks before updating the project (the tutorial's copy silently); an older tool refuses
+          to build and the desktop tool refuses to open, unless the user accepts the risk (a ticked
+          box; `--allow-older-engine`); `mapper.toml` is never moved back (ARCHITECTURE.md §Engine
+          version of a project). Tests: `tests/track1/cli/test_engine_version.py`. Not verified: the
+          dialogs in the running desktop tool (types, unit tests and `cargo check` pass; no run). `mapper check` is
           now a step of the offline job in both pipelines. Not done: the "put the artifacts in
           `.gitignore` and remove them from the repo" action (tool), `mapper publish`.
         - **Portable Linux CLI** (no desktop, no Tauri) to run `mapper` in CI: generation, and the
@@ -605,7 +614,7 @@ Sliced; each slice is usable on its own:
           Done: `j2jme-cli-linux-x86_64.tar.gz` (+ `.sha256`) of every release (`cli_tarball` in
           `packaging/build.sh`: `bin/mapper`, `engine/`, `python-runtime/`, 34 MB; checked here: the
           archive unpacks and `mapper version` / `mapper check` run from it) and `install-mapper.sh`
-          (also a release file): reads `engine` in `manifest.json`, downloads that version's archive
+          (also a release file): reads `[project] engine` of `mapper.toml`, downloads that version's archive
           from `<releases>/v<version>/`, checks it, unpacks it in `~/.local/share/j2jme/<version>`
           and adds `bin/` to `$GITHUB_PATH`; tests in `tests/track1/release/test_install_mapper.py`
           (a release as a `file://` folder). **Not verified**: a run in a real CI job, a release made
@@ -951,7 +960,7 @@ that someone who only installs does not need the project. Still to design: what 
 contains and its layout, how it is built and published from CI (both pipelines, forgejo and
 github), versioning, and the bundled Python runtime the tool already needs (see M6.1). The
 CI diff against the tracked artifacts is decided (M6.3b: fail on a difference when they are
-committed, with the manifest's engine version; nothing when they are git-ignored). It needs a
+committed, with the engine version of `mapper.toml`; nothing when they are git-ignored). It needs a
 **portable Linux CLI** (the engine and its Python, no desktop) as a release artifact. Also here,
 after M7: check that the GitHub pipeline behaves like the forgejo one (not checked so far).
 

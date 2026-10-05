@@ -1,6 +1,7 @@
 [project]
 mode   = "bootstrap"   # driven | bootstrap — bootstrap until the transpiler (M5) is wired up
 target = "plsql"       # compilation target
+engine = "0.1.0"
 
 [optimizer]
 loop_fusion       = true          # disable if side-effects are suspected

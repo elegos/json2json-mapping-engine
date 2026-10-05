@@ -35,6 +35,8 @@ import {
   completeAt,
   configCheck,
   configRead,
+  engineStatus,
+  engineUpgrade,
   configWrite,
   chooseProject,
   chooseSchemaFile,
@@ -212,6 +214,8 @@ export function App() {
     validate: (values: Record<string, string>) => string | null;
     resolve: (values: Record<string, string> | null) => void;
   } | null>(null);
+  // the user accepted to work on a project made with a newer engine (never persisted)
+  const [olderAccepted, setOlderAccepted] = useState(false);
   const dirtyRef = useRef(false);
   const saveRef = useRef<() => Promise<boolean>>(async () => true);
   const folding = useRef(false);
@@ -363,8 +367,59 @@ export function App() {
     [project, forgetHistory],
   );
 
+  /** Compares the engine version the project declares with this tool's (mapper.toml): a newer tool
+   * says it will update the project, an older one refuses unless the user accepts the risk, and
+   * never moves the file back. `silent`: the tutorial's throwaway copy is updated without asking. */
+  const engineGate = useCallback(
+    async (dir: string, silent: boolean): Promise<{ open: boolean; older: boolean }> => {
+      let found;
+      try {
+        found = await engineStatus(dir);
+      } catch {
+        return { open: true, older: false }; // not readable as a project: opening reports it
+      }
+      if (found.status === "current") return { open: true, older: false };
+      if (found.status === "older") {
+        let note = "";
+        for (;;) {
+          const { id, checked } = await askWithOption(
+            `${note}This project was last opened with a newer version of the tool (engine ${found.project}); ` +
+              `this one is ${found.tool}. It may not read the files, or generate them differently. ` +
+              "mapper.toml is not changed.",
+            [
+              { id: "open", label: "Open anyway", primary: true },
+              { id: "cancel", label: "Cancel" },
+            ],
+            "I understand the risk of incompatibility and want to open the project",
+          );
+          if (id !== "open") return { open: false, older: false };
+          if (checked) return { open: true, older: true };
+          note = "Tick the box to open it. ";
+        }
+      }
+      if (!silent) {
+        const was = found.project ? `with engine ${found.project}` : "with no engine version recorded";
+        const id = await ask(
+          `This project was last opened ${was}; this tool is ${found.tool}. Opening it updates the ` +
+            `project to ${found.tool} (mapper.toml); regenerate its build files afterwards.`,
+          [
+            { id: "open", label: "Open and update", primary: true },
+            { id: "cancel", label: "Cancel" },
+          ],
+        );
+        if (id !== "open") return { open: false, older: false };
+      }
+      await engineUpgrade(dir);
+      return { open: true, older: false };
+    },
+    [ask, askWithOption],
+  );
+
   const openDir = useCallback(async (dir: string, remember = true) => {
     try {
+      const gate = await engineGate(dir, !remember);
+      if (!gate.open) return;
+      setOlderAccepted(gate.older);
       const found = await listFnFiles(dir);
       setProject(dir);
       forgetHistory();
@@ -398,7 +453,7 @@ export function App() {
     } catch (e) {
       setStatus(String(e));
     }
-  }, [forgetHistory]);
+  }, [forgetHistory, engineGate]);
 
   const askValues = useCallback(
     (title: string, fields: PromptField[], confirm: string, validate: (v: Record<string, string>) => string | null) =>
@@ -660,14 +715,14 @@ export function App() {
       if (!(await guardRef.current("Save before continuing?", "Continue without saving"))) return;
       setBusy(true);
       try {
-        setReport(await runMapper(project, command));
+        setReport(await runMapper(project, command, olderAccepted));
       } catch (e) {
         setStatus(String(e));
       } finally {
         setBusy(false);
       }
     },
-    [project],
+    [project, olderAccepted],
   );
 
   // typing outside an editor goes to the filter: its text is what the user means to enter

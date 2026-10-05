@@ -8,6 +8,7 @@ the code generator first needs the key.
 
 from __future__ import annotations
 
+import re
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -27,6 +28,8 @@ class MapperConfigError(Exception):
 class ProjectConfig:
     mode: Literal["driven", "bootstrap"] = "driven"
     target: str = "plsql"
+    # the engine version the project was last opened by (cli/engine_version.py); None: never
+    engine: str | None = None
 
 
 @dataclass(frozen=True)
@@ -107,6 +110,18 @@ def _validate_mode(value: Any) -> Literal["driven", "bootstrap"]:
     return value
 
 
+def _validate_engine(value: Any) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not re.fullmatch(
+        r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?", value
+    ):
+        raise MapperConfigError(
+            f"[project] engine must be a version (X.Y.Z or X.Y.Z-suffix) — got {value!r}"
+        )
+    return value
+
+
 def _validate_target_section(target: str, section: dict[str, Any]) -> dict[str, Any]:
     """Required keys and defaults come from the target's backend."""
     try:
@@ -135,6 +150,7 @@ def parse_config(raw: dict[str, Any]) -> MapperConfig:
     project = ProjectConfig(
         mode=_validate_mode(project_raw.get("mode", "driven")),
         target=project_raw.get("target", "plsql"),
+        engine=_validate_engine(project_raw.get("engine")),
     )
 
     optimizer_raw = raw.get("optimizer", {})

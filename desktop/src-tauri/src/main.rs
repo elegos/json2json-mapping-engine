@@ -71,11 +71,22 @@ fn run_mapper(project: &str, args: &[&str], stdin: Option<&str>) -> Result<Mappe
 
 /// `mapper <command> --json` (build, check, transpile, compile).
 #[tauri::command]
-fn mapper_command(project: String, command: String) -> Result<MapperOutput, String> {
+///
+/// `allow_older`: the user accepted to work on a project whose `mapper.toml` names a newer engine
+/// than this one (`--allow-older-engine`); the file is never moved back.
+fn mapper_command(
+    project: String,
+    command: String,
+    allow_older: Option<bool>,
+) -> Result<MapperOutput, String> {
     if !["build", "check", "transpile", "compile"].contains(&command.as_str()) {
         return Err(format!("unsupported command: {command}"));
     }
-    run_mapper(&project, &[&command, "--json"], None)
+    if allow_older == Some(true) {
+        run_mapper(&project, &["--allow-older-engine", &command, "--json"], None)
+    } else {
+        run_mapper(&project, &[&command, "--json"], None)
+    }
 }
 
 #[tauri::command]

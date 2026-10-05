@@ -1,6 +1,7 @@
 [project]
 mode = "driven"
 target = "plsql"       # compilation target
+engine = "0.1.0"        # the tool version that last opened the project
 
 [optimizer]
 loop_fusion       = true          # disable if side-effects are suspected

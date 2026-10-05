@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import io
-import json
 import shutil
 import subprocess
 import tarfile
@@ -35,8 +34,11 @@ def _release(releases: Path, version: str, launcher: str | None = None) -> None:
     (folder / f"{ASSET}.sha256").write_text(f"{digest}  {ASSET}\n")
 
 
-def _manifest(path: Path, version: str) -> Path:
-    path.write_text(json.dumps({"manifest": 1, "engine": version, "target": "plsql"}, indent=2))
+def _config(path: Path, version: str) -> Path:
+    path.write_text(
+        '[optimizer]\nengine = "decoy"\n\n[project]  # the project\nmode = "driven"\n'
+        f'engine   = "{version}"   # the tool that last opened it\ntarget = "plsql"\n'
+    )
     return path
 
 
@@ -55,14 +57,12 @@ def _run(tmp_path: Path, *args: str, releases: Path | None = None, **env: str):
     )
 
 
-def test_installs_the_version_of_the_manifest_and_adds_it_to_the_path(tmp_path: Path) -> None:
+def test_installs_the_version_of_mapper_toml_and_adds_it_to_the_path(tmp_path: Path) -> None:
     releases = tmp_path / "releases"
     _release(releases, "1.2.3")
     _release(releases, "9.9.9")
-    manifest = _manifest(tmp_path / "manifest.json", "1.2.3")
-    done = _run(
-        tmp_path, "--manifest", str(manifest), "--dir", str(tmp_path / "v"), releases=releases
-    )
+    config = _config(tmp_path / "mapper.toml", "1.2.3")
+    done = _run(tmp_path, "--config", str(config), "--dir", str(tmp_path / "v"), releases=releases)
     assert done.returncode == 0, done.stderr
     bin_dir = tmp_path / "v" / "1.2.3" / "bin"
     assert (tmp_path / "github_path").read_text() == f"{bin_dir}\n"
@@ -115,10 +115,11 @@ def test_a_missing_release_says_which(tmp_path: Path) -> None:
 
 
 def test_the_errors_of_the_input(tmp_path: Path) -> None:
-    none = _run(tmp_path, "--manifest", str(tmp_path / "nope.json"))
+    none = _run(tmp_path, "--config", str(tmp_path / "nope.toml"))
     assert none.returncode == 1 and "no " in none.stderr
-    (tmp_path / "m.json").write_text("{}")
-    assert 'no "engine"' in _run(tmp_path, "--manifest", str(tmp_path / "m.json")).stderr
+    (tmp_path / "m.toml").write_text('[optimizer]\nengine = "1.0.0"\n[project]\nmode = "driven"\n')
+    asked = _run(tmp_path, "--config", str(tmp_path / "m.toml")).stderr
+    assert "no engine version under [project]" in asked  # another table's key is not it
     assert "not a version" in _run(tmp_path, "--version", "1/../2").stderr
     assert "where are the releases" in _run(tmp_path, "--version", "1.0.0").stderr
     assert _run(tmp_path, "--bogus").returncode == 1
@@ -128,5 +129,5 @@ def test_help_prints_the_header() -> None:
     done = subprocess.run(
         ["sh", str(SCRIPT), "--help"], capture_output=True, text=True, check=False
     )
-    assert done.returncode == 0 and "install-mapper.sh [--manifest FILE]" in done.stdout
+    assert done.returncode == 0 and "install-mapper.sh [--config FILE]" in done.stdout
     assert "set -eu" not in done.stdout

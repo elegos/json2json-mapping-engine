@@ -942,6 +942,7 @@ All project-level settings live in `mapper.toml` at the repository root.
 [project]
 mode   = "driven"    # driven | bootstrap
 target = "plsql"     # compilation target
+engine = "0.5.0"     # the tool version that last opened the project (see below); written by the tool
 
 [optimizer]
 loop_fusion       = true          # disable if side-effects are suspected
@@ -969,6 +970,28 @@ Each target language defines its own set of required and optional keys under
 `[target.<name>]`. A key that is required by the target but absent from `mapper.toml`
 is a build error.
 
+### Engine version of a project
+
+`[project] engine` is the version of the tool (engine) that last opened the project, `X.Y.Z` or
+`X.Y.Z-suffix`, ordered as semver orders it (a pre-release is older than its release). It is the
+only place the version is recorded (not in `manifest.json`), it is written by the tool and not
+by hand, and it is not a field of the project-properties form (a form save keeps what is there).
+A new project gets the creating tool's version.
+
+| The tool is… | In the desktop tool | `mapper …` |
+|---|---|---|
+| the same | opens | runs |
+| **newer** than the project (or the project has none) | warns that the project will be updated to the tool's version, and on *Open and update* writes it into `mapper.toml`; the tutorial's throwaway copy is updated without asking | runs with a warning; `mapper upgrade` records the version, nothing else does |
+| **older** than the project | warns and does not open it, unless the user ticks *I understand the risk of incompatibility*; `mapper.toml` is not changed | refuses (`error: …`), unless `--allow-older-engine` (or `J2JME_ALLOW_OLDER_ENGINE=1`), which runs with a warning |
+
+`mapper.toml` is only ever moved forward: an older tool never writes its version over a newer one
+(`mapper upgrade` refuses), whatever the user accepted. Because `mapper.toml` is one of the
+sources hashed in `manifest.json`, an upgrade shows in the manifest as a changed source, and with
+the artifacts committed `mapper check` asks for a `mapper build` (§Build folder). CI installs the
+engine this key names (`packaging/install-mapper.sh`, docs/CI.md), so what it regenerates is
+comparable with what was committed. The worker answers `engine_status` and `engine_upgrade` for
+the tool (`cli/engine_version.py`).
+
 ---
 
 ## Build CLI
@@ -992,9 +1015,15 @@ mapper compile
 # driven mode: re-transpiles .fn.yaml → .map.py, recompiles, diffs against committed .sql
 # bootstrap mode: recompiles .map.py directly, diffs against committed .sql
 # Writes to build/ only; never modifies sources or committed files.
-# With the artifacts git-ignored there is nothing to diff: it builds, and an engine version
-# different from the manifest's is a warning, never an error.
+# With the artifacts git-ignored there is nothing to diff: it only builds.
 mapper check
+
+# Record this tool's version as the project's engine ([project] engine in mapper.toml), when it
+# is newer than the one there. Never lowers it.
+mapper upgrade
+
+# Work on a project whose mapper.toml names a newer engine than this tool (otherwise refused):
+mapper --allow-older-engine build           # env J2JME_ALLOW_OLDER_ENGINE=1; mapper.toml is not changed
 
 # Publish: check + build (nothing is published if the check fails), then write the artifacts
 # to the publish directory. Default: build/compiled; `[publish] dir` in mapper.toml (relative
@@ -1454,17 +1483,15 @@ the repository, so that they show up in review and a deploy reads what was revie
 the tool puts them in `.gitignore` and removes them from the repository, and CI builds and deploys
 them instead. All other `build/` contents are ephemeral and git-ignored.
 
-**`build/compiled/manifest.json`** is written with the artifacts: the version of the engine that
-produced them, the hash of each source (each mapping, the schemas, the shared lookups, each
-`fn/*.fn` file, `mapper.toml`; a CRLF is read as LF, so a Windows checkout hashes the same) and the
-hash of each output. It has no date and no machine: building twice from the same sources writes the
-same file, so it can be committed and compared. The output is deterministic only for the same sources
-**and** the same engine version, so the manifest is what makes a comparison meaningful. The engine's
-version is `cli/_version.py` (the engine is shipped without package metadata); a release build sets
-it to the tag's. `mapper check` compares the manifest too: a source or output that is new, gone or
-changed is a problem; a different engine version alone is a warning, since the outputs decide whether
-the artifacts are stale. It is also written last when publishing (§Build CLI, `mapper publish`), so a
-reader never sees half a set.
+**`build/compiled/manifest.json`** is written with the artifacts: the hash of each source (each
+mapping, the schemas, the shared lookups, each `fn/*.fn` file, `mapper.toml`; a CRLF is read as LF,
+so a Windows checkout hashes the same) and the hash of each output, and the target. It has no date
+and no machine: building twice from the same sources writes the same file, so it can be committed
+and compared. The output is deterministic only for the same sources **and** the same engine version;
+the version is not in the manifest but in `mapper.toml` (`[project] engine`, §Engine version of a
+project), which is one of the sources, so a change of it shows as a changed source. `mapper check`
+compares the manifest too: a source or output that is new, gone or changed is a problem. It is also
+written last when publishing (§Build CLI, `mapper publish`), so a reader never sees half a set.
 
 An LLM is embedded in the tool for two purposes:
 
@@ -2228,7 +2255,7 @@ json2json-mapper/
     │   └── stubs/           ← generated __mapping__.pyi (typed per project schemas)
     └── compiled/            ← .sql deployable artifacts (committed by default)
         ├── order_event.sql
-        └── manifest.json    ← engine version, hash of each source and output
+        └── manifest.json    ← hash of each source and output
 ```
 
 ---
@@ -2264,9 +2291,9 @@ commit as the sources** by default, so a deploy never reads old code; or git-ign
 (§Build folder and incremental compilation), in which case CI builds and deploys.
 
 **CI.** A portable Linux CLI (the engine with its Python, no desktop) runs `mapper` in CI. With the
-artifacts committed, CI regenerates them and **fails if they differ** from the committed ones (the
-manifest's engine version is what makes the comparison meaningful); with them git-ignored it just
-builds. A remote repository is optional and user-configurable (GitHub, GitLab, Azure DevOps, or
+artifacts committed, CI regenerates them and **fails if they differ** from the committed ones (it
+runs the engine version `mapper.toml` names, which is what makes the comparison meaningful); with
+them git-ignored it just builds. A remote repository is optional and user-configurable (GitHub, GitLab, Azure DevOps, or
 none).
 
 **Concurrent edits** — the tool uses an optimistic strategy: before committing, it performs a

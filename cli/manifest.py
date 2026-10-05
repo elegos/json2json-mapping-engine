@@ -1,9 +1,8 @@
 """`build/compiled/manifest.json` (docs/ARCHITECTURE.md, §Build folder and incremental compilation):
-what produced the artifacts. The output is deterministic only for the same sources **and** the same
-engine version, so the manifest records both: the engine version, the hash of each source (the
-mappings, the schemas, the shared lookups, the project's `fn/*.fn`, `mapper.toml`) and of each
-output. No date, no machine: building twice from the same sources gives the same file, so it can be
-committed and compared in CI."""
+what produced the artifacts: the hash of each source (the mappings, the schemas, the shared lookups,
+the project's `fn/*.fn`, `mapper.toml`) and of each output. The engine version is not here: it is
+`[project] engine` in `mapper.toml`, which is one of the sources. No date, no machine: building
+twice from the same sources gives the same file, so it can be committed and compared in CI."""
 
 from __future__ import annotations
 
@@ -12,7 +11,6 @@ import json
 import subprocess
 from pathlib import Path
 
-from cli._version import ENGINE_VERSION
 from cli.config import CONFIG_FILENAME
 
 MANIFEST_NAME = "manifest.json"
@@ -49,7 +47,6 @@ def build_manifest(target: str, files: dict[str, str], root: Path = Path()) -> d
     """The manifest of artifacts `files` (name -> text) built for `target` from the sources."""
     return {
         "manifest": FORMAT,
-        "engine": ENGINE_VERSION,
         "target": target,
         "sources": source_hashes(root),
         "outputs": {name: digest(text) for name, text in sorted(files.items())},
@@ -83,13 +80,11 @@ def artifacts_ignored(folder: Path) -> bool:
     return done.returncode == 0
 
 
-def compare(committed: dict | None, fresh: dict) -> tuple[list[str], list[str]]:
-    """What differs between the manifest on disk and the one the current sources give, as
-    `(problems, warnings)`. A different set of sources or outputs is a problem: the artifacts were
-    not built from these sources. A different engine version alone is a warning: the outputs are
-    what decides whether the artifacts are stale."""
+def compare(committed: dict | None, fresh: dict) -> list[str]:
+    """What differs between the manifest on disk and the one the current sources give. A different
+    set of sources or outputs means the artifacts were not built from these sources."""
     if committed is None:
-        return [f"missing or unreadable: {MANIFEST_NAME}"], []
+        return [f"missing or unreadable: {MANIFEST_NAME}"]
     problems: list[str] = []
     for key, what in (("sources", "source"), ("outputs", "output")):
         old, new = committed.get(key) or {}, fresh[key]
@@ -102,10 +97,4 @@ def compare(committed: dict | None, fresh: dict) -> tuple[list[str], list[str]]:
         ]
     if committed.get("target") != fresh["target"]:
         problems.append(f"manifest: target is {committed.get('target')!r}, not {fresh['target']!r}")
-    warnings = []
-    if committed.get("engine") != fresh["engine"]:
-        warnings.append(
-            f"built by engine {committed.get('engine')}, this one is {fresh['engine']}"
-            " (the outputs decide whether they are stale)"
-        )
-    return problems, warnings
+    return problems

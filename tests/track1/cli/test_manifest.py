@@ -45,7 +45,8 @@ def _manifest(project: Path) -> dict:
 def test_the_build_writes_the_manifest(project: Path) -> None:
     assert runner.invoke(app, ["build"]).exit_code == 0
     m = _manifest(project)
-    assert m["manifest"] == 1 and m["engine"] == ENGINE_VERSION and m["target"] == "plsql"
+    assert m["manifest"] == 1 and m["target"] == "plsql"
+    assert "engine" not in m  # the version is `[project] engine` of mapper.toml
     assert set(m["sources"]) == {
         "mapper.toml",
         "mappings/ping.map.py",
@@ -92,25 +93,14 @@ def test_check_fails_without_a_manifest(project: Path) -> None:
     assert result.exit_code == 1 and "manifest.json" in result.output
 
 
-def test_a_different_engine_version_alone_is_only_a_warning(project: Path) -> None:
-    runner.invoke(app, ["build"])
-    path = project / COMPILED / "manifest.json"
-    path.write_text(path.read_text().replace(ENGINE_VERSION, "0.0.1"))
-    result = runner.invoke(app, ["check"])
-    assert result.exit_code == 0, result.output
-    assert "built by engine 0.0.1" in result.output  # stderr is mixed in by the runner
-
-
 def test_compare_names_what_changed() -> None:
-    old = {"engine": "1", "target": "plsql", "sources": {"a": "1", "b": "1"}, "outputs": {"x": "1"}}
-    new = {"engine": "2", "target": "plsql", "sources": {"a": "2", "c": "1"}, "outputs": {"x": "1"}}
-    problems, warnings = compare(old, new)
-    assert problems == [
+    old = {"target": "plsql", "sources": {"a": "1", "b": "1"}, "outputs": {"x": "1"}}
+    new = {"target": "plsql", "sources": {"a": "2", "c": "1"}, "outputs": {"x": "1"}}
+    assert compare(old, new) == [
         "manifest: source c is not in it",
         "manifest: source b is gone",
         "manifest: source a changed",
     ]
-    assert len(warnings) == 1
 
 
 @pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
@@ -120,12 +110,6 @@ def test_with_the_artifacts_ignored_check_only_builds(project: Path) -> None:
     result = runner.invoke(app, ["check"])  # nothing was built: not a problem here
     assert result.exit_code == 0, result.output
     assert "git-ignored" in result.output
-
-    runner.invoke(app, ["build"])
-    path = project / COMPILED / "manifest.json"
-    path.write_text(path.read_text().replace(ENGINE_VERSION, "0.0.1"))
-    result = runner.invoke(app, ["check"])
-    assert result.exit_code == 0 and "built by engine 0.0.1" in result.output
 
 
 def test_version_prints_the_engines() -> None:

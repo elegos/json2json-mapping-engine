@@ -13,6 +13,7 @@ from typing import Annotated, Any
 
 import typer
 
+from cli import engine_version
 from cli.build import (
     BUILD_COMPILED_DIR,
     BuildError,
@@ -139,12 +140,47 @@ def stubs() -> None:
     )
 
 
+_allow_older_engine = False
+
+
+@app.callback()
+def _options(
+    allow_older_engine: Annotated[
+        bool,
+        typer.Option(
+            "--allow-older-engine",
+            envvar="J2JME_ALLOW_OLDER_ENGINE",
+            help="Work on a project whose mapper.toml names a newer engine than this one "
+            "(at your own risk; mapper.toml is never moved back)",
+        ),
+    ] = False,
+) -> None:
+    global _allow_older_engine
+    _allow_older_engine = allow_older_engine
+
+
 def _load_config_or_exit():
     try:
-        return load_config()
+        config = load_config()
+        found = engine_version.status(Path.cwd())
     except MapperConfigError as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
+    if found.status == "older":
+        message = (
+            f"mapper.toml is at engine {found.project}, newer than this tool ({found.tool}): "
+            "the files may not be read or generated the way that version does"
+        )
+        if not _allow_older_engine:
+            typer.echo(f"error: {message}; use a newer tool, or --allow-older-engine", err=True)
+            raise typer.Exit(code=1)
+        typer.echo(f"warning: {message}")
+    elif found.status != "current":
+        was = f"at engine {found.project}" if found.project else "without an engine version"
+        typer.echo(
+            f"warning: mapper.toml is {was}; this tool is {found.tool}: `mapper upgrade` records it"
+        )
+    return config
 
 
 def _target_mappings(file: str | None, config) -> list[Path]:
@@ -382,10 +418,7 @@ def check(json_output: bool = JSON_OPTION) -> None:
         raise typer.Exit(code=1) from exc
     manifest = build_manifest(config.project.target, fresh)
     if artifacts_ignored(BUILD_COMPILED_DIR):
-        # built in CI, not committed: nothing to compare, a different engine is only a warning
-        _, warnings = compare(read_manifest(BUILD_COMPILED_DIR) or manifest, manifest)
-        for line in warnings:
-            typer.echo(f"warning: {line}", err=True)
+        # built in CI, not committed: nothing to compare
         typer.echo(f"OK — {len(mappings)} mapping(s) build ({BUILD_COMPILED_DIR} is git-ignored)")
         return
     suffix = backend_for(config).artifact_suffix
@@ -395,10 +428,7 @@ def check(json_output: bool = JSON_OPTION) -> None:
     problems += [
         f"out of sync: {p}" for n, p in on_disk.items() if n in fresh and p.read_text() != fresh[n]
     ]
-    manifest_problems, warnings = compare(read_manifest(BUILD_COMPILED_DIR), manifest)
-    problems += manifest_problems
-    for line in warnings:
-        typer.echo(f"warning: {line}", err=True)
+    problems += compare(read_manifest(BUILD_COMPILED_DIR), manifest)
     if problems:
         for line in problems:
             typer.echo(line)
@@ -477,6 +507,22 @@ def fn_write(file: str = typer.Argument(..., help=".fn.yaml file to write")) -> 
         typer.echo(json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"}))
         raise typer.Exit(code=1) from exc
     typer.echo(json.dumps({"ok": True, "decayed": decayed}))
+
+
+@app.command()
+def upgrade() -> None:
+    """Record this tool's version as the project's engine (`[project] engine` in mapper.toml),
+    when it is newer than the one there. Never lowers it."""
+    try:
+        before = engine_version.upgrade(Path.cwd())
+    except MapperConfigError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    if before.status == "current":
+        typer.echo(f"mapper.toml is already at engine {before.tool}")
+    else:
+        was = before.project or "no version"
+        typer.echo(f"mapper.toml: engine {was} -> {before.tool}; run `mapper build` to regenerate")
 
 
 @app.command(name="merge-driver")

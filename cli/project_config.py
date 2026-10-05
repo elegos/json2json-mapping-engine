@@ -145,9 +145,10 @@ def check(values: dict[str, Any]) -> list[dict[str, str]]:
     empty for a problem of the file as a whole."""
     issues: list[dict[str, str]] = []
     for section in _engine_sections():
-        for key, message in check_options(
-            section.options, _at(values, section.path), missing=False
-        ):
+        given = _at(values, section.path)
+        if section.path == ("project",):  # not a form field: the version is `mapper upgrade`'s
+            given = {k: v for k, v in given.items() if k != "engine"}
+        for key, message in check_options(section.options, given, missing=False):
             issues.append({"path": ".".join((*section.path, key)), "message": message})
     for name, cls in backends().items():
         if (cls.options or cls.test_options) and name in _at(values, ("target",)):
@@ -187,6 +188,10 @@ def write(project: Path, values: dict[str, Any]) -> None:
         raise MapperConfigError(f"{where}{first['message']}")
     path = project / CONFIG_FILENAME
     document = tomlkit.parse(path.read_text()) if path.is_file() else tomlkit.document()
+    # the engine version is not the form's to change (`mapper upgrade` moves it, forward only)
+    kept = document.get("project", {}).get("engine")
+    if kept is not None:
+        values = {**values, "project": {**values.get("project", {}), "engine": kept}}
     _merge(document, values)
     text = tomlkit.dumps(document)
     if tomllib.loads(text) != values:  # what we are about to write must read back as asked

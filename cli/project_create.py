@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from cli import project_config
+from cli._version import ENGINE_VERSION
 from cli.config import CONFIG_FILENAME, MapperConfigError
 from compiler.backends.registry import backends
 
@@ -31,7 +32,7 @@ def create_project(project: Path, target: str, options: dict[str, Any] | None = 
     section.update({o.key: o.suggest for o in known[target].options if o.suggest is not None})
     section.update(options or {})
     values: dict[str, Any] = {
-        "project": {"mode": "driven", "target": target},
+        "project": {"mode": "driven", "target": target, "engine": ENGINE_VERSION},
         "target": {target: section},
     }
     issues = project_config.check(values)

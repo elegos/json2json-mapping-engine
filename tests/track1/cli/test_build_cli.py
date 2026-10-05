@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+from cli._version import ENGINE_VERSION
 from cli.main import app
 
 runner = CliRunner()
@@ -12,6 +13,7 @@ MAPPER_TOML = """\
 [project]
 mode   = "bootstrap"
 target = "plsql"
+engine = "@ENGINE@"
 
 [optimizer]
 loop_fusion       = true
@@ -28,7 +30,7 @@ export_rule_functions = false
 [compiler]
 [compiler.default_choices]
 format = "round"
-"""
+""".replace("@ENGINE@", ENGINE_VERSION)
 
 PING_MAPPING = 'from __mapping__ import *\n\n__id__ = "ping"\n\nout.Status = "OK"\n'
 

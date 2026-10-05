@@ -28,7 +28,7 @@ and the release files described here.
 | Reviewing | the generated SQL shows up in the diff | the SQL does not |
 | What CI does | `mapper check`: regenerate and **fail if it differs** from the committed files | `mapper build`, then deploy |
 | Risk it removes | deploying code generated from older sources | the same, by never storing it |
-| Engine version known from | the committed `manifest.json` | you pin it (a CI variable or `--version`) |
+| Engine version known from | `[project] engine` in `mapper.toml` | the same |
 
 `mapper check` knows which way a project works: if git ignores `build/compiled` it only builds (the
 mappings must compile) and never complains about missing files; otherwise it compares.
@@ -40,7 +40,6 @@ mappings must compile) and never complains about missing files; otherwise it com
 ```json
 {
   "manifest": 1,
-  "engine": "0.5.0",
   "target": "plsql",
   "sources": { "mapper.toml": "ab12…", "mappings/functional/orders.fn.yaml": "cd34…",
                "schemas/orders_input.schema.json": "…", "fn/text.fn": "…" },
@@ -48,8 +47,10 @@ mappings must compile) and never complains about missing files; otherwise it com
 }
 ```
 
-- `engine` is the version of the engine that generated the files. The output is deterministic
-  only for the same sources **and** the same engine version, so CI should run exactly that engine.
+- The version of the engine is **not** in the manifest but in `mapper.toml`
+  (`[project] engine = "0.5.0"`, written by the tool; see [the engine version](#the-engine-version-of-a-project)).
+  The output is deterministic only for the same sources **and** the same engine version, so CI runs
+  exactly that engine. `mapper.toml` is one of the `sources`, so an upgrade shows as a changed source.
 - `sources` are hashes of `mapper.toml`, the mappings (`.fn.yaml` and `.map.py`), the schemas, the
   shared lookups and the project's `fn/*.fn`; `outputs` are hashes of each generated file. A line
   ending of CRLF counts as LF, so a Windows checkout hashes the same.
@@ -63,7 +64,21 @@ What `mapper check` reports (exit code 1 when there is a problem):
 | a generated file missing, stale, or different from what the sources give | problem |
 | a source or output in the manifest that is new, gone or changed | problem |
 | no readable `manifest.json` | problem |
-| a different `engine` version, with everything else equal | **warning** only: the outputs decide whether the files are stale |
+
+## The engine version of a project
+
+`[project] engine` in `mapper.toml` is the version of the tool that last opened the project. The
+desktop tool and `mapper` compare it with their own:
+
+- a **newer** tool warns that the project will be updated, and the desktop tool then writes its
+  version into `mapper.toml` (`mapper upgrade` does the same from a terminal); the generated files
+  and the manifest change with the next `mapper build`, so commit them together;
+- an **older** tool does not open the project (`mapper` refuses with an error), unless you accept
+  the risk of incompatibility: a tick-box in the desktop tool, `--allow-older-engine` (or
+  `J2JME_ALLOW_OLDER_ENGINE=1`) on the command line. `mapper.toml` is never moved back.
+
+CI is not an "older tool" by accident: `install-mapper.sh` reads this very key, so the job runs
+the version the project declares.
 
 ## Getting `mapper` onto the runner
 
@@ -76,9 +91,9 @@ Each release carries two files besides the desktop packages:
 The script (needs `sh`, `curl`, `tar`, `sha256sum`):
 
 ```sh
-sh install-mapper.sh                       # version = "engine" in build/compiled/manifest.json
+sh install-mapper.sh                       # version = [project] engine in ./mapper.toml
 sh install-mapper.sh --version 0.5.0       # or say it
-sh install-mapper.sh --manifest other/manifest.json --dir /opt/j2jme
+sh install-mapper.sh --config other/mapper.toml --dir /opt/j2jme
 ```
 
 It downloads `<releases>/v<version>/j2jme-cli-linux-x86_64.tar.gz`, checks the checksum, unpacks it
@@ -117,7 +132,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # the version is read from build/compiled/manifest.json
+      # the version is read from [project] engine in mapper.toml
       - name: Install mapper
         run: sh ci/install-mapper.sh
         env:
@@ -171,9 +186,8 @@ only the job's `runs-on` / `container` header differs.
 
 ## Example: artifacts not committed, CI builds and deploys
 
-`build/compiled` is in `.gitignore`, so the repository has no manifest to read the version from:
-**pin the engine version** in a repository variable (`J2JME_VERSION`) and pass it with `--version`.
-The deploy step is fictional — here, running the generated packages against an Oracle schema with
+`build/compiled` is in `.gitignore`; the engine version is still the one in `mapper.toml`, so the
+install step is the same as above. The deploy step is fictional — here, running the generated packages against an Oracle schema with
 SQLcl; the packages have to go in dependency order: `j2jme_functions.sql` first (when present), then
 the mapping packages, `j2jme_mappings.sql` (the index package, when configured) last.
 
@@ -195,10 +209,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install mapper
-        run: sh ci/install-mapper.sh --version "$J2JME_VERSION"
+        run: sh ci/install-mapper.sh
         env:
           J2JME_RELEASES_URL: ${{ vars.J2JME_RELEASES_URL }}
-          J2JME_VERSION: ${{ vars.J2JME_VERSION }}
 
       - name: Build
         run: mapper build
@@ -249,10 +262,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install mapper
-        run: sh ci/install-mapper.sh --version "$J2JME_VERSION"
+        run: sh ci/install-mapper.sh
         env:
           J2JME_RELEASES_URL: ${{ vars.J2JME_RELEASES_URL }}
-          J2JME_VERSION: ${{ vars.J2JME_VERSION }}
 
       - name: Build
         run: mapper build
@@ -270,17 +282,18 @@ project already does to deploy PL/SQL.
 
 ## Upgrading the engine
 
-With the artifacts **committed**, the version is the manifest's, so upgrading is a commit:
+Upgrading is a commit, with the artifacts committed or not:
 
-1. install the new version locally (the desktop tool, or `sh ci/install-mapper.sh --version X.Y.Z`);
-2. `mapper build` regenerates the files and `manifest.json` with the new `engine`;
-3. commit the sources, the artifacts and the manifest together.
+1. open the project with the new tool and accept the update (or run `mapper upgrade` with it): the
+   new version is written into `mapper.toml`;
+2. `mapper build` regenerates the files and `manifest.json`;
+3. commit `mapper.toml` (and, if they are committed, the artifacts and the manifest) together.
 
-Until then CI keeps using the old engine (read from the manifest). If the new engine writes
-different SQL, `mapper check` on the old files fails, which is the point. If it writes the same SQL,
-only the manifest's `engine` differs: a warning, not a failure.
-
-With the artifacts **not committed**, change the `J2JME_VERSION` variable.
+Until then CI keeps installing the old version, read from `mapper.toml`. If the new engine writes
+different SQL, `mapper check` on the old files fails after the upgrade until the artifacts are
+regenerated, which is the point. A teammate with an older tool who opens the project is stopped
+(or warned and asked to accept the risk), so nobody regenerates the files with an older engine
+by accident.
 
 ## Private repositories and draft releases
 
@@ -312,5 +325,3 @@ development checkout) has no archive.
 - A run of these examples in real pipelines: they are written from the pieces that exist and that
   were tested one by one (`mapper check`, the manifest, `install-mapper.sh` against a local
   release), not from a green run on GitHub or Forgejo.
-- A way to record the engine version inside the project when the artifacts are not committed (today
-  you pin it in the pipeline).
