@@ -430,6 +430,16 @@ export const fnCreate = async (project: string, file: string, text?: string) => 
 };
 export const fnDelete = async (project: string, file: string) =>
   (await configRequest<{ functions: string[] }>({ op: "fn_delete", project, file })).functions;
+/** Where a project function is used: the `.fn` files and the mappings (with the calls). */
+export interface RenameUse {
+  files: string[];
+  mappings: { name: string; calls: number }[];
+}
+export const fnRenamePlan = (project: string, name: string) =>
+  configRequest<RenameUse>({ op: "fn_rename_plan", project, name });
+/** Renames a project function in its file, the other functions and every mapping. */
+export const fnRename = (project: string, name: string, next: string) =>
+  configRequest<RenameUse>({ op: "fn_rename", project, name, new: next });
 /** Appends a stub function (Python and the project's backend) to a file, made when missing. */
 export const fnAdd = async (project: string, file: string, name: string) => {
   await configRequest({ op: "fn_add", project, file, name });

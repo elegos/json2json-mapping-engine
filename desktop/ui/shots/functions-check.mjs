@@ -137,6 +137,25 @@ await page.click('.prompt button:has-text("Create")');
 await page.waitForFunction(() => document.querySelector(".fn-text")?.textContent.includes("def cents"));
 if (!file("money.fn").includes("def cents")) fail("no file for the new function");
 
+// an issue is a link to its line
+await page.waitForSelector(".fn-issues li:has-text(\"cents\") button");
+await page.click(".fn-issues li button >> nth=0");
+// the cursor is on the line: a typed mark lands there
+await page.keyboard.type("§");
+await page.waitForSelector('.fn-text .cm-line:has-text("§def cents")');
+await page.keyboard.press("Backspace");
+
+// rename: the def and the calls in the project's other functions and mappings
+await page.fill(".explorer-search", "first_word");
+await page.click('.explorer-list button:has-text("first_word")');
+await page.click('.explorer-detail button:has-text("Rename…")');
+await page.fill('.prompt input', "head_word");
+await page.click('.prompt button:has-text("Next")');
+await page.waitForSelector('.modal button:has-text("Rename")');
+await page.click('.modal button:has-text("Rename")');
+await page.waitForFunction(() => document.querySelector(".explorer-list")?.textContent.includes("head_word"));
+if (file("text.fn").includes("first_word") || !file("text.fn").includes("def head_word")) fail("the function was not renamed in its file");
+
 // typing @ offers the @override of each backend
 await page.click(".fn-text .cm-content");
 await page.keyboard.press("Control+End");

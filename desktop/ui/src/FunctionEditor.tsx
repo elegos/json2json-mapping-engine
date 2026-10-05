@@ -164,6 +164,14 @@ export function FunctionEditor({ project, file, nonce, control, focus, functions
     [functions, backends],
   );
 
+  const goToLine = (line: number) => {
+    const editor = view.current;
+    if (!editor) return;
+    const at = editor.state.doc.line(Math.min(Math.max(line, 1), editor.state.doc.lines)).from;
+    editor.dispatch({ selection: { anchor: at }, effects: EditorView.scrollIntoView(at, { y: "center" }) });
+    editor.focus();
+  };
+
   const save = async () => {
     try {
       await fnWrite(project, file, text);
@@ -269,8 +277,10 @@ export function FunctionEditor({ project, file, nonce, control, focus, functions
         {issues.length === 0 && saved !== null && <li className="ok">No issues.</li>}
         {issues.map((i, n) => (
           <li key={n} className={i.severity}>
-            line {i.line}
-            {i.function ? ` · ${i.function}` : ""}: {i.message}
+            <button onClick={() => goToLine(i.line)} title="Go to the line">
+              line {i.line}
+              {i.function ? ` · ${i.function}` : ""}: {i.message}
+            </button>
           </li>
         ))}
       </ul>

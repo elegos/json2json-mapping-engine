@@ -751,8 +751,8 @@ Sliced; each slice is usable on its own:
       - Done (second pass): a side rail (tab *fn*) slides the explorer and, to its left, the editor over the tool (main < editor < list, no resize of the grid); *New function…* writes a stub for Python (`raise NotImplementedError`) and the project's backend (`NOT_IMPLEMENTED('<t> stub')`), both flagged as errors until replaced (`fn_add`).
       - Done (aggregates): `max`/`min`/`sum`/`avg` are lowered to a loop on PL/SQL; a project function of the same name with `@override(plsql="...")` replaces the loop (`{items}` = the `JSON_ARRAY_T`, `{field}` = the field name, `FunctionLinker.overrides`); *Override…* gives a stub and a note on how.
       - Docs: `docs/backends/writing-a-backend.md` (a verified toy backend, the contract, options, built-ins, errors, tests, "In a nutshell"); in-app guide page *Writing functions and overrides* (developer book) with three screenshots (`functions`, `function-editor`, `function-override`); all guide screenshots retaken (they now show the side rail and the Output column).
-      - Still open: the issues are not clickable (no jump to the line); no rename of a function
-        across the mappings that call it.
+      - Done (refinements): an issue is a link to its line; *Rename…* of a project function (`cli/fn_rename.py`: the `def`, the calls in the other functions by `ast`, and in every mapping's source / expression / guard / filter / sort key / override, quotes and attribute calls left alone; a manual rule's remembered auto code is renamed with it, so nothing goes stale; no review change); a saved, added or renamed function refreshes the Output column.
+      - Still open: the generated `build/` is not refreshed by a rename (rebuild).
 
 - [x] **M6.10 — Project-wide lookups.** A lookup table (a country → currency coding, say) that
       does not change and is useful to several mappings: it can be flagged *Project wide*, lives

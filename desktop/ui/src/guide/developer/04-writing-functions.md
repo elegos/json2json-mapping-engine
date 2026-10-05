@@ -59,7 +59,7 @@ def to_cents(amount: float) -> float:
 {"src": "function-editor.png", "alt": "The function editor with the test call"}
 ```
 
-The issues under the code update as you type: syntax errors, a missing type, a missing description,
+The issues under the code update as you type (click one to go to its line): syntax errors, a missing type, a missing description,
 no code for Python, no code for the backend, and a name that is also defined elsewhere. **Save**
 (Ctrl+S) writes the file; a text that does not parse is refused, so `fn/` always reads.
 
@@ -85,6 +85,16 @@ why a copied built-in such as `avg` reads `_py.sum(values) / _py.len(values)`.
 arguments as a JSON array (`[12.5]`) and press **Run**: you see the result or the error. A function
 with no Python code says so instead of running. It tests the *Python* code; the template for your
 backend runs only when the project is built and tested on that backend.
+
+### Rename a function
+
+Select a project function and press **Rename…**. The tool shows what it will change (the function's
+file, the other functions that call it, and the mappings with their number of calls), and on
+confirmation renames the `def` and every call: in the Source, Expression, guards, filters and the
+code of overrides. Text in quotes and attribute calls (`x.name(…)`) are left alone. A rename does not
+send rules back to review, because what they compute does not change; a manual rule whose auto code
+was up to date stays up to date. The open mapping is read again afterwards (the tool asks to save it
+first). Rebuild to refresh `build/`. A function that replaces a built-in cannot be renamed.
 
 ## 5. Override a built-in
 
@@ -136,6 +146,8 @@ Support for a whole new target (not a function) is a different, developer-side t
 | indent | Tab / Shift+Tab |
 | check a function | **Test call**: arguments as a JSON array, **Run** (Python only) |
 | save | **Save** or Ctrl+S (not saved if the text does not parse) |
+| rename a function | select it → **Rename…** (every call in the project follows) |
+| go to a problem | click it in the issues list |
 | edit an existing function | select it → **Edit…** |
 | change a built-in | select it → **Override…** (copy in `fn/builtin_overrides.fn`) |
 | undo an override | delete the function, or the file |

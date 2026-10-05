@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { type FunctionEntry, fnAdd, fnFiles, fnOverride, functionList } from "./api";
+import { type FunctionEntry, fnAdd, fnFiles, fnOverride, fnRename, fnRenamePlan, functionList, type RenameUse } from "./api";
 import { insertableColumn, insertIntoCellEditor, subscribeCellEditor } from "./cellEditor";
 import { callOf, filterFunctions } from "./functionExplorer";
-import { OVERRIDES_FILE } from "./fnEditor";
+import { OVERRIDES_FILE, validFunctionName } from "./fnEditor";
+import { PromptDialog } from "./PromptDialog";
 import { Confirm } from "./Confirm";
 import { FunctionEditor, type EditorControl } from "./FunctionEditor";
 import { NewFunctionDialog } from "./NewFunctionDialog";
@@ -11,12 +12,18 @@ interface Props {
   project: string | null;
   /** Slid in; the panels stay mounted (and keep their state) while it is out. */
   open: boolean;
+  /** A function was saved, added, removed or renamed: what ran with it is stale. */
+  onSaved?: () => void;
+  /** A rename rewrites the mappings on disk: ask to save the open one first (false = stop)... */
+  beforeDiskChange?: () => Promise<boolean>;
+  /** ...and read it again afterwards. */
+  afterDiskChange?: (message: string) => Promise<void>;
   onClose: () => void;
 }
 
 /** A panel beside the grid listing the functions a mapping can call: searchable, with the
  * signature and description of each, and an Insert button for the cell being edited. */
-export function FunctionExplorer({ project, open, onClose }: Props) {
+export function FunctionExplorer({ project, open, onSaved, beforeDiskChange, afterDiskChange, onClose }: Props) {
   const [all, setAll] = useState<FunctionEntry[]>([]);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
@@ -25,6 +32,8 @@ export function FunctionExplorer({ project, open, onClose }: Props) {
   const [editing, setEditing] = useState<{ file: string; focus?: string; nonce: number } | null>(null);
   // what the editor says about its text, to ask before an action replaces it
   const control = useRef<EditorControl>({ dirty: false, save: async () => true });
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [renameAsk, setRenameAsk] = useState<{ name: string; next: string; use: RenameUse } | null>(null);
   const [pending, setPending] = useState<(() => void) | null>(null);
   const [creating, setCreating] = useState<string[] | null>(null);
   const [lastFile, setLastFile] = useState("functions");
@@ -53,10 +62,29 @@ export function FunctionExplorer({ project, open, onClose }: Props) {
     if (editing && control.current.dirty) setPending(() => action);
     else action();
   };
+  const rename = async (name: string, next: string) => {
+    if (!project) return;
+    try {
+      if (beforeDiskChange && !(await beforeDiskChange())) return;
+      const done = await fnRename(project, name, next);
+      await reload();
+      setChosen(next);
+      setQuery(next);
+      if (editing) edit(editing.file, next);
+      onSaved?.();
+      const calls = done.mappings.reduce((n, m) => n + m.calls, 0);
+      await afterDiskChange?.(
+        `${name} is now ${next}: ${calls} call${calls === 1 ? "" : "s"} in ${done.mappings.length} mapping${done.mappings.length === 1 ? "" : "s"}, ${done.files.length} function file${done.files.length === 1 ? "" : "s"}`,
+      );
+    } catch (e) {
+      fail(e);
+    }
+  };
   const override = (name: string) => {
     if (!project) return;
     fnOverride(project, name).then(async ({ file }) => {
       await reload();
+      onSaved?.();
       edit(file, name);
     }, fail);
   };
@@ -65,6 +93,7 @@ export function FunctionExplorer({ project, open, onClose }: Props) {
     try {
       await fnAdd(project, file, name);
       await reload();
+      onSaved?.();
       setChosen(name);
       edit(file, name);
     } catch (e) {
@@ -87,7 +116,10 @@ export function FunctionExplorer({ project, open, onClose }: Props) {
             nonce={editing.nonce}
             control={control}
             functions={all}
-            onChanged={() => void reload()}
+            onChanged={() => {
+              void reload();
+              onSaved?.();
+            }}
             onOpen={(file) => edit(file)}
             onClose={() => setEditing(null)}
           />
@@ -191,6 +223,14 @@ export function FunctionExplorer({ project, open, onClose }: Props) {
               Edit…
             </button>
           )}
+          {project && !current.builtin && !current.replaces_builtin && (
+            <button
+              onClick={() => guarded(() => setRenaming(current.name))}
+              title="Rename it, in its file, the other functions and every mapping that calls it"
+            >
+              Rename…
+            </button>
+          )}
           {project && current.builtin && (
             <button
               onClick={() => guarded(() => override(current.name))}
@@ -202,6 +242,38 @@ export function FunctionExplorer({ project, open, onClose }: Props) {
         </div>
       )}
       </aside>
+      {renaming && (
+        <PromptDialog
+          title={`Rename ${renaming}`}
+          confirm="Next"
+          fields={[{ key: "name", label: "New name", value: renaming }]}
+          validate={({ name }) =>
+            name === renaming
+              ? "the same name"
+              : (validFunctionName(name) ?? (all.some((f) => f.name === name) ? "a function with that name exists" : null))
+          }
+          onDone={(values) => {
+            const old = renaming;
+            setRenaming(null);
+            if (!values || !project) return;
+            fnRenamePlan(project, old).then((use) => setRenameAsk({ name: old, next: values.name, use }), fail);
+          }}
+        />
+      )}
+      {renameAsk && (
+        <Confirm
+          message={`Rename ${renameAsk.name} to ${renameAsk.next}? It changes ${renameAsk.use.files.length} function file(s) (${renameAsk.use.files.map((f) => `fn/${f}.fn`).join(", ") || "none"}) and ${renameAsk.use.mappings.length} mapping(s) (${renameAsk.use.mappings.map((m) => `${m.name}: ${m.calls}`).join(", ") || "none"}). The mappings are saved in the tool's own format.`}
+          choices={[
+            { id: "rename", label: "Rename", primary: true },
+            { id: "cancel", label: "Cancel" },
+          ]}
+          onChoose={(id) => {
+            const ask = renameAsk;
+            setRenameAsk(null);
+            if (id === "rename") void rename(ask.name, ask.next);
+          }}
+        />
+      )}
       {pending && (
         <Confirm
           message="The open file has changes that are not saved."

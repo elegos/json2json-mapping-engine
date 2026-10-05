@@ -1074,6 +1074,8 @@ export function App() {
   }, [project, current]);
   // the run is on the saved file: a save, another mapping or another input runs it again
   const outputKey = JSON.stringify(outputSource);
+  // a saved function changes what the mapping gives
+  const [functionsRev, setFunctionsRev] = useState(0);
   useEffect(() => {
     setOutputFileMissing(false);
     if (!project || !current || !outputSource) {
@@ -1099,7 +1101,7 @@ export function App() {
       stale = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project, current, saved, outputKey]);
+  }, [project, current, saved, outputKey, functionsRev]);
   const pickOutputFile = useCallback(async () => {
     const file = await chooseJsonFile("Input to run the mapping on");
     if (!file || !project || !current) return;
@@ -1864,7 +1866,22 @@ export function App() {
             <div className="empty">{project ? "Pick a mapping" : "Open a project to begin"}</div>
           )}
         </main>
-        <FunctionExplorer project={project} open={explorer} onClose={() => setExplorer(false)} />
+        <FunctionExplorer
+          project={project}
+          open={explorer}
+          onSaved={() => setFunctionsRev((v) => v + 1)}
+          beforeDiskChange={() =>
+            guardRef.current(
+              "Renaming a function changes files the open mapping is read from, and it is read again afterwards. Save it first?",
+              "Discard my changes",
+            )
+          }
+          afterDiskChange={async (message) => {
+            if (current) await load(current, true);
+            setStatus(message);
+          }}
+          onClose={() => setExplorer(false)}
+        />
         <div className="side-rail" role="tablist" aria-label="Side panels">
           <button
             role="tab"

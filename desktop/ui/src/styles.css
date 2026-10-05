@@ -384,3 +384,4 @@ span.result-badge { cursor: default; }
 .fn-names div { display: flex; gap: 8px; margin-bottom: 4px; }
 .fn-names dt { font-family: monospace; min-width: 120px; flex: none; }
 .fn-names dd { margin: 0; opacity: 0.85; }
+.fn-issues li button { all: unset; cursor: pointer; display: block; width: 100%; } .fn-issues li button:hover { text-decoration: underline; }
