@@ -13,7 +13,7 @@ import pytest
 import yaml
 
 from cli.merge_driver import install, run_driver
-from transpiler.merge import MergeError, merge3, merge_texts, text_merge
+from transpiler.merge import MergeError, merge3, merge_fn_texts, merge_texts, text_merge
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -233,9 +233,9 @@ def test_git_merge_uses_the_driver(tmp_path: Path) -> None:
     assert _git(repo, "init", "-q", "-b", "main").returncode == 0
     command = f"{sys.executable} -m cli.main"
     done = install(repo, command)
-    assert len(done) == 3
+    assert len(done) == 4
     assert install(repo, command)[-1].startswith("git config")  # no second .gitattributes line
-    assert (repo / ".gitattributes").read_text().count("merge=j2jme") == 1
+    assert (repo / ".gitattributes").read_text().count("merge=j2jme") == 2
 
     f = repo / "orders.fn.yaml"
     _write(f, base())
@@ -257,3 +257,72 @@ def test_git_merge_uses_the_driver(tmp_path: Path) -> None:
     data = yaml.safe_load(f.read_text())
     assert rule(data, "oid")["description"] == "mine"
     assert rule(data, "ver")["source"]["constant"] == 28
+
+
+FN_BASE = """\
+\"\"\"Project functions.\"\"\"
+import re
+
+
+def first_word(s: str) -> str:
+    \"\"\"First word.\"\"\"
+    return s.split(" ")[0]
+
+
+# the last one
+def twice(s: str) -> str:
+    \"\"\"Doubled.\"\"\"
+    return s + s
+"""
+
+
+def test_fn_functions_merge_by_name() -> None:
+    ours = FN_BASE.replace('split(" ")[0]', 'strip().split(" ")[0]')
+    theirs = FN_BASE.replace("return s + s", "return s * 2")
+    text, conflicts = merge_fn_texts(FN_BASE, ours, theirs)
+    assert conflicts == []
+    assert "strip().split" in text and "return s * 2" in text
+    assert "# the last one\ndef twice" in text  # the comment above travels with its function
+    compile(text, "<merged>", "exec")
+
+
+def test_fn_new_functions_and_imports_on_both_sides_are_kept() -> None:
+    ours = FN_BASE + "\n\ndef a(s: str) -> str:\n    return s\n"
+    theirs = FN_BASE.replace("import re\n", "import re\nimport math\n") + (
+        "\n\ndef b(s: str) -> str:\n    return s\n"
+    )
+    text, conflicts = merge_fn_texts(FN_BASE, ours, theirs)
+    assert conflicts == []
+    for needle in ("import math", "def a(", "def b(", "def first_word("):
+        assert needle in text
+    compile(text, "<merged>", "exec")
+
+
+def test_fn_same_function_changed_on_both_sides_conflicts() -> None:
+    ours = FN_BASE.replace("return s + s", "return s + s + s")
+    theirs = FN_BASE.replace("return s + s", "return s * 2")
+    text, conflicts = merge_fn_texts(FN_BASE, ours, theirs)
+    assert [c.path for c in conflicts] == ["functions[twice]"]
+    assert "s + s + s" in text  # ours kept
+
+
+def test_fn_deleted_on_one_side_and_untouched_on_the_other_goes() -> None:
+    ours = FN_BASE.split("# the last one")[0]
+    theirs = FN_BASE.replace("First word.", "The first word.")
+    text, conflicts = merge_fn_texts(FN_BASE, ours, theirs)
+    assert conflicts == [] and "twice" not in text and "The first word." in text
+
+
+def test_fn_not_python_is_an_error() -> None:
+    with pytest.raises(MergeError):
+        merge_fn_texts(FN_BASE, "def (:\n", FN_BASE)
+
+
+def test_driver_picks_the_fn_merge_by_the_file_name(tmp_path: Path) -> None:
+    (tmp_path / "o").write_text(FN_BASE)
+    (tmp_path / "a").write_text(FN_BASE.replace("First word.", "Mine."))
+    (tmp_path / "b").write_text(FN_BASE.replace("return s + s", "return s * 2"))
+    clean, note = run_driver(tmp_path / "o", tmp_path / "a", tmp_path / "b", "fn/text.fn")
+    assert clean and note == ""
+    merged = (tmp_path / "a").read_text()
+    assert "Mine." in merged and "return s * 2" in merged

@@ -6,20 +6,23 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from transpiler.merge import MergeError, merge_texts, text_merge
+from transpiler.merge import MergeError, merge_fn_texts, merge_texts, text_merge
 
 DRIVER = "j2jme"
-ATTRIBUTE = f"*.fn.yaml merge={DRIVER}"
+ATTRIBUTES = (f"*.fn.yaml merge={DRIVER}", f"*.fn merge={DRIVER}")
 
 
-def run_driver(base: Path, ours: Path, theirs: Path) -> tuple[bool, str]:
-    """Merge `theirs` into `ours` (the file is rewritten in place, as git expects). Returns
-    `(clean, message)`. A rule-level merge when the files are YAML and no rule field was changed
-    on both sides; otherwise the standard line merge, with conflict markers, which is not clean."""
+def run_driver(base: Path, ours: Path, theirs: Path, name: str = "") -> tuple[bool, str]:
+    """Merge `theirs` into `ours` (the file is rewritten in place, as git expects). `name` is the
+    file's path in the tree: `*.fn` is a Python file of project functions, merged function by
+    function, anything else a `.fn.yaml`. Returns `(clean, message)`. A rule- or function-level
+    merge when the files parse and nothing was changed on both sides; otherwise the standard line
+    merge, with conflict markers, which is not clean."""
     b, o, t = (p.read_text() for p in (base, ours, theirs))
     note = ""
+    merge = merge_fn_texts if name.endswith(".fn") else merge_texts
     try:
-        text, conflicts = merge_texts(b, o, t)
+        text, conflicts = merge(b, o, t)
     except MergeError as exc:
         text, conflicts, note = "", [], f"{exc}; text-level merge"
     if text and not conflicts:
@@ -58,9 +61,9 @@ def install(project: Path, command: str = "mapper") -> list[str]:
         done.append(f"git config {key}")
     attrs = project / ".gitattributes"
     text = attrs.read_text() if attrs.is_file() else ""
-    if ATTRIBUTE not in text.splitlines():
-        attrs.write_text(
-            text + ("" if not text or text.endswith("\n") else "\n") + ATTRIBUTE + "\n"
-        )
-        done.append(f"{attrs.name}: {ATTRIBUTE}")
+    for attribute in ATTRIBUTES:
+        if attribute not in text.splitlines():
+            text += ("" if not text or text.endswith("\n") else "\n") + attribute + "\n"
+            attrs.write_text(text)
+            done.append(f"{attrs.name}: {attribute}")
     return done

@@ -478,11 +478,11 @@ def merge_driver(
         str, typer.Argument(help="%P: the file's path in the tree (for messages)")
     ] = "",
 ) -> None:
-    """Git merge driver for *.fn.yaml: merges at the rule level (rules matched by id); falls
-    back to a text merge with conflict markers. Exit 1 = conflicts left."""
+    """Git merge driver for *.fn.yaml (rules matched by id) and fn/*.fn (functions matched by
+    name); falls back to a text merge with conflict markers. Exit 1 = conflicts left."""
     from cli.merge_driver import run_driver
 
-    clean, note = run_driver(base, ours, theirs)
+    clean, note = run_driver(base, ours, theirs, path or str(ours))
     if note:
         typer.echo(f"{path or ours}: {note}", err=True)
     if not clean:
@@ -493,7 +493,7 @@ def merge_driver(
 def merge_driver_install(
     command: str = typer.Option("mapper", help="How git should call mapper"),
 ) -> None:
-    """Register the *.fn.yaml merge driver for this clone (git config + .gitattributes)."""
+    """Register the *.fn.yaml and *.fn merge driver for this clone (git config + .gitattributes)."""
     from cli.merge_driver import install
     from transpiler.merge import MergeError
 

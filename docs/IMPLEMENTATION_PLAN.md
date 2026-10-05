@@ -553,8 +553,10 @@ Sliced; each slice is usable on its own:
       working, one merge engine under both.
       - [x] **M6.3a — Rule-level merge engine.** 3-way merge of two `.fn.yaml` from a base, in the
             engine (Python, track 1 tests): rules identified by id, a conflict only on the same
-            field of the same rule, text-level fallback if the YAML does not parse. Exposed as a
-            **git merge driver** (`.gitattributes`: `*.fn.yaml merge=j2jme`), so it works from any
+            field of the same rule, text-level fallback if the YAML does not parse. **The project's
+            function files too** (`fn/*.fn`: new functions and the copies of built-ins in
+            `builtin_overrides.fn`): merged function by function (`merge_fn_texts`), matched by name. Exposed as a
+            **git merge driver** (`.gitattributes`: `*.fn.yaml merge=j2jme`, `*.fn merge=j2jme`), so it works from any
             git client and in CI, not only inside the tool. Generated files are never merged, they
             are regenerated.
             Done: `transpiler/merge.py` (`merge3` on the raw YAML data: a `rules` list matched by
@@ -563,7 +565,8 @@ Sliced; each slice is usable on its own:
             and the three values; `choices` settle it per path), `mapper merge-driver %O %A %B %P`
             (rule-level merge, else `git merge-file` with conflict markers, exit 1), and `mapper
             merge-driver-install` (git config of the clone + `.gitattributes`), tests in
-            `tests/track1/merge` including a real `git merge`. Not done: the merge editor in the
+            `tests/track1/merge` including a real `git merge`; `fn/*.fn` are merged function by
+            function by the same driver (picked by the file name). Not done: the merge editor in the
             UI (M6.3b) and a worker op for it. Limits: comments and key order of a hand-edited
             file are lost in a rule-level merge (as in any save by the tool).
       - [ ] **M6.3b — Git mode.**
@@ -575,6 +578,8 @@ Sliced; each slice is usable on its own:
           merge, submodules well); if `git` is not installed, fall back to Gitoxide, accepting
           that merge and the rest are less capable (what it cannot do is disabled, with a tooltip).
         - Commit = check + build; if the check fails the commit is blocked or marked WIP.
+          The sources a commit and a manifest cover are the mappings, the schemas, `mapper.toml`
+          **and `fn/*.fn`** (overrides and new functions), which also change what is generated.
         - **Generated artifacts (decided).** `build/compiled/*.sql` stay committed by default, with
           a `manifest.json` next to them: the engine version that produced them, the hash of each
           source (mapping, schemas, functions, `mapper.toml`) and of each output. On request the

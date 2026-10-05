@@ -13,6 +13,7 @@ values, so the caller can ask the user (`choices`: path -> "ours" | "theirs") or
 
 from __future__ import annotations
 
+import ast
 import copy
 import subprocess
 import tempfile
@@ -181,6 +182,49 @@ def merge3(
     merger = _Merger(choices or {})
     data = merger.mapping("", copy.deepcopy(base) if isinstance(base, dict) else {}, ours, theirs)
     return MergeResult(copy.deepcopy(data), merger.conflicts)
+
+
+def _blocks(text: str, who: str) -> dict[str, str]:
+    """A `.fn` file as {key: text}: one block per top-level statement, each with the comments and
+    blank lines above it. A function or class is keyed by its name, anything else (imports,
+    constants, the docstring) by its own text, so an import added on each side is kept twice
+    only if it differs."""
+    try:
+        tree = ast.parse(text)
+    except SyntaxError as exc:
+        raise MergeError(f"{who}: not valid Python: {exc}") from exc
+    lines = text.splitlines(keepends=True)
+    out: dict[str, str] = {}
+    start = 0
+    for node in tree.body:
+        end = node.end_lineno or node.lineno
+        chunk = "".join(lines[start:end])
+        start = end
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            key = node.name
+        else:
+            key = "~" + "".join(lines[node.lineno - 1 : end]).strip()
+        n = 1
+        unique = key
+        while unique in out:
+            n += 1
+            unique = f"{key}#{n}"
+        out[unique] = chunk if chunk.endswith("\n") else chunk + "\n"
+    tail = "".join(lines[start:])
+    if tail.strip():
+        out["~tail"] = tail if tail.endswith("\n") else tail + "\n"
+    return out
+
+
+def merge_fn_texts(base: str, ours: str, theirs: str) -> tuple[str, list[Conflict]]:
+    """Merge three versions of a `fn/*.fn` file function by function (docs/ARCHITECTURE.md,
+    §The merge engine): a function changed on one side only, added or deleted, merges; the same
+    function changed differently on both sides is a conflict (`functions[name]`), with ours kept.
+    Raises `MergeError` if one of the versions is not Python."""
+    merger = _Merger({})
+    b = _blocks(base, "base") if base.strip() else {}
+    merged = merger.rules("functions", b, _blocks(ours, "ours"), _blocks(theirs, "theirs"))
+    return "".join(merged), merger.conflicts
 
 
 def load_raw(text: str, who: str) -> dict[str, Any]:

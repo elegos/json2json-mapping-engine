@@ -1010,7 +1010,7 @@ mapper test                    # both tracks
 mapper build mappings/functional/order_event.fn.yaml
 
 # Git merge driver for *.fn.yaml (rule-level merge, §The merge engine)
-mapper merge-driver-install     # once per clone: git config + .gitattributes
+mapper merge-driver-install     # once per clone: git config + .gitattributes (*.fn.yaml, *.fn)
 mapper merge-driver %O %A %B %P # what git runs; exit 1 = conflicts left in the file
 ```
 
@@ -1429,7 +1429,7 @@ the tool puts them in `.gitignore` and removes them from the repository, and CI 
 them instead. All other `build/` contents are ephemeral and git-ignored.
 
 **`build/compiled/manifest.json`** is written with the artifacts: the version of the engine that
-produced them, the hash of each source (each mapping, the schemas, the functions, `mapper.toml`) and
+produced them, the hash of each source (each mapping, the schemas, each `fn/*.fn` file, `mapper.toml`) and
 the hash of each output. The output is deterministic only for the same sources **and** the same
 engine version, so the manifest is what makes a comparison meaningful. It is also written last when
 publishing (§Build CLI, `mapper publish`), so a reader never sees half a set.
@@ -2253,8 +2253,12 @@ per field without interacting with raw YAML. Generated files are never merged, t
 regenerated.
 
 The engine lives in the Python side (testable offline) and is also registered as a **git merge
-driver** (`.gitattributes`: `*.fn.yaml merge=j2jme`), so the same merge happens from any git client
-and in CI, not only inside the tool. Text-level fallback (standard `git` three-way merge) is used
+driver** (`.gitattributes`: `*.fn.yaml merge=j2jme` and `*.fn merge=j2jme`), so the same merge happens from any git client
+and in CI, not only inside the tool. The project's functions (`fn/*.fn`, new ones and the copies of
+built-ins in `builtin_overrides.fn`) are Python files and are merged **function by function**: a
+block per top-level statement with the comments above it, a function or class matched by its name,
+an import or constant by its own text; a function changed on one side only, added or deleted, merges,
+the same function changed on both sides is a conflict. Text-level fallback (standard `git` three-way merge) is used
 only if the YAML cannot be parsed — for example, a manually corrupted file.
 
 #### Shared-folder mode (OneDrive / SharePoint)
@@ -2264,7 +2268,7 @@ detects such a path and warns. The sync itself does not merge: for files it does
 conflict copies (`file-PC.yaml`) or the last writer wins. So the tool does the merge:
 
 - **Base per user.** The app's config keeps, per user, the hash and a snapshot of the last version
-  of each mapping it has seen. When the file changes on disk (a watcher), or at save if the disk
+  of each mapping and each `fn/*.fn` file it has seen. When the file changes on disk (a watcher), or at save if the disk
   differs from the base, the tool merges three ways with the merge engine; true conflicts go to the
   merge editor. Conflict copies are recognised by their name and offered for merge. Saves are
   atomic (temporary file + rename).
