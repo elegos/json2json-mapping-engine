@@ -35,6 +35,26 @@ $.myList[discriminator = 'MY DISCRIMINATOR' and other = $.rootElement]
 - The rules inside read that element as `@`.
 - In the condition a bare name is a field of the element being tested, and `=` compares.
 
+## Reading a field of a chosen element
+
+The same condition can sit in the middle of a path, in a **Source**, an **Expression** or a
+**guard**. The path then reads a field of the first element that satisfies it:
+
+```
+$.items[marker = 'TOTALS'].qty
+```
+
+- If no element satisfies the condition, the value is **empty** (null), as for a field that is
+  missing from the data.
+- The condition can read the loop the rule is in: inside a loop over `$.lines[*]`,
+  `$.prices[sku = @2.sku].price` is the price of the line's SKU (`@` is the price being tested,
+  `@2` the line).
+- A name for it, in [Paths](page:functional/paths), saves repeating it:
+  `totals` = `$.items[marker = 'TOTALS']`, then `@totals.qty` and `@totals.currency`.
+- The element is looked for **once in each rule**, however many times the rule reads it.
+- A condition cannot hold another one, and a loop's **filter** cannot use one. Read the value in
+  a field of the loop instead.
+
 ## When the Source changes
 
 Changing a Source (or an Expression) takes away the **validated** mark from the rule: what was

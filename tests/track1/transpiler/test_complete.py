@@ -87,6 +87,21 @@ def test_source_condition_reads_the_element_of_the_list() -> None:
     assert labels(customer, "source", text + "role = 'CUSTOMER' and na") == ["name"]
 
 
+def test_a_selection_offers_the_fields_of_its_element_in_a_source_and_in_an_expression() -> None:
+    cur = CURRENCY
+    for column in ("source", "expression"):
+        assert labels(cur, column, "$.parties[role = 'CUSTOMER'].") == ["role", "name", "remarks"]
+        assert labels(cur, column, "$.parties[role = 'CUSTOMER'].na") == ["name"]
+    # inside the condition of an expression: the element's fields, and the functions
+    inside = labels(cur, "expression", "$.parties[na")
+    assert "name" in inside
+    # a subscript of anything else is not a condition
+    assert "name" not in labels(cur, "expression", "x[na")
+    # the replacement starts at the partial name, in the text as written
+    found = complete(FILE, cur, "expression", "$.parties[a = 'x'].na", 21, INP, OUT)
+    assert found.from_ == 19
+
+
 def test_target_offers_the_output_properties_not_used_by_a_sibling() -> None:
     # every output field of the fixture has a rule: only the rule's own name is left
     assert labels(CURRENCY, "target", "") == ["Currency"]

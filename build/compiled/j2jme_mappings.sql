@@ -23,6 +23,17 @@ CREATE OR REPLACE PACKAGE MAPPING_OWNER.J2JME_MAPPINGS AS
 
     FUNCTION map_orders_fn (p_src IN CLOB) RETURN CLOB PARALLEL_ENABLE;
 
+    PROCEDURE map_pick (
+        p_src IN  CLOB,
+        p_out OUT CLOB
+    );
+
+    PROCEDURE map_pick_safe (
+        p_src IN  CLOB,
+        p_out OUT CLOB,
+        p_err OUT CLOB
+    );
+
     PROCEDURE map_positions (
         p_src IN  CLOB,
         p_out OUT CLOB
@@ -97,6 +108,23 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAPPINGS AS
     BEGIN
         RETURN MAPPING_OWNER.J2JME_MAP_ORDERS.map_orders_fn(p_src);
     END map_orders_fn;
+
+    PROCEDURE map_pick (
+        p_src IN  CLOB,
+        p_out OUT CLOB
+    ) AS
+    BEGIN
+        MAPPING_OWNER.J2JME_MAP_PICK.map_pick(p_src, p_out);
+    END map_pick;
+
+    PROCEDURE map_pick_safe (
+        p_src IN  CLOB,
+        p_out OUT CLOB,
+        p_err OUT CLOB
+    ) AS
+    BEGIN
+        MAPPING_OWNER.J2JME_MAP_PICK.map_pick_safe(p_src, p_out, p_err);
+    END map_pick_safe;
 
     PROCEDURE map_positions (
         p_src IN  CLOB,

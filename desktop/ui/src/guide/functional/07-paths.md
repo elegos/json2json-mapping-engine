@@ -12,6 +12,11 @@ The **Paths** view holds two things that save typing long paths.
 An alias is a short name for a path of the input. If `metadata` stands for `$.metadata`, a rule
 can read `@metadata.source` instead of `$.metadata.source`.
 
+An alias can also name **one element of a list**, chosen by a condition:
+`totals` = `$.items[marker = 'TOTALS']`. Then `@totals.qty` is the `qty` of the first element
+that satisfies it, and empty when none does
+(see [choosing an element](page:functional/source)).
+
 An alias name cannot be the name of a lookup, of a loop label, or `root` or `index`.
 
 ## What `$` means

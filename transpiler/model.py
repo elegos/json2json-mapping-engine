@@ -193,6 +193,16 @@ RESERVED_ALIASES = ("root", "index")
 _ALIAS_PATH = re.compile(r"^\$(\.[A-Za-z_]\w*(\[\d+\])*)+$")
 
 
+def is_alias_path(text: str, selection: bool = False) -> bool:
+    """A path from the document root like `$.a.b[0]`; with `selection`, also one with a
+    condition in it (`$.items[marker = 'TOTALS']`: its first matching element)."""
+    if selection:
+        from transpiler.selector import replace_selections
+
+        text = replace_selections(text, lambda s: f"{s.path}[0]")
+    return _ALIAS_PATH.match(text) is not None
+
+
 # -- loading -----------------------------------------------------------------
 
 
@@ -568,10 +578,11 @@ def _load_paths(where: str, raw: Any, rules: list[Rule]) -> PathsSection:
             raise _err(where, f"paths.aliases: '{name}' is also the name of a lookup table")
         if name in loops:
             raise _err(where, f"paths.aliases: '{name}' is also the label of a loop")
-        if not isinstance(target, str) or not _ALIAS_PATH.match(target):
+        if not isinstance(target, str) or not is_alias_path(target, selection=True):
             raise _err(
                 where,
-                f"paths.aliases.{name} must be a path from the document root like $.a.b — "
+                f"paths.aliases.{name} must be a path from the document root like $.a.b "
+                "(or $.a[condition], its first matching element) — "
                 f"got {target!r}",
             )
     return PathsSection(root=root, aliases=dict(aliases_raw))

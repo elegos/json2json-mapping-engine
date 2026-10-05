@@ -23,7 +23,7 @@ from transpiler.model import (
     Rule,
 )
 from transpiler.paths import expand_paths
-from transpiler.selector import split_selector
+from transpiler.selector import _HEAD, replace_selections, split_selector
 
 Schema = dict[str, Any]
 
@@ -211,15 +211,23 @@ def complete(
     if column == "code":
         return _code(before, cursor, ctx, inp, real_root, functions)
 
-    # a condition `$.list[...]` in a Source: the element is the one being tested
+    # a condition `$.list[...]` in a Source or an expression: the element is the one being tested
     items, labels = ctx.items, ctx.labels
-    open_at = _unclosed_bracket(before) if column == "source" else None
+    open_at = _unclosed_bracket(before) if column in ("source", "expression") else None
     if open_at is not None:
-        listed = before[:open_at]
-        base = dollar if listed.startswith("$") else (items[-1] if items else dollar)
-        node, _m = inp.resolve(base, re.sub(r"^[$@]", "", listed) + "[*]")
-        items = [*items, node if node is not None else UNKNOWN]
-        labels = [*labels, None]
+        head = _HEAD.search(before[:open_at])
+        if head is None:  # a subscript of something else
+            open_at = None
+        else:
+            listed = before[:open_at] if column == "source" else head.group(0)
+            base = dollar if listed.startswith("$") else (items[-1] if items else dollar)
+            node, _m = inp.resolve(base, re.sub(r"^[$@]", "", listed) + "[*]")
+            items = [*items, node if node is not None else UNKNOWN]
+            labels = [*labels, None]
+    in_condition = open_at is not None
+    if not in_condition:
+        # a selection already closed reads as its first element: `$.items[k = 1].q` -> `$.items[0].q`
+        before = replace_selections(before, lambda s: f"{s.path}[0]")
 
     # inside a condition only what follows its `[` is the expression being typed
     floor = open_at + 1 if open_at is not None else 0
@@ -272,7 +280,7 @@ def complete(
     # first; everywhere, the built-ins and `value`
     partial = token
     found: list[Item] = []
-    if column == "source":
+    if column == "source" or in_condition:
         current = items[-1] if items else dollar
         found += _fields(inp, current, "", insert_plain=True)
     if column == "expression":

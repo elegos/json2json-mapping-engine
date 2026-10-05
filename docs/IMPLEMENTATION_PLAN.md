@@ -472,6 +472,13 @@ Sliced; each slice is usable on its own:
       `transpiler/selector.py`): first matching element, omitted when none; bare names in the
       condition are fields of the element, `=` is `==`. Checked against the input schema,
       editable in the Source column, golden mapping `selection` (run on Oracle since, with the same `TREAT` fix).
+- [x] **A field of a selected element** (`$.items[marker = 'TOTALS'].qty` in a Source, an
+      Expression or a guard; a `paths` alias may name the element, `@totals.qty`): the first
+      matching element, null when none; the condition reads the loops around the rule (`@2`).
+      One generated function per distinct selection, one local variable per rule that reads it
+      (`transpiler/transpile.py`, `_picker` / `_extract`). Checked and completed in the tool,
+      golden mapping `pick` (run on Oracle). Not done: a selection in a filter or sort key, two in
+      one path, and sharing the found element across rules (each rule looks it up again).
 - [x] **Completion in the Target / Source / Expression cells** (CodeMirror 6; `complete` op of
       `mapper serve`, `transpiler/complete.py`). `$.` / `$.a.` list the input schema's fields
       (honouring `paths.root`), `@` the loop labels, lookups, aliases, `@root`, `@index`, `@.` /

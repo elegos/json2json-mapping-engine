@@ -1631,6 +1631,51 @@ An `object` rule can pick it with a condition in its Source:
   `<id>_first` function ending in `return <list>[0]`. All matches are visited (there is no
   early exit). The golden mapping `selection` covers it.
 
+#### Reading a field of a selected element
+
+The same condition can stand in the middle of a path read by a field (a Source or an
+Expression) or by a guard, to read a field of the first element that satisfies it:
+
+```yaml
+paths:
+  aliases:
+    totals: $.items[marker = 'TOTALS']      # an alias may name the selected element
+rules:
+  - {kind: field, field: Total,    type: number, source: {path: "items[marker = 'TOTALS'].qty"}}
+  - {kind: field, field: Currency, type: str,    source: {path: "@totals.cur"}}
+```
+
+- The value is the field of the **first** matching element, and null when none matches (the
+  same as a missing field): the rule's `required` / nullability is what decides if that is an
+  error, as for any optional field. Written as in an object's Source: a bare name in the
+  condition is a field of the candidate, `=` is `==`, `$` is the document root; and the
+  condition reads the loops around the rule as `@2`, `@3`... (`$.prices[sku = @2.sku].price`
+  inside a loop over `$.lines[*]`).
+- Aliases are text (§Paths section), so `@totals.qty` is `$.items[marker = 'TOTALS'].qty`. The
+  alias value may hold one condition, and `check` validates it where it is defined and where
+  it is used.
+- A condition cannot hold another selection, a loop's `filter` and `sort` cannot hold one (read it
+  in the loop's fields), and a path has one selection (`$.a[x = 1].b[y = 2].c` is not supported).
+- Lowering (`_Builder._picker` / `_extract` in `transpiler/transpile.py`): each distinct
+  selection (list path + condition + enclosing loops) becomes **one function** in the `.map.py`
+  that loops over the list like a selecting object does and returns the first match, or an
+  empty object `{}` (so that reading a field of it gives nothing, in Python and in PL/SQL, where
+  a `NULL` object would raise ORA-30625). Each rule that reads it assigns it **once** to a local
+  variable at the top of its function, however many times the rule reads it:
+
+  ```python
+  def pick_items(root: Any) -> Any: ...      # shared by every rule reading this selection
+  def total(root: Any) -> number:
+      total_items_pick = pick_items(root)
+      return total_items_pick.qty
+  ```
+
+  The element is looked for again in each rule that reads it, and in each element of the loop a
+  rule in a loop belongs to; sharing it across rules is not done (it would need the value passed
+  to every rule function).
+- The result is read without a schema type (`Any`), like a path in an expression.
+  The golden mapping `pick` covers it on Oracle.
+
 #### §format — decimal precision
 
 `format` is a Code Generator hint for numeric fields. It uses the `0.00` notation

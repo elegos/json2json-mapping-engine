@@ -44,11 +44,17 @@ from transpiler.model import (
     ObjectRule,
     Rule,
     SchemasSection,
+    is_alias_path,
     is_unfinished,
     load_rule,
 )
 from transpiler.paths import expand_paths
-from transpiler.selector import split_selector
+from transpiler.selector import (
+    find_selections,
+    normalize_condition,
+    replace_selections,
+    split_selector,
+)
 from transpiler.serialize import rule_to_raw
 
 Schema = dict[str, Any]
@@ -80,7 +86,6 @@ UNKNOWN = _Unknown()
 Node = Schema | _Unknown | None  # None = does not exist
 
 _IDENT = re.compile(r"^[A-Za-z_]\w*$")
-_PATH_FROM_ROOT = re.compile(r"^\$(\.[A-Za-z_]\w*(\[\d+\])*)+$")
 _SEGMENT = re.compile(r"\.?([A-Za-z_]\w*)|(\[(?:\*|\d+)\])")
 _TYPES = {
     "str": {"string"},
@@ -346,6 +351,42 @@ class _Checker:
 
     # -- data ------------------------------------------------------------------
 
+    def selections(
+        self,
+        path: str,
+        text: str,
+        column: str,
+        scope: AnchorScope,
+        root: Node,
+        items: list[Node],
+        labels: list[str | None],
+    ) -> str:
+        """Checks the condition of each selection in `text` (`$.items[marker = 'T'].qty`) as a
+        filter is checked: the list must exist and the condition reads the candidate as `@`.
+        Answers `text` with each selection as the first element (`$.items[0].qty`), which the
+        other checks can follow."""
+        for sel in find_selections(text):
+            condition = normalize_condition(sel.condition)
+            if find_selections(condition):
+                self.add(path, column, "a condition cannot hold another selection")
+                continue
+            m = re.match(r"(\$|@(?:\d+|[A-Za-z_]\w*)?)(.*)$", sel.path)
+            base = self._anchor(m.group(1), root, items, labels) if m else UNKNOWN
+            item: Node = UNKNOWN
+            if self.has_in and m and base is not UNKNOWN and base is not None:
+                reached, missing = self.inp.resolve(base, f"{m.group(2)}[*]")
+                if reached is None:
+                    self.add(path, column, f"'{missing}' is not in the input schema ({sel.path})")
+                else:
+                    item = reached
+            inner = AnchorScope(
+                loops=(*scope.loops, LoopRef(None, "src", "index")), lookups=scope.lookups
+            )
+            self.block(path, condition, inner, column)
+            self.refs(path, condition, column, root, [*items, item], [*labels, None])
+            self.typecheck(path, condition, None, "", root, [*items, item], [*labels, None])
+        return replace_selections(text, lambda s: f"{s.path}[0]")
+
     def refs(
         self,
         path: str,
@@ -506,14 +547,17 @@ class _Checker:
         value: Node = UNKNOWN  # what `value` stands for: the Source
         if rule.has_constant:
             value = _constant_node(rule.source_constant)
-        elif rule.source_path and self.has_in:
-            src = rule.source_path
-            base = in_root if src.startswith("$") else (items[-1] if items else in_root)
-            node, missing = self.inp.resolve(base, re.sub(r"^[$@]", "", src))
-            if node is None:
-                self.add(path, "source", f"'{missing}' is not in the input schema")
-            else:
-                value = node
+        elif rule.source_path:
+            src = self.selections(path, rule.source_path, "source", scope, in_root, items, labels)
+            if self.has_in:
+                base = in_root if src.startswith("$") else (items[-1] if items else in_root)
+                node, missing = self.inp.resolve(base, re.sub(r"^[$@]", "", src))
+                if node is None:
+                    self.add(path, "source", f"'{missing}' is not in the input schema")
+                else:
+                    value = node
+        if text and t.status != "manual":
+            text = self.selections(path, text, "expression", scope, in_root, items, labels)
         if text:
             self.block(
                 path,
@@ -583,10 +627,13 @@ class _Checker:
         )
         if isinstance(rule, ObjectRule) and selector is None:
             if rule.guard:
-                self.block(path, rule.guard, scope, "expression")
-                self.refs(path, rule.guard, "expression", in_root, items, labels)
+                guard = self.selections(
+                    path, rule.guard, "expression", scope, in_root, items, labels
+                )
+                self.block(path, guard, scope, "expression")
+                self.refs(path, guard, "expression", in_root, items, labels)
                 # a condition is true or false as in Python: no type is expected of it
-                self.typecheck(path, rule.guard, None, "", in_root, items, labels)
+                self.typecheck(path, guard, None, "", in_root, items, labels)
             self.walk(rule.rules, f"{path}.rules", scope, node, in_root, items, labels)
             return
         # a loop, or an object that selects one element of a list: both read an element `@`
@@ -608,6 +655,14 @@ class _Checker:
         inner = AnchorScope(
             loops=(*scope.loops, LoopRef(label, "src", "index")), lookups=scope.lookups
         )
+        if selector is None and condition and find_selections(condition):
+            self.add(
+                path,
+                "expression",
+                "a filter cannot hold a selection (a path with a condition in it): "
+                "read it in the fields of the loop",
+            )
+            condition = None
         if condition:
             column = "expression" if selector is None else "source"
             self.block(path, condition, inner, column)
@@ -637,13 +692,19 @@ class _Checker:
                 self.add("", "paths", f"paths: alias '{name}' {problem}")
         for what, text in named:
             assert text is not None
-            if not _PATH_FROM_ROOT.match(text):
+            if not is_alias_path(text, selection=what != "root"):
                 self.add(
                     "",
                     "paths",
                     f"paths: the {what} must be a path from the root like $.a.b[0] — got {text!r}",
                 )
                 continue
+            if what != "root":
+                # a condition in an alias is checked as where it is used
+                root = self.inp.root if self.inp.root is not None else UNKNOWN
+                text = self.selections(
+                    "", text, "paths", AnchorScope(lookups=self.lookups), root, [], []
+                )
             if self.has_in and self.inp.root is not None:
                 node, missing = self.inp.resolve(self.inp.root, text.removeprefix("$"))
                 if node is None:
@@ -705,7 +766,7 @@ def schemas_for(
         path = resolve_schema_path(project, stem, kind, override)
         try:
             data = json.loads(path.read_text())
-        except (OSError, ValueError):
+        except OSError, ValueError:
             return None
         return data if isinstance(data, dict) else None
 

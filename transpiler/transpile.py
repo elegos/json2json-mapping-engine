@@ -38,7 +38,7 @@ import ast
 import re
 import textwrap
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -62,7 +62,13 @@ from transpiler.model import (
     prune_unfinished,
 )
 from transpiler.paths import expand_paths
-from transpiler.selector import lower_selectors
+from transpiler.selector import (
+    Selection,
+    find_selections,
+    lower_selectors,
+    normalize_condition,
+    replace_selections,
+)
 
 
 @dataclass(frozen=True)
@@ -167,6 +173,22 @@ def _index_offsets(nodes: Sequence[ast.AST]) -> set[int]:
     return found
 
 
+@dataclass
+class _Picks:
+    """The selections of one block of text: `(list path, condition)` -> (variable, the line
+    that assigns it). `emit` False builds the lines of a proposal, which make no function."""
+
+    emit: bool = True
+    lines: dict[tuple[str, str], tuple[str, str]] = field(default_factory=dict)
+
+    def prefix(self, text: str) -> str:
+        """`text` under the assignments of its selections."""
+        if not self.lines:
+            return text
+        body = textwrap.dedent(text).strip("\n")
+        return "\n".join([*(line for _, line in self.lines.values()), body])
+
+
 @dataclass(frozen=True)
 class _Frame:
     """The loops enclosing a rule, outermost first, with each element's schema
@@ -223,6 +245,9 @@ class _Builder:
         self.functions: list[ast.stmt] = []
         self.flow: list[ast.stmt] = []
         self._class_names: set[str] = set()
+        # the functions picking the first element of a list by a condition, once each
+        self._pickers: dict[tuple[str, str, _Frame], tuple[str, set[int]]] = {}
+        self._picker_names: set[str] = set()
         self.proposals: dict[str, str] = {}  # fq id -> auto code, of every field rule
         self.proposal_errors: dict[str, str] = {}
 
@@ -326,8 +351,85 @@ class _Builder:
             )
         return steps
 
+    def _picker(self, sel: Selection, frame: _Frame, where: str) -> tuple[str, set[int]]:
+        """The function that gives the first element of the list `sel.path` for which the
+        condition holds (an empty object when none does, so that reading it gives nothing):
+        its name and the positions it takes. One per list and condition; the condition reads
+        the candidate as `@` and the loops around the rule as `@2`..."""
+        condition = normalize_condition(sel.condition)
+        key = (sel.path, condition, frame)
+        if key in self._pickers:
+            return self._pickers[key]
+        if find_selections(condition):
+            raise FnYamlError(f"{where}: a condition cannot hold another selection")
+        list_text = resolve_anchors(sel.path, self._scope(frame), f"{where} selection").text
+        if not _ATTR_CHAIN.match(list_text):
+            raise FnYamlError(f"{where}: unsupported path {sel.path!r} before a condition")
+        base = list_text.rsplit(".", 1)[-1]
+        ident, n = f"pick_{base}", 2
+        while ident in self._picker_names or ident in self._class_names:
+            ident, n = f"pick_{base}{n}", n + 1
+        self._picker_names.add(ident)
+        item, index = f"{ident}_src", f"{ident}_index"
+        scope = AnchorScope(
+            loops=(*frame.loop_refs(), LoopRef(None, item, index)), lookups=self.lookups
+        )
+        resolved = resolve_anchors(condition, scope, f"{where} condition")
+        if resolved.uses_index:
+            raise FnYamlError(f"{where}: a condition cannot reference @index")
+        found = f"{ident}_found"
+        body = self._stmts(
+            f"{found} = []\n"
+            f"for {item} in {list_text}:\n"
+            f"    if not ({resolved.text}):\n"
+            f"        continue\n"
+            f"    {found}.append({item})\n"
+            f"if {found}:\n"
+            f"    return {found}[0]\n"
+            f"return {{}}"
+        )
+        needs = _index_offsets(body)
+        fn = ast.parse(f"def {ident}({self._params(frame, needs)}) -> Any:\n    pass").body[0]
+        assert isinstance(fn, ast.FunctionDef)
+        fn.body = body
+        ast.fix_missing_locations(fn)
+        self.functions.append(fn)
+        self._pickers[key] = (ident, needs)
+        return ident, needs
+
+    def _extract(self, text: str, frame: _Frame, where: str, picks: _Picks) -> str:
+        """`text` with each selection (`$.items[marker = 'T'].qty`) replaced by a variable
+        (`items_pick.qty`) that `picks` assigns: the first element is looked for once, however
+        often it is read."""
+
+        def variable(sel: Selection) -> str:
+            condition = normalize_condition(sel.condition)
+            key = (sel.path, condition)
+            if key not in picks.lines:
+                base = re.sub(r"\W+", "_", sel.path.rsplit(".", 1)[-1]).strip("_") or "root"
+                var, n = f"{base}_pick", 2
+                while var in {v for v, _ in picks.lines.values()}:
+                    var, n = f"{base}_pick{n}", n + 1
+                if picks.emit:
+                    ident, needs = self._picker(sel, frame, where)
+                    names = [
+                        a.id for a in self._call_args(frame, None, needs) if isinstance(a, ast.Name)
+                    ]
+                    picks.lines[key] = (var, f"{var} = {ident}({', '.join(names)})")
+                else:
+                    # only what it means, for the proposal: no function is made for it
+                    picks.lines[key] = (var, f"{var} = pick({sel.path!r}, {condition!r})")
+            return picks.lines[key][0]
+
+        return replace_selections(text, variable)
+
     def _value_text(
-        self, rule: FieldRule, frame: _Frame, scope: AnchorScope, where: str
+        self,
+        rule: FieldRule,
+        frame: _Frame,
+        scope: AnchorScope,
+        where: str,
+        picks: _Picks,
     ) -> str | None:
         """The Source of a field as Python text: what the name `value` stands for. A path
         that goes through an enclosing loop (`$.items[*].sku`) is rewritten to that loop's
@@ -351,19 +453,26 @@ class _Builder:
                     f"{where}: the source {rule.source_path!r} does not go through an enclosing "
                     "loop: write it relative to the loop (@.name) to use it as `value`"
                 )
+        path = self._extract(path, frame, where, picks)
         return resolve_anchors(path, scope, f"{where} source").text
 
-    def _auto_text(self, rule: FieldRule, scope: AnchorScope, frame: _Frame, where: str) -> str:
+    def _auto_text(
+        self, rule: FieldRule, scope: AnchorScope, frame: _Frame, where: str, emit: bool = True
+    ) -> str:
         """What the transpiler generates from the rule's Source and expression, as developer
-        dialect text (anchors resolved), whatever the rule's status."""
+        dialect text (anchors resolved), whatever the rule's status. A selection in them
+        (`$.items[marker = 'T'].qty`) is a variable assigned on the first lines. With `emit`
+        False nothing is added to the module (the text is only a proposal)."""
         t = rule.transform
-        value = self._value_text(rule, frame, scope, where)
+        picks = _Picks(emit)
+        value = self._value_text(rule, frame, scope, where, picks)
         expression = t.expression or "value"  # no expression: the Source's value as it is
         if re.search(r"(?<![\w.])value\s*=(?!=)", expression):
             raise FnYamlError(f"{where}: `value` is reserved (the rule's Source value)")
         if value is None and uses_value(expression):
             raise FnYamlError(f"{where}: the expression uses `value` but the rule has no Source")
-        return resolve_anchors(expression, scope, where, value).text
+        expression = self._extract(expression, frame, where, picks)
+        return picks.prefix(resolve_anchors(expression, scope, where, value).text)
 
     def _propose(
         self, rule: FieldRule, fq: str, scope: AnchorScope, frame: _Frame, where: str
@@ -371,7 +480,7 @@ class _Builder:
         """What the transpiler would generate now for a field rule, whatever its status
         (`self.proposals`), normalised so that only a change in meaning shows."""
         try:
-            text = self._auto_text(rule, scope, frame, where)
+            text = self._auto_text(rule, scope, frame, where, emit=False)
             self.proposals[fq] = ast.unparse(ast.parse(textwrap.dedent(text).strip("\n")))
         except (FnYamlError, SyntaxError) as exc:
             self.proposal_errors[fq] = str(exc)
@@ -565,6 +674,11 @@ class _Builder:
             iterable = f'sorted({iterable}, key="{m.group(1)}"{rev})'
         filter_text = None
         if rule.filter:
+            if find_selections(rule.filter):
+                raise FnYamlError(
+                    f"{where}: a filter cannot hold a selection (a path with a condition in it): "
+                    "read it in the fields of the loop"
+                )
             f = resolve_anchors(rule.filter, scope, f"{where} filter")
             if f.uses_index:
                 raise FnYamlError(f"{where}: filter cannot reference @index")
@@ -655,8 +769,10 @@ class _Builder:
         ]
         body = build
         if guard:
+            picks = _Picks()
+            guard_text = self._extract(guard, frame, f"rule '{fq}' guard", picks)
             g = parse_block(
-                resolve_anchors(guard, scope, f"rule '{fq}' guard").text,
+                picks.prefix(resolve_anchors(guard_text, scope, f"rule '{fq}' guard").text),
                 f"{ident}_guard",
                 f"rule '{fq}' guard",
             )

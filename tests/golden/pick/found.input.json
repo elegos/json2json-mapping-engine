@@ -1,0 +1,3 @@
+{"items": [{"marker": "LINE", "qty": 1, "cur": "USD"}, {"marker": "TOTALS", "qty": 12.5, "cur": "EUR"}, {"marker": "TOTALS", "qty": 99, "cur": "GBP"}],
+ "prices": [{"sku": "B", "price": 2}, {"sku": "A", "price": 1.5}, {"sku": "A", "price": 7}],
+ "lines": [{"sku": "A"}, {"sku": "B"}, {"sku": "Z"}]}
