@@ -547,7 +547,64 @@ Sliced; each slice is usable on its own:
         override out of date, with errors (with counts; the validation ones in Developer mode).
       - Limits: a rule that cannot be transpiled makes the auto code of every rule unavailable
         (the pane shows the reason).
-- [ ] **M6.3 — VCS.** Gitoxide save-as-commit, pull --rebase, semantic rule-level merge.
+- [ ] **M6.3 — VCS and collaboration.** Split in three; the old "Gitoxide save-as-commit, pull
+      --rebase, semantic rule-level merge" is replaced by this (ARCHITECTURE.md §VCS says
+      Gitoxide first and no custom merge driver: to be updated when a slice lands). Two ways of
+      working, one merge engine under both.
+      - [ ] **M6.3a — Rule-level merge engine.** 3-way merge of two `.fn.yaml` from a base, in the
+            engine (Python, track 1 tests): rules identified by id, a conflict only on the same
+            field of the same rule, text-level fallback if the YAML does not parse. Exposed as a
+            **git merge driver** (`.gitattributes`: `*.fn.yaml merge=j2jme`), so it works from any
+            git client and in CI, not only inside the tool. Generated files are never merged, they
+            are regenerated.
+      - [ ] **M6.3b — Git mode.**
+        - The tool works on a folder with `mapper.toml`; the git root is found from there up. It
+          commits **only the project's paths** (pathspec). In-tree (the project is part of a bigger
+          repo) and submodule (the commit goes to the submodule's repo; the parent's pointer is
+          outside the tool) are both supported with no submodule-specific logic.
+        - Git operations through the `git` CLI as a subprocess (Gitoxide does not cover rebase,
+          merge, submodules well); if `git` is not installed, fall back to Gitoxide, accepting
+          that merge and the rest are less capable (what it cannot do is disabled, with a tooltip).
+        - Commit = check + build; if the check fails the commit is blocked or marked WIP.
+        - **Generated artifacts (decided).** `build/compiled/*.sql` stay committed by default, with
+          a `manifest.json` next to them: the engine version that produced them, the hash of each
+          source (mapping, schemas, functions, `mapper.toml`) and of each output. On request the
+          tool puts them in `.gitignore` and removes them from the repo (CI then builds and
+          deploys). With them committed, CI regenerates and **fails on a difference**; with them
+          ignored the build simply runs and **raises nothing for a version mismatch** (only a
+          warning). Output is deterministic only for the same mappings **and** the same engine
+          version, hence the manifest. This closes the open point of the CI diff check (see Release).
+        - **Portable Linux CLI** (no desktop, no Tauri) to run `mapper` in CI: generation, and the
+          comparison against the committed artifacts. Same bundled Python as the AppImage; part of
+          the release (see Release artifacts).
+        - Pull with rebase, the conflicts shown in the UI (merge editor on the M6.3a engine).
+      - [ ] **M6.3c — Shared-folder mode (OneDrive / SharePoint).** Only when a real team needs
+            it. A git repo inside a synced folder is **not supported** (it corrupts `.git`): the
+            tool detects such a path and warns.
+        - Nothing generated is written in the synced folder: `build/` (and the rest that is not
+          authored) goes to a local folder. At the first use in a synced folder the tool warns and
+          asks the user for one; it is saved **per user** (the app's config), not per project.
+          Choosing one is **optional**: if the user declines, the build stops there (nothing is
+          written, no error state is remembered) and the tool asks again at the next attempt;
+          generation and deploy are then left to CI/CD.
+          (OneDrive has no ignore file; the only exclusion is an admin policy, so the app does it.)
+          `.venv` is not needed: the tool brings its own Python. The build folder is fixed at
+          `build/` today (not configurable in `mapper.toml`): it has to become configurable.
+        - The sync does not merge: it makes conflict copies (`file-PC.yaml`) or the last writer
+          wins. So: a **base per user** (hash and snapshot of the last version seen, in the app's
+          config); when the file changes on disk (watcher), or at save if the disk differs from the
+          base, a 3-way merge with the M6.3a engine, true conflicts in the UI; conflict copies are
+          recognised by the name and offered for merge. Saves are atomic (temp file + rename).
+        - **Presence**, advisory: one file per user, `.j2jme/presence/<mapping>.<user>.json` (never
+          conflicts: one writer each), shows who is editing which mapping.
+        - It is eventual consistency, not real-time editing.
+      - **Publish (both modes).** `mapper publish [--to DIR]` and a button: check + build (nothing
+        is published if the check fails), the artifacts written to the publish directory.
+        Default: the current `build/compiled`; `[publish] dir` in `mapper.toml` overrides it,
+        relative or absolute (a "guest" project); a per-user override in the app's config. The
+        set is **consistent**: written to a temporary folder and swapped in, or `manifest.json`
+        written last, with the hash of each output, so a reader never sees half a set. What the
+        developer does with the folder afterwards is not the tool's business.
 - [ ] **M6.4 — LLM assist.** Validation suggestions, expression builder (Ollama / API).
 - [ ] **M6.5 — Schemas per mapping.** Each mapping owns its input and output JSON Schema, chosen
       in the tool; changing one forces the Targets and Sources to be validated again (the check
@@ -858,9 +915,10 @@ artifacts and show up in review). The release will carry them too, together with
 what is shipped: the desktop tool's installers, the engine, and these compiled packages, so
 that someone who only installs does not need the project. Still to design: what a release
 contains and its layout, how it is built and published from CI (both pipelines, forgejo and
-github), versioning, and the bundled Python runtime the tool already needs (see M6.1). Open
-point, not decided: whether CI should fail when `mapper build` produces a diff against the
-tracked artifacts (it would catch a generator change committed without them). Also here,
+github), versioning, and the bundled Python runtime the tool already needs (see M6.1). The
+CI diff against the tracked artifacts is decided (M6.3b: fail on a difference when they are
+committed, with the manifest's engine version; nothing when they are git-ignored). It needs a
+**portable Linux CLI** (the engine and its Python, no desktop) as a release artifact. Also here,
 after M7: check that the GitHub pipeline behaves like the forgejo one (not checked so far).
 
 Decided for the bundled Python (not built yet): the engine and the tool's worker need Python

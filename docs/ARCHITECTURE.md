@@ -54,7 +54,7 @@ flowchart LR
     STUBS --> COMP
     TOML -.->|options, hash| TR
     TOML -.->|options, hash| COMP
-    COMP --> ART["target artifact<br/>build/compiled/ (committed)<br/>e.g. PL/SQL package, module, library"]
+    COMP --> ART["target artifact<br/>build/compiled/ (committed by default)<br/>e.g. PL/SQL package, module, library"]
     ART --> DEPLOY[("target runtime<br/>e.g. Oracle DB")]
 ```
 
@@ -991,7 +991,15 @@ mapper compile
 # driven mode: re-transpiles .fn.yaml → .map.py, recompiles, diffs against committed .sql
 # bootstrap mode: recompiles .map.py directly, diffs against committed .sql
 # Writes to build/ only; never modifies sources or committed files.
+# With the artifacts git-ignored there is nothing to diff: it builds, and an engine version
+# different from the manifest's is a warning, never an error.
 mapper check
+
+# Publish: check + build (nothing is published if the check fails), then write the artifacts
+# to the publish directory. Default: build/compiled; `[publish] dir` in mapper.toml (relative
+# or absolute) overrides it, and so does a per-user setting. The set is consistent: written to
+# a temporary folder and swapped in, or manifest.json last, with the hash of each output.
+mapper publish [--to DIR]
 
 # Run tests
 mapper test --offline          # offline tests, = --track 1 (no runtime needed)
@@ -1097,7 +1105,7 @@ The functional team sees a spreadsheet grid; the tool writes `.fn.yaml` files in
 background. The functional team never interacts with YAML directly.
 
 The web frontend handles spreadsheet behaviour (keyboard navigation, copy/paste, undo)
-via AG Grid. The Rust backend handles: file I/O, version control (Gitoxide), and
+via AG Grid. The Rust backend handles: file I/O, version control (`git` CLI, Gitoxide as fallback), and
 subprocess management (launching the Python transpiler/compiler). All mapping logic —
 transpilation, optimization, compilation — lives in Python, not in the Rust backend.
 The boundary is: Rust owns the desktop shell; Python owns the pipeline semantics.
@@ -1369,8 +1377,14 @@ build/
 │   ├── <mapping>.map.py             ← transpiler output (stage 4)
 │   └── stages/<mapping>/            ← optional per-stage artifacts
 └── compiled/
-    └── <mapping>.sql                ← compiler output (PL/SQL)
+    ├── <mapping>.sql                ← compiler output (PL/SQL)
+    └── manifest.json                ← what produced them (see below)
 ```
+
+**Location.** `build/` is inside the project by default. In a folder synced by OneDrive or
+SharePoint (which cannot exclude a folder from the sync) the tool does not write generated
+files there: it asks the user for another folder, saved per user in the app's config and not
+per project (§Version control, shared-folder mode). `build/` has to be configurable for this.
 
 At each build invocation:
 1. Hash the `.fn.yaml` **together with the full contents of `mapper.toml`**. If it
@@ -1405,8 +1419,16 @@ which config keys affect which stage.
   functional semantics are unchanged.
 - MINOR changes (new functions added) do not trigger any reprocessing.
 
-`build/compiled/*.sql` files are the deployable artifacts and are committed to the
-repository. All other `build/` contents are ephemeral and git-ignored.
+`build/compiled/*.sql` files are the deployable artifacts. By default they are committed to
+the repository, so that they show up in review and a deploy reads what was reviewed; on request
+the tool puts them in `.gitignore` and removes them from the repository, and CI builds and deploys
+them instead. All other `build/` contents are ephemeral and git-ignored.
+
+**`build/compiled/manifest.json`** is written with the artifacts: the version of the engine that
+produced them, the hash of each source (each mapping, the schemas, the functions, `mapper.toml`) and
+the hash of each output. The output is deterministic only for the same sources **and** the same
+engine version, so the manifest is what makes a comparison meaningful. It is also written last when
+publishing (§Build CLI, `mapper publish`), so a reader never sees half a set.
 
 An LLM is embedded in the tool for two purposes:
 
@@ -2145,8 +2167,8 @@ a general-purpose variable, and strips it before code generation.
 The `.fn.yaml` is always the source of truth. The `.map.py` is always a generated
 artifact (lives in `build/transpiled/`, ephemeral, not committed). Developer overrides
 live in `code_override` fields inside the `.fn.yaml`. Running `mapper build` always
-regenerates `.map.py` from `.fn.yaml` before compiling; `mapper check` verifies that
-the committed `build/compiled/*.sql` matches what the current sources produce.
+regenerates `.map.py` from `.fn.yaml` before compiling; when `build/compiled/*.sql` are
+committed, `mapper check` verifies that they match what the current sources produce.
 
 ---
 
@@ -2163,53 +2185,96 @@ json2json-mapper/
 │       └── order_event.map.py
 ├── import-profiles/         ← reusable column-mapping profiles for migration imports
 │   └── legacy_excel_v2.import.yaml
-└── build/                   ← git-ignored except build/compiled/
+└── build/                   ← git-ignored except build/compiled/ (also ignorable on request)
     ├── cache/               ← content hashes for incremental build
     ├── transpiled/          ← .map.py generated artifacts (ephemeral)
     ├── python/
     │   └── stubs/           ← generated __mapping__.pyi (typed per project schemas)
-    └── compiled/            ← .sql deployable artifacts (committed)
-        └── order_event.sql
+    └── compiled/            ← .sql deployable artifacts (committed by default)
+        ├── order_event.sql
+        └── manifest.json    ← engine version, hash of each source and output
 ```
 
 ---
 
 ### Version control
 
-The tool embeds **Gitoxide** (pure-Rust git implementation) as its primary VCS backend.
-If a specific operation is not yet supported by Gitoxide, the tool falls back to the
-system `git` binary if available. If neither can perform the operation, that feature is
-silently disabled and indicated via a tooltip warning on the relevant UI control.
+The tool works on a folder with `mapper.toml`; the git root is found from there upwards. The
+project may be the whole repository, a folder inside a bigger one (in-tree), or a submodule: the
+tool does not tell them apart, it only ever commits the **project's paths** (a pathspec). With a
+submodule the commit goes to the submodule's own repository; the parent's pointer is outside the
+tool.
 
-**Save** in the tool creates a git commit scoped to the modified `.fn.yaml` files.
-The commit message is composed from the free-text "version notes" field the functional
-user fills before saving. The commit highlights which rows changed (by `id`) and which
-field groups were touched (`source`, `transform`, or `description`).
+Git operations go through the system **`git` binary** as a subprocess (the same way the tool
+already launches Python): Gitoxide does not cover rebase, merge or submodules well enough. If
+`git` is not installed the tool falls back to **Gitoxide** (embedded, pure Rust), accepting that
+merge and other operations are less capable; an operation Gitoxide cannot do is disabled, with a
+tooltip on the relevant UI control saying why.
 
-Generated `.map.py` files are not committed by the tool — they are ephemeral artifacts
-in `build/transpiled/`. `build/compiled/*.sql` files are committed separately (not by
-the tool) to keep functional commits and generated-artifact commits distinct in history.
+Two ways of working share one merge engine; the second is for teams that work on SharePoint /
+OneDrive and is built only when a team needs it.
 
-A remote repository is optional and user-configurable (GitHub, GitLab, Azure DevOps,
-or none).
+#### Git mode
 
-**Concurrent edits** — the tool uses an optimistic strategy: before committing, it
-performs a `git pull --rebase` to incorporate remote changes. If the rebase succeeds
-(no conflicting edits to the same rows), the commit proceeds transparently. If
-conflicts arise, the tool opens a three-way merge editor embedded in the UI.
+**Save** in the tool creates a git commit scoped to the modified `.fn.yaml` files. The commit
+message is composed from the free-text "version notes" field the functional user fills before
+saving. The commit highlights which rows changed (by `id`) and which field groups were touched
+(`source`, `transform`, or `description`).
 
-The merge is **semantic**: because `.fn.yaml` files are structured (rules identified
-by `id`), the merge engine diffs and merges at the rule level rather than at the text
-level. Two users editing different rules in the same file never conflict, even if their
-edits produce adjacent YAML lines. Conflicts only arise when two users modify the same
-field of the same rule. The merge editor presents the conflicting rule fields
-side-by-side; the functional user selects the winning value per field without
-interacting with raw YAML.
+**Commit = check + build.** The commit action runs the check and the build; a failing check blocks
+the commit or marks it WIP. Generated `.map.py` files are never committed (ephemeral, in
+`build/transpiled/`). `build/compiled/*.sql` and `manifest.json` are committed **in the same
+commit as the sources** by default, so a deploy never reads old code; or git-ignored on request
+(§Build folder and incremental compilation), in which case CI builds and deploys.
 
-Text-level fallback (standard `git` three-way merge) is used only if the YAML cannot
-be parsed — for example, a manually corrupted file. No locking or custom merge driver
-is implemented; same-file semantic conflicts remain rare in practice because functional
-teams tend to own distinct rule sets.
+**CI.** A portable Linux CLI (the engine with its Python, no desktop) runs `mapper` in CI. With the
+artifacts committed, CI regenerates them and **fails if they differ** from the committed ones (the
+manifest's engine version is what makes the comparison meaningful); with them git-ignored it just
+builds. A remote repository is optional and user-configurable (GitHub, GitLab, Azure DevOps, or
+none).
+
+**Concurrent edits** — the tool uses an optimistic strategy: before committing, it performs a
+`git pull --rebase` to incorporate remote changes. If the rebase succeeds (no conflicting edits to
+the same rows), the commit proceeds transparently. If conflicts arise, the tool opens a three-way
+merge editor embedded in the UI.
+
+#### The merge engine
+
+The merge is **semantic**: because `.fn.yaml` files are structured (rules identified by `id`), the
+engine merges at the rule level rather than at the text level, from a base version. Two users
+editing different rules in the same file never conflict, even if their edits produce adjacent YAML
+lines. Conflicts only arise when two users modify the same field of the same rule. The merge editor
+presents the conflicting rule fields side-by-side; the functional user selects the winning value
+per field without interacting with raw YAML. Generated files are never merged, they are
+regenerated.
+
+The engine lives in the Python side (testable offline) and is also registered as a **git merge
+driver** (`.gitattributes`: `*.fn.yaml merge=j2jme`), so the same merge happens from any git client
+and in CI, not only inside the tool. Text-level fallback (standard `git` three-way merge) is used
+only if the YAML cannot be parsed — for example, a manually corrupted file.
+
+#### Shared-folder mode (OneDrive / SharePoint)
+
+A git repository inside a synced folder is **not supported** (the sync corrupts `.git`); the tool
+detects such a path and warns. The sync itself does not merge: for files it does not know it makes
+conflict copies (`file-PC.yaml`) or the last writer wins. So the tool does the merge:
+
+- **Base per user.** The app's config keeps, per user, the hash and a snapshot of the last version
+  of each mapping it has seen. When the file changes on disk (a watcher), or at save if the disk
+  differs from the base, the tool merges three ways with the merge engine; true conflicts go to the
+  merge editor. Conflict copies are recognised by their name and offered for merge. Saves are
+  atomic (temporary file + rename).
+- **Nothing generated in the synced folder.** OneDrive has no ignore file (the only exclusion is an
+  administrator's policy), so the app handles it: `build/` goes to another local folder, asked at
+  the first use and saved per user. Choosing one is optional: if the user declines, the build
+  stops, nothing is written and nothing is remembered; the tool asks again at the next attempt, and
+  generation and deploy are left to CI/CD. The authored files only (`mapper.toml`, `*.fn.yaml`,
+  schemas, `fn/`, `tests/golden`) are synced. `.venv` is not needed: the tool brings its own Python.
+- **Presence**, advisory: one file per user, `.j2jme/presence/<mapping>.<user>.json` (one writer
+  each, so it never conflicts), shows who is editing which mapping. There are no locks.
+- It is eventual consistency, not real-time editing. Handing the published artifacts over from the
+  folder to wherever they are deployed is the developer's business; the tool only writes them to
+  the publish directory (`mapper publish`).
 
 ---
 
