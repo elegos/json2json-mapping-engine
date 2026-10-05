@@ -385,3 +385,23 @@ span.result-badge { cursor: default; }
 .fn-names dt { font-family: monospace; min-width: 120px; flex: none; }
 .fn-names dd { margin: 0; opacity: 0.85; }
 .fn-issues li button { all: unset; cursor: pointer; display: block; width: 100%; } .fn-issues li button:hover { text-decoration: underline; }
+
+/* version control (VersionControl.tsx) */
+.modal.vcs { width: 640px; max-width: 94vw; max-height: 88vh; overflow-y: auto; }
+.vcs h4 { margin: 10px 0 6px; font-size: 13px; }
+.vcs-branch { color: GrayText; margin-bottom: 8px; }
+.vcs-changes { margin: 0 0 10px; padding-left: 18px; max-height: 160px; overflow-y: auto; font-size: 13px; }
+.vcs-changes code { display: inline-block; min-width: 18px; }
+.vcs-generated { color: GrayText; list-style: none; margin-left: -18px; }
+.vcs-notes { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; font-size: 13px; }
+.vcs-notes textarea { font: inherit; resize: vertical; }
+.vcs-problems { border: 1px solid #c33a; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; font-size: 13px; }
+.vcs-problems ul { margin: 4px 0 0; padding-left: 18px; }
+.vcs-message { margin: 0 0 12px; font-size: 13px; }
+.vcs-file { border: 1px solid #8886; border-radius: 6px; margin: 0 0 10px; padding: 8px 12px; }
+.vcs-item { margin: 0 0 10px; }
+.vcs-sides { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
+.vcs-sides label { border: 1px solid #8886; border-radius: 6px; padding: 6px 8px; cursor: pointer; display: block; }
+.vcs-sides label.on { border-color: #3a7bd5; background: #3a7bd514; }
+.vcs-sides pre { margin: 4px 0 0; white-space: pre-wrap; word-break: break-word; font-size: 12px; max-height: 140px; overflow-y: auto; }
+.vcs-hint { color: GrayText; font-size: 12px; }

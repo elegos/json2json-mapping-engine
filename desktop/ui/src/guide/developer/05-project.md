@@ -33,3 +33,15 @@ and the order of `mapper.toml` are kept.
 not a setting you edit here. A newer tool tells you that opening the project updates it to its
 version; an older tool will not open it unless you tick that you accept the risk of incompatibility,
 and the file is never taken back to an older version.
+
+
+## Version control
+
+*Version control…* opens a panel for projects kept in git. It lists what you changed, and you write
+the version notes (the first line is the title). *Commit* first checks the rules and builds every
+mapping, then commits your files and the generated ones together, so what is deployed from git is
+what was reviewed; if the check finds errors nothing is committed and they are listed, and you can
+still *Commit as WIP*, which saves your sources only. *Pull* brings in the others' work. When both of
+you changed the same thing, the panel shows the two values side by side and you choose which stays,
+item by item; the generated files are rebuilt for you. *Give up the pull* puts everything back as it
+was. *Push* sends your commits.

@@ -429,6 +429,89 @@ export async function artifactsTrack(project: string): Promise<ArtifactsState> {
   return (await configRequest<{ before: ArtifactsState }>({ op: "artifacts_track", project })).before;
 }
 
+// --- version control (git mode, `cli/vcs.py`) ---------------------------------------------------
+
+export interface VcsChange {
+  path: string;
+  /** git's short status: `M`, `A`, `D`, `?` (untracked)… */
+  status: string;
+  /** a generated file (`build/compiled`): committed with the sources, never edited */
+  generated: boolean;
+}
+
+export interface VcsState {
+  git: boolean;
+  repo: boolean;
+  branch?: string | null;
+  upstream?: string | null;
+  ahead?: number;
+  behind?: number;
+  rebasing?: boolean;
+  changes?: VcsChange[];
+  conflicts?: string[];
+}
+
+/** One thing both sides changed: a rule field (`rules[oid].description`), or a function. */
+export interface VcsConflictItem {
+  path: string;
+  base: unknown;
+  mine: unknown;
+  remote: unknown;
+  mine_missing: boolean;
+  remote_missing: boolean;
+}
+
+export interface VcsConflictFile {
+  file: string;
+  /** `rules` (.fn.yaml), `functions` (.fn), `text` (cannot be settled here), `generated` (regenerated) */
+  kind: "rules" | "functions" | "text" | "generated";
+  items: VcsConflictItem[];
+}
+
+export interface VcsCommitResult {
+  ok: boolean;
+  committed?: boolean;
+  blocked?: boolean;
+  commit?: string;
+  subject?: string;
+  message?: string;
+  problems: string[];
+}
+
+/** A request whose answer may be `ok: false` with data (a blocked commit, a pull that stopped
+ * on conflicts): the answer is returned as it is, and only a failure carrying `error` throws. */
+async function vcsRequest<T>(request: Record<string, unknown>): Promise<T> {
+  const answer = await invoke<string>("edit_request", {
+    request: JSON.stringify({ id: 1, ...request }),
+  });
+  const parsed = JSON.parse(answer) as { ok: boolean; error?: string } & T;
+  if (parsed.error) throw new Error(parsed.error);
+  return parsed;
+}
+
+export const vcsState = (project: string) => vcsRequest<VcsState>({ op: "vcs_state", project });
+
+export const vcsCommit = (project: string, notes: string, wip: boolean) =>
+  vcsRequest<VcsCommitResult>({ op: "vcs_commit", project, notes, wip });
+
+export const vcsPull = (project: string) =>
+  vcsRequest<{ ok: boolean; conflicts: string[]; message?: string }>({ op: "vcs_pull", project });
+
+export const vcsPush = (project: string) => vcsRequest<{ ok: boolean }>({ op: "vcs_push", project });
+
+export const vcsConflicts = async (project: string) =>
+  (await vcsRequest<{ files: VcsConflictFile[] }>({ op: "vcs_conflicts", project })).files;
+
+export const vcsResolve = (project: string, file: string, choices: Record<string, "mine" | "remote">) =>
+  vcsRequest<{ ok: boolean; conflicts: string[]; done: boolean }>({
+    op: "vcs_resolve",
+    project,
+    file,
+    choices,
+  });
+
+export const vcsAbort = (project: string) => vcsRequest<{ ok: boolean }>({ op: "vcs_abort", project });
+
 export async function configCheck(values: ConfigValues): Promise<ConfigIssue[]> {
   return (await configRequest<{ issues: ConfigIssue[] }>({ op: "config_check", values })).issues;
 }

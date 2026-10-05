@@ -569,7 +569,7 @@ Sliced; each slice is usable on its own:
             function by the same driver (picked by the file name). Not done: the merge editor in the
             UI (M6.3b) and a worker op for it. Limits: comments and key order of a hand-edited
             file are lost in a rule-level merge (as in any save by the tool).
-      - [ ] **M6.3b — Git mode.**
+      - [x] **M6.3b — Git mode** (the Gitoxide fallback left).
         - The tool works on a folder with `mapper.toml`; the git root is found from there up. It
           commits **only the project's paths** (pathspec). In-tree (the project is part of a bigger
           repo) and submodule (the commit goes to the submodule's repo; the parent's pointer is
@@ -627,7 +627,32 @@ Sliced; each slice is usable on its own:
           (a release as a `file://` folder). **Not verified**: a run in a real CI job, a release made
           by `release.yml` carrying the two files (the `dist/packages/*` glob should take them), the
           script from a draft release (needs a token). Not done: the same for Windows / macOS CI.
-        - Pull with rebase, the conflicts shown in the UI (merge editor on the M6.3a engine).
+        - [x] Pull with rebase, the conflicts shown in the UI (merge editor on the M6.3a engine).
+        - **Git mode in the tool (done, except the Gitoxide fallback).** `cli/vcs.py` and the worker
+          ops `vcs_*`; the **Version control…** panel (`VersionControl.tsx`): the changes of the
+          project's paths, the version notes, *Commit*, *Pull*, *Push*, and the conflict editor.
+          - *Commit* = the check (rule errors, and a build of every mapping), then the build, then one
+            commit of the project's paths only (`mapper.toml`, `.gitignore`, `.gitattributes`,
+            `mappings/`, `schemas/`, `lookups/`, `fn/`, `tests/golden/`) **and** `build/compiled`
+            (when it is committed, not ignored). The first line of the notes is the subject, the
+            rest the body, followed by the rules changed per mapping (added, removed, changed with
+            the groups `source` / `transform` / `description` / `other`). A failing check blocks the
+            commit and lists the problems; *Commit as WIP* then commits the sources only, with `WIP: ` in
+            the subject. Whatever else is staged in the repository is left alone.
+          - *Pull* = `git pull --rebase --autostash`; a clean rebase is silent. The generated files
+            conflict whenever both sides built (their hashes): they are never merged, the rebase
+            regenerates and carries on by itself. What both sides changed in a `.fn.yaml` (a rule
+            field) or an `fn/*.fn` (a function) is shown as *mine* / *theirs (remote)*, one choice
+            per item, then *Settle*; the rebase goes on to the next commit, which may stop again.
+            *Give up the pull* aborts. Any other file in conflict cannot be settled in the tool
+            (it says so; edit it outside, or give up).
+          - Tests: `tests/track1/cli/test_vcs.py` (a bare remote and two clones: state, commit, WIP,
+            scope, ignored artifacts, pull, conflicts by rule and by function, abort, push, worker
+            ops) and `versionControl.test.ts`. **Not verified**: the panel in the running tool.
+          - **Not done**: the Gitoxide fallback when `git` is not installed (the panel says so and
+            does nothing; `gix` is not a dependency of the desktop crate), and the driver
+            auto-install (`mapper merge-driver-install`) is still a manual, per-clone step: the tool
+            settles in the panel what git leaves, with or without it.
       - [ ] **M6.3c — Shared-folder mode (OneDrive / SharePoint).** Only when a real team needs
             it. A git repo inside a synced folder is **not supported** (it corrupts `.git`): the
             tool detects such a path and warns.

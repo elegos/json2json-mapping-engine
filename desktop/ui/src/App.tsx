@@ -2,6 +2,7 @@ import type { ColDef, ICellRendererParams, ValueSetterParams } from "ag-grid-com
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AgGridReact } from "ag-grid-react";
 import { type Choice, Confirm } from "./Confirm";
+import { VersionControl } from "./VersionControl";
 import { CompletingCellEditor, type GridContext } from "./CompletingCellEditor";
 import { Lookups } from "./Lookups";
 import { Paths } from "./Paths";
@@ -221,6 +222,7 @@ export function App() {
   } | null>(null);
   // the user accepted to work on a project made with a newer engine (never persisted)
   const [olderAccepted, setOlderAccepted] = useState(false);
+  const [versionControl, setVersionControl] = useState(false);
   const dirtyRef = useRef(false);
   const saveRef = useRef<() => Promise<boolean>>(async () => true);
   const folding = useRef(false);
@@ -1730,6 +1732,13 @@ export function App() {
           <button disabled={!dirty || busy} onClick={() => void save()}>
             Save{dirty ? " ●" : ""}
           </button>
+          <button
+            disabled={!project || busy}
+            title="Commit, pull and push (git): checks and builds before committing"
+            onClick={() => setVersionControl(true)}
+          >
+            Version control…
+          </button>
           {/* transpile, build and publish are the developer's: a functional user only checks */}
           {COMMANDS.filter((c) => developerMode || c === "check").map((c) => (
             <button
@@ -2131,6 +2140,14 @@ export function App() {
           taken={cases.map((c) => c.name)}
           onImport={importCase}
           onClose={() => setImportingGolden(false)}
+        />
+      )}
+      {versionControl && project && (
+        <VersionControl
+          project={project}
+          onClose={() => setVersionControl(false)}
+          onChanged={() => void reloadFiles(current ? mappingName(current) : null)}
+          ensureSaved={() => guardRef.current("Save before continuing?", "Continue without saving")}
         />
       )}
       {prompt && (

@@ -2312,11 +2312,18 @@ message is composed from the free-text "version notes" field the functional user
 saving. The commit highlights which rows changed (by `id`) and which field groups were touched
 (`source`, `transform`, or `description`).
 
-**Commit = check + build.** The commit action runs the check and the build; a failing check blocks
-the commit or marks it WIP. Generated `.map.py` files are never committed (ephemeral, in
-`build/transpiled/`). `build/compiled/*.sql` and `manifest.json` are committed **in the same
-commit as the sources** by default, so a deploy never reads old code; or git-ignored on request
-(§Build folder and incremental compilation), in which case CI builds and deploys.
+**Commit = check + build.** The tool's *Version control…* panel (`cli/vcs.py`) lists what changed in
+the project's paths and takes the version notes. *Commit* runs the check (the rules' errors, and a
+build of every mapping), then the build, then makes one commit of the project's paths (`mapper.toml`,
+`.gitignore`, `.gitattributes`, `mappings/`, `schemas/`, `lookups/`, `fn/`, `tests/golden/`) and of
+`build/compiled`, and of nothing else that may be staged in the repository. A failing check blocks the
+commit and lists the problems; *Commit as WIP* commits the sources only, with `WIP: ` in the subject.
+The first line of the notes is the subject; the rest, then the rules changed per mapping (added,
+removed, changed with the field groups touched), make the body. Generated `.map.py` files are never
+committed (ephemeral, in `build/transpiled/`). `build/compiled/*.sql` and `manifest.json` are
+committed **in the same commit as the sources** by default, so a deploy never reads old code; or
+git-ignored on request (§Build folder and incremental compilation), in which case CI builds and
+deploys and a commit has no generated files.
 
 **CI.** A portable Linux CLI (the engine with its Python, no desktop) runs `mapper` in CI. With the
 artifacts committed, CI regenerates them and **fails if they differ** from the committed ones (it
@@ -2324,10 +2331,18 @@ runs the engine version `mapper.toml` names, which is what makes the comparison 
 them git-ignored it just builds. A remote repository is optional and user-configurable (GitHub, GitLab, Azure DevOps, or
 none).
 
-**Concurrent edits** — the tool uses an optimistic strategy: before committing, it performs a
-`git pull --rebase` to incorporate remote changes. If the rebase succeeds (no conflicting edits to
-the same rows), the commit proceeds transparently. If conflicts arise, the tool opens a three-way
-merge editor embedded in the UI.
+**Concurrent edits** — *Pull* is `git pull --rebase --autostash`, so unsaved work in progress is kept
+and the history stays linear. If the rebase succeeds (no conflicting edits to the same rows), nothing
+more happens. If git stops, the panel becomes a merge editor: the files that both sides changed are
+read from the index (base, remote, mine) and merged with the merge engine, so only what really
+clashes is asked: per item, *mine* or *theirs (remote)*, shown side by side, a rule field of a
+`.fn.yaml` or a function of an `fn/*.fn`. The generated files conflict whenever both sides built
+(their hashes differ) and are never merged: when only they are left the rebase regenerates them and
+carries on by itself, and after a settled file the tool does the same, then goes on to the next
+commit of the rebase, which may stop again. *Give up the pull* aborts the rebase. A file that is
+neither (any other) cannot be settled in the tool. This works whether or not the merge driver is
+installed in the clone: with it git settles more by itself, without it the panel settles what git
+leaves.
 
 #### The merge engine
 
