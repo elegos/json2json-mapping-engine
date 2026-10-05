@@ -1110,7 +1110,9 @@ environments (a future CPython release could change `ast` internals in a breakin
 
 Python executable resolution order at startup:
 
-1. `<app-dir>/python-runtime/python` — bundled interpreter (preferred)
+1. `python-runtime/` in the application's resource folder (`bundle.rs`: next to the executable on
+   Windows, `Contents/Resources` in a macOS bundle, `usr/lib/<name>` in an AppImage) — bundled
+   interpreter (preferred; `bin/python3`, `python.exe` on Windows)
 2. `python3.XX` matching the minimum version declared in the tool's manifest
 3. `python3`
 4. `python`
@@ -1129,6 +1131,55 @@ cargo build --no-python-runtime
 When building without the bundled runtime the tool relies on the system resolution
 order above and warns at startup if the found version does not match the declared
 minimum.
+
+### Packaging
+
+Every package is built from Linux, in the image of `packaging/Dockerfile`
+(`dev_scripts/package.sh linux|windows|macos`; output in `dist/packages/`). What the tool ships
+next to its executable is assembled by `packaging/stage.sh` into `desktop/src-tauri/stage/`
+(git-ignored) and declared as resources in `tauri.release.conf.json` (not in `tauri.conf.json`,
+so that a development build does not need the folder):
+
+| Folder | Content |
+|---|---|
+| `engine/` | `cli`, `compiler`, `transpiler`, `runtime`, with their dependencies as the wheels of the target platform (`uv pip install --python-platform`) and byte-code written at build time (nothing may be written next to an installed application) |
+| `python-runtime/` | python-build-standalone (version and checksums in `packaging/versions.env`), trimmed (no tkinter, tests, pip) |
+| `tour-project/` | the project the tutorial opens a copy of |
+
+| Package | How |
+|---|---|
+| Linux **AppImage** | Tauri's bundler (`linuxdeploy`); the image is Ubuntu 24.04, so the AppImage needs glibc 2.39 or newer; it brings its own WebKitGTK, and the 2.50 of 22.04 crashed on the COLRv1 emoji font (Noto) of current distributions. The launcher of the AppImage exports `PYTHONHOME`, which `python.rs` removes from the environment of the interpreters it starts. Compression is zstd (the plugin's only one): AppImageLauncher cannot read it, see the note below |
+| Windows **NSIS installer** | `tauri build --runner cargo-xwin --target x86_64-pc-windows-msvc --bundles nsis`; `installMode: both` lets the user choose between the current user and every user. Not an MSI: Tauri's MSI needs WiX, which runs only on Windows |
+| Windows **portable zip** | the executable and the three folders beside it, which is where the tool looks; WebView2 must be present (Windows 11 has it) |
+| macOS **dmg** (arm64) | Tauri's bundler cannot run here, so: `cargo zigbuild` against a macOS SDK taken from Xcode and given at run time (`J2JME_MACOS_SDK`, a secret of the CI), the `.app` assembled by `build.sh`, signed with `rcodesign` (the certificate from `MACOS_CERT_P12_BASE64` / `MACOS_CERT_PASSWORD`, else ad-hoc), the volume made with `xorrisofs` and `libdmg-hfsplus`. Unofficial: the SDK's licence ties it to Apple hardware, and without notarisation Gatekeeper asks the user to open the app with right-click → Open |
+
+The window's icon on Wayland: a window cannot set its own, the compositor takes it from the
+`.desktop` file whose id equals the window's `app_id`, and GTK uses the program name for that
+(`j2jme-desktop`) while whatever integrates the AppImage (Gear Lever, AppImageLauncher) names the
+file its own way. `desktop_entry.rs` therefore sets the program name, before GTK starts, to the id of
+the entry the AppImage was launched from (`GIO_LAUNCHED_DESKTOP_FILE`, else the installed entry
+whose `Exec` runs `$APPIMAGE`). An AppImage that has not been integrated has no entry, so it keeps
+the compositor's generic icon.
+
+Starting the AppImage where AppImageLauncher is installed: it takes over the file (a `binfmt_misc`
+handler) and cannot read the zstd image, and the FUSE mount may fail. From a terminal,
+`APPIMAGE_EXTRACT_AND_RUN=1 ./J2JME-….AppImage` avoids FUSE; if AppImageLauncher still intercepts,
+copy the file and blank its marker (`dd if=/dev/zero bs=1 count=3 seek=8 conv=notrunc of=copy.AppImage`,
+what Tauri does for its own tools), then run the copy the same way.
+
+The window title is `J2JME v<version> (<short commit id>)`: the version is the one of
+`desktop/src-tauri/Cargo.toml` (`tauri.conf.json` has none, so it is the only source), the id comes
+from `build.rs` (`git rev-parse --short HEAD`, or `J2JME_GIT_SHA` where there is no `.git`).
+`.forgejo/workflows/release.yml` and its GitHub twin build the packages. A tag `vX.Y.Z` (or
+`vX.Y.Z-suffix`) also makes a **draft release**, with `packaging/release.py`:
+- the version of the tag replaces the one in `Cargo.toml` (and `Cargo.lock`) for that build, so
+  what is written there matters only for local builds; a tag that is not semver fails the job;
+- a suffix (`v1.2.3-beta1`) marks the release as a pre-release;
+- the description is the section of that version in `CHANGELOG.md` ([Keep a
+  Changelog](https://keepachangelog.com/en/1.1.0/) 1.1.0), else its `Unreleased` section, else
+  none. The footer link definitions of the file are not part of the text.
+
+A manual run of the workflow only builds the packages, as artifacts.
 
 ---
 

@@ -1,6 +1,10 @@
 //! Drives the real `mapper` CLI through the same code the UI commands use, on the
 //! orders fixture. Skipped when no Python with the engine's dependencies is found.
 
+#[path = "../src/bundle.rs"]
+#[allow(dead_code)]
+mod bundle;
+
 #[path = "../src/python.rs"]
 #[allow(dead_code)]
 mod python;

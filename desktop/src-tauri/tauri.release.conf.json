@@ -1,0 +1,17 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "active": true,
+    "shortDescription": "Desktop tool for the JSON-to-JSON mapping engine",
+    "resources": {
+      "stage/engine": "engine",
+      "stage/python-runtime": "python-runtime",
+      "stage/tour-project": "tour-project"
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "both"
+      }
+    }
+  }
+}

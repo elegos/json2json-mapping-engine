@@ -1,7 +1,7 @@
 //! Python resolution and the `mapper` subprocess.
 //!
 //! Executable resolution order (docs/ARCHITECTURE.md, §Python runtime):
-//! 1. `<app-dir>/python-runtime/python` (bundled)
+//! 1. `python-runtime/` in the bundled resources (`bundle.rs`)
 //! 2. `python3.XX` at the minimum version
 //! 3. `python3`
 //! 4. `python`
@@ -24,11 +24,32 @@ pub struct Found {
     pub version: String,
 }
 
-fn app_dir() -> Option<PathBuf> {
-    std::env::current_exe()
-        .ok()?
-        .parent()
-        .map(Path::to_path_buf)
+/// The interpreter of a bundled or virtual-environment Python, whose layout differs on Windows.
+fn interpreter(root: &Path, venv: bool) -> PathBuf {
+    match (cfg!(windows), venv) {
+        (true, true) => root.join("Scripts").join("python.exe"),
+        (true, false) => root.join("python.exe"),
+        (false, _) => root.join("bin").join("python3"),
+    }
+}
+
+/// A child must not open a console window on Windows, and must speak UTF-8 on its pipes
+/// (otherwise Python uses the console's code page there). It also must not inherit what is set
+/// for another Python: an AppImage's launcher exports `PYTHONHOME=$APPDIR/usr/`, which makes any
+/// interpreter look for its standard library there.
+fn prepare(command: &mut Command, engine: &Path) {
+    command
+        .env("PYTHONPATH", engine)
+        .env("PYTHONUTF8", "1")
+        .env("PYTHONIOENCODING", "utf-8")
+        .env("PYTHONNOUSERSITE", "1")
+        .env_remove("PYTHONHOME")
+        .env_remove("PYTHONSTARTUP");
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
 }
 
 /// Where the `cli` / `compiler` / `transpiler` packages live.
@@ -36,7 +57,7 @@ fn engine_root() -> Option<PathBuf> {
     if let Ok(dir) = std::env::var("J2JME_ENGINE") {
         return Some(PathBuf::from(dir));
     }
-    let bundled = app_dir()?.join("engine");
+    let bundled = crate::bundle::dir()?.join("engine");
     if bundled.join("cli").is_dir() {
         return Some(bundled);
     }
@@ -49,10 +70,10 @@ fn engine_root() -> Option<PathBuf> {
 
 fn candidates(engine: &Path) -> Vec<PathBuf> {
     let mut list = Vec::new();
-    if let Some(dir) = app_dir() {
-        list.push(dir.join("python-runtime").join("python"));
+    if let Some(dir) = crate::bundle::dir() {
+        list.push(interpreter(&dir.join("python-runtime"), false));
     }
-    list.push(engine.join(".venv").join("bin").join("python"));
+    list.push(interpreter(&engine.join(".venv"), true));
     list.push(PathBuf::from(format!("python3.{MIN_MINOR}")));
     list.push(PathBuf::from("python3"));
     list.push(PathBuf::from("python"));
@@ -60,8 +81,9 @@ fn candidates(engine: &Path) -> Vec<PathBuf> {
 }
 
 fn probe(python: &Path, engine: &Path) -> Option<String> {
-    let out = Command::new(python)
-        .env("PYTHONPATH", engine)
+    let mut command = Command::new(python);
+    prepare(&mut command, engine);
+    let out = command
         .args([
             "-c",
             "import sys, cli.main; print('%d.%d.%d' % sys.version_info[:3])",
@@ -100,9 +122,10 @@ pub fn run_mapper(
     args: &[&str],
     stdin: Option<&str>,
 ) -> Result<MapperOutput, String> {
-    let mut child = Command::new(&found.python)
+    let mut command = Command::new(&found.python);
+    prepare(&mut command, &found.engine);
+    let mut child = command
         .current_dir(project)
-        .env("PYTHONPATH", &found.engine)
         .args(["-m", "cli.main"])
         .args(args)
         .stdin(if stdin.is_some() {
@@ -137,8 +160,9 @@ pub struct Worker {
 
 impl Worker {
     pub fn start(found: &Found) -> Result<Worker, String> {
-        let mut child = Command::new(&found.python)
-            .env("PYTHONPATH", &found.engine)
+        let mut command = Command::new(&found.python);
+        prepare(&mut command, &found.engine);
+        let mut child = command
             .args(["-m", "cli.main", "serve"])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -174,5 +198,23 @@ impl Worker {
 impl Drop for Worker {
     fn drop(&mut self) {
         let _ = self.child.kill();
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_pythonhome_of_the_parent_does_not_reach_the_interpreter() {
+        // an AppImage's launcher sets it for its own purposes
+        let mut command = Command::new("sh");
+        command.env("PYTHONHOME", "/somewhere/else");
+        prepare(&mut command, Path::new("/engine"));
+        let out = command
+            .args(["-c", "echo \"${PYTHONHOME:-unset} $PYTHONPATH\""])
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "unset /engine");
     }
 }

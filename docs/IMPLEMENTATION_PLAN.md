@@ -876,6 +876,25 @@ is not enough on its own: ship a private venv / `site-packages` built for that e
 bundle the interpreter in an AppImage / Flatpak). `desktop/src-tauri/src/python.rs` already looks
 for a bundled interpreter after the engine's `.venv`.
 
+- [x] **Desktop packages, first cut** (§Packaging in ARCHITECTURE). Built entirely from Linux in
+      one image (`packaging/Dockerfile`, driven by `dev_scripts/package.sh`): an **AppImage**
+      (Tauri's bundler), a Windows **NSIS installer** (for the user or for every user) and a
+      **portable zip** (cross-built with `cargo-xwin`, NSIS 3.13 compiled in the image), and a
+      macOS **dmg** (`cargo-zigbuild` + an SDK given to the build, `rcodesign`, `libdmg-hfsplus`).
+      Decided: NSIS and not an MSI (Tauri's MSI needs WiX, which runs only on Windows); macOS is
+      unofficial (an SDK taken from Xcode, an ad-hoc or self-signed signature, no notarisation, so
+      Gatekeeper warns at the first launch), arm64 only; the Python is python-build-standalone,
+      the engine's dependencies are the wheels of each target (`uv pip install --python-platform`).
+      The window title is `J2JME v<Cargo.toml version> (<short commit id>)`. CI: `release.yml` in
+      both pipelines: a tag `v*` makes a draft release; the tag's version replaces the one in
+      Cargo.toml, `-suffix` marks a pre-release, the notes come from CHANGELOG.md (the version's
+      section, else Unreleased, else none) (`packaging/release.py`, tested in
+      `tests/track1/release`; a `1.2.3-beta1` version builds the Linux and Windows packages). Verified: the
+      AppImage and the two Windows packages are built here, the AppImage starts under Xvfb and its
+      Python runs the engine; the dmg tooling (signing, volume) runs on a stand-in `.app`.
+      **Not verified**: the Windows installer and portable zip on Windows, the macOS cross-build
+      (no SDK was at hand), the dmg on a Mac, `J2JME_PKG_COPY=1` (CI on dind) and `release.yml`.
+
 ---
 
 ## ✅ More built-ins (done; `decode` left out)

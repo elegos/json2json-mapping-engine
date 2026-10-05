@@ -15,10 +15,7 @@ pub fn fixture_dir() -> Option<PathBuf> {
     if let Ok(dir) = std::env::var("J2JME_TOUR_FIXTURE") {
         return Some(PathBuf::from(dir));
     }
-    if let Some(bundled) = std::env::current_exe()
-        .ok()
-        .and_then(|exe| exe.parent().map(|p| p.join("tour-project")))
-    {
+    if let Some(bundled) = crate::bundle::dir().map(|dir| dir.join("tour-project")) {
         if bundled.join("mapper.toml").is_file() {
             return Some(bundled);
         }

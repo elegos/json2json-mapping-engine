@@ -7,6 +7,10 @@ description = "Desktop tool for the JSON-to-JSON mapping engine"
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+# the one tauri's window already uses: only to set the program name before it starts
+gtk = "0.18"
+
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"

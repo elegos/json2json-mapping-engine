@@ -3,6 +3,9 @@
 // §Desktop tool, §Python runtime).
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod bundle;
+#[cfg(target_os = "linux")]
+mod desktop_entry;
 mod input_files;
 mod python;
 mod tour;
@@ -142,21 +145,36 @@ fn edit_request(state: tauri::State<EditWorker>, request: String) -> Result<Stri
     ask_worker(&state, &request)
 }
 
+/// `J2JME v<version in Cargo.toml> (<short commit id>)`.
+fn window_title() -> String {
+    format!(
+        "J2JME v{} ({})",
+        env!("CARGO_PKG_VERSION"),
+        env!("J2JME_GIT_SHA")
+    )
+}
+
 fn main() {
+    // Wayland takes the window's icon from the .desktop file named like its application id
+    #[cfg(target_os = "linux")]
+    desktop_entry::match_program_name();
     tour::sweep();
     tauri::Builder::default()
         .manage(EditWorker(Mutex::new(None)))
         .setup(|app| {
+            use tauri::Manager;
+            if let Ok(dir) = app.path().resource_dir() {
+                bundle::set(dir);
+            }
             // start the worker in the background so the first edit is already instant
             let handle = app.handle().clone();
             std::thread::spawn(move || {
-                use tauri::Manager;
                 let state = handle.state::<EditWorker>();
                 let _ = ask_worker(&state, r#"{"id":0,"op":"ping"}"#);
             });
             // the window starts hidden: it is sized, then shown
-            use tauri::Manager;
             if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_title(&window_title());
                 window_size::setup(&window);
             }
             Ok(())
@@ -177,4 +195,16 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running the desktop tool");
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn the_title_has_the_cargo_version_and_a_commit_id() {
+        let title = super::window_title();
+        let rest = title.strip_prefix("J2JME v").expect("prefix");
+        let (version, sha) = rest.split_once(" (").expect("version and id");
+        assert_eq!(version, env!("CARGO_PKG_VERSION"));
+        assert!(sha.ends_with(')') && sha.len() > 1);
+    }
 }

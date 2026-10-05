@@ -1,0 +1,72 @@
+# Mirror of .forgejo/workflows/release.yml — Forgejo is the primary CI target for
+# this repo; this file keeps GitHub Actions in sync for repos also pushed there.
+name: Release
+
+# The desktop packages (docs/ARCHITECTURE.md, §Packaging): an AppImage, a Windows installer (NSIS)
+# and portable zip, and a macOS dmg, all built from Linux in the packaging image.
+#
+# A tag `vX.Y.Z` (or `vX.Y.Z-suffix`, a pre-release) builds them and makes a DRAFT release:
+#  - the version of the tag replaces the one in desktop/src-tauri/Cargo.toml for this build;
+#  - a suffix (v1.2.3-beta1) marks the release as a pre-release;
+#  - the description is the section of that version in CHANGELOG.md (Keep a Changelog), else its
+#    `Unreleased` section, else none (packaging/release.py).
+# A manual run only builds the packages (artifacts), with the version of Cargo.toml.
+#
+# Secrets for the macOS package (without MACOS_SDK_URL it is left out):
+#   MACOS_SDK_URL, MACOS_SDK_TOKEN   where the CI downloads the MacOSX*.sdk.tar.xz from (token optional)
+#   MACOS_CERT_P12_BASE64, MACOS_CERT_PASSWORD   the signing certificate (else an ad-hoc signature)
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  packages:
+    name: Packages
+    runs-on: ubuntu-latest
+    env:
+      MACOS_SDK_URL: ${{ secrets.MACOS_SDK_URL }}
+      MACOS_SDK_TOKEN: ${{ secrets.MACOS_SDK_TOKEN }}
+      MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+      MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # a tag that is not vMAJOR.MINOR.PATCH[-suffix] fails here
+      - name: Version and release notes from the tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: python3 packaging/release.py prepare "$GITHUB_REF_NAME" --notes "$RUNNER_TEMP/notes.md" >> "$GITHUB_ENV"
+
+      - name: Fetch the macOS SDK
+        run: |
+          if [ -n "$MACOS_SDK_URL" ]; then
+            auth=(); [ -z "$MACOS_SDK_TOKEN" ] || auth=(-H "Authorization: token $MACOS_SDK_TOKEN")
+            curl -fsSL "${auth[@]}" -o "$RUNNER_TEMP/macos-sdk.tar.xz" "$MACOS_SDK_URL"
+            echo "J2JME_MACOS_SDK=$RUNNER_TEMP/macos-sdk.tar.xz" >> "$GITHUB_ENV"
+            echo "J2JME_TARGETS=linux windows macos" >> "$GITHUB_ENV"
+          else
+            echo "no MACOS_SDK_URL: no macOS package"
+            echo "J2JME_TARGETS=linux windows" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build the packages
+        run: dev_scripts/package.sh $J2JME_TARGETS
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: dist/packages/*
+
+      - name: Draft the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          draft: true
+          prerelease: ${{ env.J2JME_PRERELEASE == 'true' }}
+          body_path: ${{ runner.temp }}/notes.md
+          files: dist/packages/*
