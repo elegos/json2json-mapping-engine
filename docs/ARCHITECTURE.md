@@ -1164,6 +1164,7 @@ so that a development build does not need the folder):
 | Package | How |
 |---|---|
 | Linux **AppImage** | Tauri's bundler (`linuxdeploy`); the image is Ubuntu 24.04, so the AppImage needs glibc 2.39 or newer; it brings its own WebKitGTK, and the 2.50 of 22.04 crashed on the COLRv1 emoji font (Noto) of current distributions. The launcher of the AppImage exports `PYTHONHOME`, which `python.rs` removes from the environment of the interpreters it starts. Compression is zstd (the plugin's only one): AppImageLauncher cannot read it, see the note below |
+| Linux **CLI** (`j2jme-cli-linux-x86_64.tar.gz` + `.sha256`) | `mapper` without the desktop, to run in CI: `bin/mapper` (a launcher), `engine/` and `python-runtime/` of the same staging, so it needs no Python on the machine. The name carries no version and no commit, so that the address of a release's file is known from its version alone |
 | Windows **NSIS installer** | `tauri build --runner cargo-xwin --target x86_64-pc-windows-msvc --bundles nsis`; `installMode: both` lets the user choose between the current user and every user. Not an MSI: Tauri's MSI needs WiX, which runs only on Windows |
 | Windows **portable zip** | the executable and the three folders beside it, which is where the tool looks; WebView2 must be present (Windows 11 has it) |
 | macOS **dmg** (arm64) | Tauri's bundler cannot run here, so: `cargo zigbuild` against a macOS SDK taken from Xcode and given at run time (`J2JME_MACOS_SDK`, a secret of the CI), the `.app` assembled by `build.sh`, signed with `rcodesign` (the certificate from `MACOS_CERT_P12_BASE64` / `MACOS_CERT_PASSWORD`, else ad-hoc), the volume made with `xorrisofs` and `libdmg-hfsplus`. Unofficial: the SDK's licence ties it to Apple hardware, and without notarisation Gatekeeper asks the user to open the app with right-click → Open |
@@ -1195,6 +1196,28 @@ from `build.rs` (`git rev-parse --short HEAD`, or `J2JME_GIT_SHA` where there is
   none. The footer link definitions of the file are not part of the text.
 
 A manual run of the workflow only builds the packages, as artifacts.
+
+**`mapper` in a CI job.** `install-mapper.sh` (a file of every release, also in the repository under
+`packaging/`) installs the `mapper` of the version a project was built with: it reads `engine` in
+the project's `build/compiled/manifest.json`, downloads
+`<releases>/v<version>/j2jme-cli-linux-x86_64.tar.gz`, checks the `.sha256` beside it, unpacks it in
+`~/.local/share/j2jme/<version>` (a version already there is reused) and adds its `bin/` to the
+`PATH` of the next steps (`$GITHUB_PATH`, which GitHub and Forgejo Actions both read; elsewhere it
+prints the `export` line). `<releases>` is `https://<host>/<owner>/<repo>/releases/download`, the
+same on GitHub and Forgejo (`--releases` or `J2JME_RELEASES_URL`; `J2JME_TOKEN` for a private
+repository). It needs only `sh`, `curl`, `tar` and `sha256sum`. A job then runs
+`mapper check` or `mapper build`:
+
+```yaml
+- run: |
+    curl -fsSL "$J2JME_RELEASES_URL/v0.5.0/install-mapper.sh" | sh   # the first time: the version to ask for
+- run: sh install-mapper.sh      # afterwards the script is in the project's repository
+- run: mapper check
+```
+
+The version of the engine that built the committed artifacts is the one the job runs, so what it
+regenerates is comparable (§Build folder, `manifest.json`). A draft release is not public: a job
+that downloads from it needs the token.
 
 ---
 

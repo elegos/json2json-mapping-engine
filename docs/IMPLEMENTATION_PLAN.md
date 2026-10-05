@@ -602,6 +602,15 @@ Sliced; each slice is usable on its own:
         - **Portable Linux CLI** (no desktop, no Tauri) to run `mapper` in CI: generation, and the
           comparison against the committed artifacts. Same bundled Python as the AppImage; part of
           the release (see Release artifacts).
+          Done: `j2jme-cli-linux-x86_64.tar.gz` (+ `.sha256`) of every release (`cli_tarball` in
+          `packaging/build.sh`: `bin/mapper`, `engine/`, `python-runtime/`, 34 MB; checked here: the
+          archive unpacks and `mapper version` / `mapper check` run from it) and `install-mapper.sh`
+          (also a release file): reads `engine` in `manifest.json`, downloads that version's archive
+          from `<releases>/v<version>/`, checks it, unpacks it in `~/.local/share/j2jme/<version>`
+          and adds `bin/` to `$GITHUB_PATH`; tests in `tests/track1/release/test_install_mapper.py`
+          (a release as a `file://` folder). **Not verified**: a run in a real CI job, a release made
+          by `release.yml` carrying the two files (the `dist/packages/*` glob should take them), the
+          script from a draft release (needs a token). Not done: the same for Windows / macOS CI.
         - Pull with rebase, the conflicts shown in the UI (merge editor on the M6.3a engine).
       - [ ] **M6.3c — Shared-folder mode (OneDrive / SharePoint).** Only when a real team needs
             it. A git repo inside a synced folder is **not supported** (it corrupts `.git`): the

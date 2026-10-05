@@ -2,6 +2,8 @@
 # Builds the packages of one platform. Meant to run inside the build image (dev_scripts/package.sh
 # starts it there), with the repository at /work.
 #   linux    J2JME-<version>-<sha>-linux-x86_64.AppImage
+#            j2jme-cli-linux-x86_64.tar.gz (+ .sha256): `mapper` alone, no desktop, for CI;
+#            install-mapper.sh: fetches it by the version a project's manifest.json names
 #   windows  J2JME-<version>-<sha>-windows-x64-setup.exe (NSIS: for the user or for every user)
 #            J2JME-<version>-<sha>-windows-x64-portable.zip
 #   macos    J2JME-<version>-<sha>-macos-arm64.dmg
@@ -34,6 +36,28 @@ bundle() { # a Tauri build; the frontend is built by its beforeBuildCommand
 linux() {
   bundle --bundles appimage
   cp "$CARGO_TARGET_DIR"/release/bundle/appimage/*.AppImage "$out/$name-linux-x86_64.AppImage"
+  cli_tarball
+}
+
+# `mapper` without the desktop: the interpreter and the engine staged for the AppImage, and a
+# launcher. The name has no version and no commit: packaging/install-mapper.sh builds the download
+# address from the version alone (`releases/download/v<version>/j2jme-cli-linux-x86_64.tar.gz`).
+cli_tarball() {
+  local work="$root/build/pkg-cache/cli" archive=j2jme-cli-linux-x86_64.tar.gz
+  rm -rf "$work"; mkdir -p "$work/bin"
+  cp -a "$tauri_dir"/stage/{engine,python-runtime} "$work/"
+  cat > "$work/bin/mapper" <<'LAUNCHER'
+#!/bin/sh
+# `mapper` of this unpacked archive: the bundled interpreter, the bundled engine.
+here="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+PYTHONPATH="$here/engine${PYTHONPATH:+:$PYTHONPATH}" PYTHONDONTWRITEBYTECODE=1 \
+  exec "$here/python-runtime/bin/python3" -m cli.main "$@"
+LAUNCHER
+  chmod +x "$work/bin/mapper"
+  tar -C "$work" --owner=0 --group=0 --numeric-owner --sort=name -czf "$out/$archive" bin engine python-runtime
+  (cd "$out" && sha256sum "$archive" > "$archive.sha256")
+  cp "$root/packaging/install-mapper.sh" "$out/install-mapper.sh"
+  rm -rf "$work"
 }
 
 windows() {
