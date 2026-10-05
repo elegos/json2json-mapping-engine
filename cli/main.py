@@ -26,6 +26,7 @@ from cli.build import (
     write_package,
 )
 from cli.config import MapperConfigError, load_config
+from cli.manifest import artifacts_ignored, build_manifest, compare, read_manifest
 from cli.stubs import generate_stubs
 from cli.track1 import run_track1
 from cli.track2 import Track2Error, integration_state, run_track2
@@ -117,12 +118,9 @@ JSON_OPTION = typer.Option(
 @app.command()
 def version() -> None:
     """Print the mapper tool version."""
-    from importlib.metadata import version as pkg_version
+    from cli._version import ENGINE_VERSION
 
-    try:
-        typer.echo(pkg_version("json2json-mapping-engine"))
-    except Exception:
-        typer.echo("0.1.0 (dev)")
+    typer.echo(ENGINE_VERSION)
 
 
 @app.command()
@@ -382,6 +380,14 @@ def check(json_output: bool = JSON_OPTION) -> None:
     except Exception as exc:
         typer.echo(f"error compiling: {exc}", err=True)
         raise typer.Exit(code=1) from exc
+    manifest = build_manifest(config.project.target, fresh)
+    if artifacts_ignored(BUILD_COMPILED_DIR):
+        # built in CI, not committed: nothing to compare, a different engine is only a warning
+        _, warnings = compare(read_manifest(BUILD_COMPILED_DIR) or manifest, manifest)
+        for line in warnings:
+            typer.echo(f"warning: {line}", err=True)
+        typer.echo(f"OK — {len(mappings)} mapping(s) build ({BUILD_COMPILED_DIR} is git-ignored)")
+        return
     suffix = backend_for(config).artifact_suffix
     on_disk = {p.name: p for p in BUILD_COMPILED_DIR.glob(f"*{suffix}")}
     problems = [f"missing: {BUILD_COMPILED_DIR / n}" for n in fresh if n not in on_disk]
@@ -389,6 +395,10 @@ def check(json_output: bool = JSON_OPTION) -> None:
     problems += [
         f"out of sync: {p}" for n, p in on_disk.items() if n in fresh and p.read_text() != fresh[n]
     ]
+    manifest_problems, warnings = compare(read_manifest(BUILD_COMPILED_DIR), manifest)
+    problems += manifest_problems
+    for line in warnings:
+        typer.echo(f"warning: {line}", err=True)
     if problems:
         for line in problems:
             typer.echo(line)

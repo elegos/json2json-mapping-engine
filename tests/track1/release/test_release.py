@@ -95,8 +95,11 @@ def test_prepare_writes_the_version_and_the_notes(tmp_path, monkeypatch) -> None
     cargo.write_text('[package]\nname = "j2jme-desktop"\nversion = "0.1.0"\n')
     lock = tmp_path / "Cargo.lock"
     lock.write_text('[[package]]\nname = "j2jme-desktop"\nversion = "0.1.0"\n')
+    engine = tmp_path / "_version.py"
+    engine.write_text('"""Doc."""\n\nENGINE_VERSION = "0.1.0"\n')
     changelog = tmp_path / "CHANGELOG.md"
     changelog.write_text(CHANGELOG)
+    monkeypatch.setattr(release, "ENGINE_VERSION_FILE", engine)
     monkeypatch.setattr(release, "CARGO_TOML", cargo)
     monkeypatch.setattr(release, "CARGO_LOCK", lock)
     monkeypatch.setattr(release, "CHANGELOG", changelog)
@@ -107,6 +110,7 @@ def test_prepare_writes_the_version_and_the_notes(tmp_path, monkeypatch) -> None
     assert lines == ["J2JME_VERSION=1.2.3-beta1", "J2JME_PRERELEASE=true"]
     assert 'version = "1.2.3-beta1"' in cargo.read_text()
     assert 'version = "1.2.3-beta1"' in lock.read_text()
+    assert engine.read_text() == '"""Doc."""\n\nENGINE_VERSION = "1.2.3-beta1"\n'
     assert notes.read_text() == "### Added\n- The beta.\n"
 
     assert release.prepare("v3.0.0", notes)[1] == "J2JME_PRERELEASE=false"

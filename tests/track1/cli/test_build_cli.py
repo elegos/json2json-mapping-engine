@@ -81,6 +81,7 @@ def test_build_produces_one_package_per_mapping(project: Path):
     result = runner.invoke(app, ["build"])
     assert result.exit_code == 0, result.output
     assert sorted(p.name for p in (project / COMPILED).iterdir()) == [
+        "manifest.json",
         "map_order_event.sql",
         "map_ping.sql",
     ]

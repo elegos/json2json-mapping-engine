@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from cli.config import MapperConfig
+from cli.manifest import MANIFEST_NAME, build_manifest, manifest_text
 from compiler.backends.base import Backend, CodeGenError, CompiledUnit
 from compiler.backends.registry import create_backend
 from compiler.function_registry import all_functions
@@ -318,8 +319,8 @@ def compile_mapping(path: Path, config: MapperConfig, force: bool = False) -> Co
 
 
 def write_package(units: list[CompiledUnit], config: MapperConfig) -> list[Path]:
-    """Write the artifact files under `build/compiled/`, removing the files of the target that
-    are no longer produced (a renamed or deleted mapping)."""
+    """Write the artifact files under `build/compiled/` with their `manifest.json`, removing the
+    files of the target that are no longer produced (a renamed or deleted mapping)."""
     files = assemble(units, config)
     BUILD_COMPILED_DIR.mkdir(parents=True, exist_ok=True)
     for stale in BUILD_COMPILED_DIR.glob(f"*{backend_for(config).artifact_suffix}"):
@@ -327,6 +328,8 @@ def write_package(units: list[CompiledUnit], config: MapperConfig) -> list[Path]
             stale.unlink()
     for name, text in files.items():
         (BUILD_COMPILED_DIR / name).write_text(text)
+    manifest = build_manifest(config.project.target, files)
+    (BUILD_COMPILED_DIR / MANIFEST_NAME).write_text(manifest_text(manifest))
     return [BUILD_COMPILED_DIR / name for name in files]
 
 

@@ -3,7 +3,7 @@
     python packaging/release.py prepare v1.2.3-beta1 --notes notes.md >> "$GITHUB_ENV"
 
 - the version is the tag without its `v`, and replaces the one in `desktop/src-tauri/Cargo.toml`
-  (and its entry in `Cargo.lock`) for this build;
+  (and its entry in `Cargo.lock`) and the engine's in `cli/_version.py` for this build;
 - a tag with a suffix (`v1.2.3-beta1`) is a pre-release;
 - the notes are the section of CHANGELOG.md (Keep a Changelog 1.1.0) of that version, else its
   `Unreleased` section, else nothing: the notes file is then empty.
@@ -21,6 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 CARGO_TOML = ROOT / "desktop" / "src-tauri" / "Cargo.toml"
 CARGO_LOCK = ROOT / "desktop" / "src-tauri" / "Cargo.lock"
+ENGINE_VERSION_FILE = ROOT / "cli" / "_version.py"
 CHANGELOG = ROOT / "CHANGELOG.md"
 
 # v1.2.3, v1.2.3-beta1, v1.2.3-rc.1: semantic versioning, without build metadata
@@ -47,6 +48,15 @@ def set_cargo_version(cargo_toml: str, version: str) -> str:
     if not line:
         raise ValueError("no version in the [package] table of Cargo.toml")
     return f'{cargo_toml[: line.start()]}version = "{version}"{cargo_toml[line.end() :]}'
+
+
+def set_engine_version(source: str, version: str) -> str:
+    """`cli/_version.py` with `ENGINE_VERSION` replaced (what `mapper version` prints and the
+    manifest of the build artifacts records)."""
+    line = re.compile(r'^ENGINE_VERSION[ \t]*=[ \t]*".*"[ \t]*$', re.MULTILINE).search(source)
+    if line is None:
+        raise ValueError("no ENGINE_VERSION in cli/_version.py")
+    return f'{source[: line.start()]}ENGINE_VERSION = "{version}"{source[line.end() :]}'
 
 
 def set_lock_version(cargo_lock: str, package: str, version: str) -> str:
@@ -88,6 +98,7 @@ def release_notes(changelog: str, version: str) -> str:
 def prepare(tag: str, notes: Path | None) -> list[str]:
     version, prerelease = parse_tag(tag)
     CARGO_TOML.write_text(set_cargo_version(CARGO_TOML.read_text(), version))
+    ENGINE_VERSION_FILE.write_text(set_engine_version(ENGINE_VERSION_FILE.read_text(), version))
     if CARGO_LOCK.exists():
         CARGO_LOCK.write_text(set_lock_version(CARGO_LOCK.read_text(), "j2jme-desktop", version))
     text = release_notes(CHANGELOG.read_text(), version) if CHANGELOG.exists() else ""

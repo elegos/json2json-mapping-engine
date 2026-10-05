@@ -1429,10 +1429,16 @@ the tool puts them in `.gitignore` and removes them from the repository, and CI 
 them instead. All other `build/` contents are ephemeral and git-ignored.
 
 **`build/compiled/manifest.json`** is written with the artifacts: the version of the engine that
-produced them, the hash of each source (each mapping, the schemas, each `fn/*.fn` file, `mapper.toml`) and
-the hash of each output. The output is deterministic only for the same sources **and** the same
-engine version, so the manifest is what makes a comparison meaningful. It is also written last when
-publishing (§Build CLI, `mapper publish`), so a reader never sees half a set.
+produced them, the hash of each source (each mapping, the schemas, the shared lookups, each
+`fn/*.fn` file, `mapper.toml`; a CRLF is read as LF, so a Windows checkout hashes the same) and the
+hash of each output. It has no date and no machine: building twice from the same sources writes the
+same file, so it can be committed and compared. The output is deterministic only for the same sources
+**and** the same engine version, so the manifest is what makes a comparison meaningful. The engine's
+version is `cli/_version.py` (the engine is shipped without package metadata); a release build sets
+it to the tag's. `mapper check` compares the manifest too: a source or output that is new, gone or
+changed is a problem; a different engine version alone is a warning, since the outputs decide whether
+the artifacts are stale. It is also written last when publishing (§Build CLI, `mapper publish`), so a
+reader never sees half a set.
 
 An LLM is embedded in the tool for two purposes:
 

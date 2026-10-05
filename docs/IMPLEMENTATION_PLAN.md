@@ -588,6 +588,17 @@ Sliced; each slice is usable on its own:
           ignored the build simply runs and **raises nothing for a version mismatch** (only a
           warning). Output is deterministic only for the same mappings **and** the same engine
           version, hence the manifest. This closes the open point of the CI diff check (see Release).
+          Done: `cli/manifest.py` and `cli/_version.py`. `build/compiled/manifest.json` is written by
+          every build (`write_package`): `manifest` (format), `engine`, `target`, `sources` (hash of
+          `mapper.toml`, `mappings/*.map.py`, `mappings/functional/*.fn.yaml`, `schemas/**/*.json`,
+          `lookups/*.lookup.yaml`, `fn/*.fn`; CRLF read as LF) and `outputs` (hash of each artifact);
+          no date or machine, so building twice gives the same file. `mapper check` also compares it:
+          a source or output that is new, gone or changed is a problem, a different engine version
+          alone a warning; with `build/compiled` git-ignored (`git check-ignore`) it only builds. The
+          engine's version is `cli/_version.py` (the engine is shipped without package metadata),
+          which `packaging/release.py prepare` replaces with the tag's version. `mapper check` is
+          now a step of the offline job in both pipelines. Not done: the "put the artifacts in
+          `.gitignore` and remove them from the repo" action (tool), `mapper publish`.
         - **Portable Linux CLI** (no desktop, no Tauri) to run `mapper` in CI: generation, and the
           comparison against the committed artifacts. Same bundled Python as the AppImage; part of
           the release (see Release artifacts).

@@ -1,0 +1,26 @@
+{
+  "manifest": 1,
+  "engine": "0.1.0",
+  "target": "plsql",
+  "sources": {
+    "mapper.toml": "2281c851c2bd80380c0679c2aa7ec3b6505bbf359f6ac8db0df100ccb26a6003",
+    "mappings/builtins_text.map.py": "0cc80ea3840000c22e8654dc5b30cf8cedb4a0aa76eca7641cfe54d43483a821",
+    "mappings/orders.map.py": "b8f5296a092ea1914d8e19e4af6eb0b5d895ae52c153d95abd576570eba7e1d2",
+    "mappings/pick.map.py": "196adbbebf4a904e93dc18cb394bde81f61dd6ba453c5cb6cd25bc21eaf730a1",
+    "mappings/positions.map.py": "71c1b15b88f2c6398fbdee95a07e75f0dfa7673f3799fad14c78e3fabce14235",
+    "mappings/selection.map.py": "fa8083108f09424ae8f817e02bd5c64eae9b8d9c05bcb1c93395378986c367f0",
+    "mappings/truthiness.map.py": "690db8e8e654e338b9db058879099773f8804f10bc74753fea7d57ffefe51f29",
+    "schemas/orders_input.schema.json": "5e568d4ce4a0c08caefe4e38ba110c99d24ccf019c32d7ccd8990c7c73494f02",
+    "schemas/orders_output.schema.json": "0435c9b471bc1b7c4eaa9722f2c359fd4cf573ab716a6bf1100c92d2fb89dfc3"
+  },
+  "outputs": {
+    "j2jme_functions.sql": "74d9961d4d5c86f018937b9bbb7189193ef84064b7beae1cc4e61850c847402f",
+    "j2jme_map_builtins_text.sql": "1de1f4efcd148b4c05f8811079860cf605ab20e57b891ee4faf8a78ea66ec416",
+    "j2jme_map_orders.sql": "d4660a61ef22a2aaf251c549e3ec6d401fcbe726c9bcb2c403dcea5a2c423510",
+    "j2jme_map_pick.sql": "ffdc2fc227f2d83e523b4b1820fe2f93547c0b6e046fb85fbccb3cce38214eff",
+    "j2jme_map_positions.sql": "e6b280332470aaefd30b2e7f7a019eb7375013825aefb2af19bd16a30db5e1f3",
+    "j2jme_map_selection.sql": "488e6625ebb5181c81e3f670bf6965cddaa1cbc7b177532ce76cfd2218eab57b",
+    "j2jme_map_truthiness.sql": "e8fc38bc9a33aedaf4f33a4c549b505a523cb564515ddf951ad9bb182c0e85c9",
+    "j2jme_mappings.sql": "cf0243f6991d6900f494cb764c4a9b99338d0933663c84b8e3c8bbf4f57a926c"
+  }
+}
