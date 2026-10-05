@@ -50,6 +50,7 @@ def pair(tmp_path: Path) -> tuple[Path, Path]:
     (a / ".gitignore").write_text(GITIGNORE)
     git(a, "init", "-q", "-b", "main")
     git(a, "remote", "add", "origin", str(remote))
+    vcs.ensure_driver(a)  # what the tool does on opening: the attributes travel with the repository
     assert vcs.commit(a, "first")["committed"]  # builds, commits the sources and build/compiled
     git(a, "push", "-q", "-u", "origin", "main")
     subprocess.run(["git", "clone", "-q", str(remote), str(tmp_path / "b")], check=True)
