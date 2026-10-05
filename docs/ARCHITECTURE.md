@@ -2356,7 +2356,13 @@ regenerated.
 
 The engine lives in the Python side (testable offline) and is also registered as a **git merge
 driver** (`.gitattributes`: `*.fn.yaml merge=j2jme` and `*.fn merge=j2jme`), so the same merge happens from any git client
-and in CI, not only inside the tool. The project's functions (`fn/*.fn`, new ones and the copies of
+and in CI, not only inside the tool. The tool installs it by itself, quietly, when a project is opened
+and before every pull (`cli/merge_driver.py`, `ensure`): the attributes go in the project's own
+`.gitattributes` (they travel with the repository, and apply only under the project's folder, also when
+it is a folder of a bigger repository), the command in the clone's local git config (it does not
+travel, so every clone needs it, and it names this install's interpreter and engine, so it is rewritten
+when that changes). If that interpreter is gone, the line falls back to `git merge-file`. A clone that
+the tool never opened can get it with `mapper merge-driver-install`. The project's functions (`fn/*.fn`, new ones and the copies of
 built-ins in `builtin_overrides.fn`) are Python files and are merged **function by function**: a
 block per top-level statement with the comments above it, a function or class matched by its name,
 an import or constant by its own text; a function changed on one side only, added or deleted, merges,

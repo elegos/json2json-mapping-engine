@@ -343,12 +343,21 @@ def _continue(project: Path) -> dict[str, Any]:
     raise VcsError("the rebase does not end")
 
 
+def ensure_driver(project: Path) -> dict[str, bool]:
+    """Have this clone merge mappings and functions at the rule level (`cli/merge_driver.py`),
+    without the user knowing: done when a project is opened, and before every pull."""
+    from cli.merge_driver import ensure
+
+    return ensure(project)
+
+
 def pull(project: Path) -> dict[str, Any]:
     """`git pull --rebase --autostash`. `{ok, conflicts}`: when the rebase stops on files it could
     not merge, `conflicts` lists them (settle them with `conflicts` / `resolve`, or `abort`)."""
     _require_repo(project)
     if _rebasing(project):
         raise VcsError("a rebase is in progress: finish or abort it first")
+    ensure_driver(project)
     if state(project)["upstream"] is None:
         raise VcsError("this branch has no upstream to pull from")
     done = _git(project, "pull", "--rebase", "--autostash", "-q", check=False)

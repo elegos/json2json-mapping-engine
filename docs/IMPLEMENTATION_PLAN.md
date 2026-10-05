@@ -649,10 +649,18 @@ Sliced; each slice is usable on its own:
           - Tests: `tests/track1/cli/test_vcs.py` (a bare remote and two clones: state, commit, WIP,
             scope, ignored artifacts, pull, conflicts by rule and by function, abort, push, worker
             ops) and `versionControl.test.ts`. **Not verified**: the panel in the running tool.
+          - **The merge driver installs itself** (`merge_driver.ensure`, op `vcs_ensure_driver`):
+            when a project is opened and before every pull, in a git repository, the clone gets the
+            driver's command in its local git config (rewritten when it names another install: an
+            AppImage mounts elsewhere every time) and the attributes in the project's
+            `.gitattributes`, which travel with the repository. The command is this interpreter
+            and engine (`mapper` is not in the PATH of the app); if they are gone, the shell says
+            126/127 and `git merge-file` takes over (the markers git would make). It applies only
+            under the project's folder, also in a bigger repository. Tests:
+            `tests/track1/merge/test_ensure_driver.py` (a real merge by rule that git alone calls a
+            clash; a folder of a bigger repository; the dead interpreter).
           - **Not done**: the Gitoxide fallback when `git` is not installed (the panel says so and
-            does nothing; `gix` is not a dependency of the desktop crate), and the driver
-            auto-install (`mapper merge-driver-install`) is still a manual, per-clone step: the tool
-            settles in the panel what git leaves, with or without it.
+            does nothing; `gix` is not a dependency of the desktop crate).
       - [ ] **M6.3c — Shared-folder mode (OneDrive / SharePoint).** Only when a real team needs
             it. A git repo inside a synced folder is **not supported** (it corrupts `.git`): the
             tool detects such a path and warns.

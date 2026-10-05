@@ -40,6 +40,7 @@ import {
   artifactsState,
   artifactsTrack,
   engineStatus,
+  vcsEnsureDriver,
   engineUpgrade,
   configWrite,
   chooseProject,
@@ -427,6 +428,7 @@ export function App() {
       const gate = await engineGate(dir, !remember);
       if (!gate.open) return;
       setOlderAccepted(gate.older);
+      void vcsEnsureDriver(dir).catch(() => undefined); // best effort, and nobody's business
       const found = await listFnFiles(dir);
       setProject(dir);
       forgetHistory();

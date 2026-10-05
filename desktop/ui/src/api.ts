@@ -489,6 +489,14 @@ async function vcsRequest<T>(request: Record<string, unknown>): Promise<T> {
   return parsed;
 }
 
+/** Quietly makes this clone merge mappings and functions at the rule level (a git merge driver):
+ * nothing for the user to do or know. Does nothing outside a git repository. */
+export const vcsEnsureDriver = (project: string) =>
+  vcsRequest<{ ok: boolean; installed: boolean; changed: boolean }>({
+    op: "vcs_ensure_driver",
+    project,
+  });
+
 export const vcsState = (project: string) => vcsRequest<VcsState>({ op: "vcs_state", project });
 
 export const vcsCommit = (project: string, notes: string, wip: boolean) =>
