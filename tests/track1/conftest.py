@@ -23,6 +23,10 @@ def backend(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> 
             (str(h) for h in HELPERS if h.is_file()), None
         )
         if found is None or not Path(found).is_file():
+            if os.environ.get("J2JME_REQUIRE_GIX"):  # the CI job of the fallback sets it
+                pytest.fail(
+                    "the gix helper is not built, and this run needs it: dev_scripts/gix.sh"
+                )
             pytest.skip("the gix helper is not built: dev_scripts/gix.sh")
         monkeypatch.setenv("J2JME_GIT_HELPER", found)
     monkeypatch.setenv("J2JME_GIT_BACKEND", request.param)

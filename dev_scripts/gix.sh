@@ -6,7 +6,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-echo "== build the helper"; (cd desktop/gitfallback && cargo build)
+# the gix cases are the point here: a missing helper is a failure, not a skip
+export J2JME_REQUIRE_GIX=1
+
+echo "== build the helper"; (cd desktop/gitfallback && cargo build --locked)
 if [ "${1:-}" = "--rust" ]; then
   echo "== cargo test"; (cd desktop/gitfallback && cargo test)
 fi

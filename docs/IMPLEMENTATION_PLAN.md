@@ -675,10 +675,15 @@ Sliced; each slice is usable on its own:
             remote (they need the `git` program; the panel asks for a login, in memory only).
             Tests: `test_gitops.py` (23, both backends) and the cases of `test_vcs.py`,
             `test_artifacts_mode.py`, `test_ensure_driver.py` run on both (`dev_scripts/gix.sh` builds
-            the helper; without it the gix runs are skipped). **Not done / not verified**: a CI job that
-            builds the helper (Rust in the job image) and runs the gix cases; SSH remotes, Windows, LFS,
-            submodules; the packaged builds with the new dependency (the Windows and macOS
-            cross-builds in particular: rustls and its C code), and a run in the packaged tool.
+            the helper; without it the gix runs are skipped, unless `J2JME_REQUIRE_GIX` is set, which
+            makes a missing helper a failure). **CI**: a job `gix` in both pipelines (own job: it needs
+            Rust and a C compiler) runs `dev_scripts/gix.sh`, with `actions/cache` on `~/.cargo/registry`,
+            `~/.cargo/git` and `desktop/gitfallback/target`, keyed on the crate's `Cargo.lock`. Written
+            and its script run locally, **not run on a real runner**: the Forgejo image installs Rust
+            with rustup and needs the runner's cache server (without one the cache steps only warn).
+            **Not verified**: SSH remotes, Windows, LFS, submodules; the packaged builds with the new
+            dependency (the Windows and macOS cross-builds in particular: rustls and its C code), and a
+            run in the packaged tool.
       - [ ] **M6.3c — Shared-folder mode (OneDrive / SharePoint).** Only when a real team needs
             it. A git repo inside a synced folder is **not supported** (it corrupts `.git`): the
             tool detects such a path and warns.

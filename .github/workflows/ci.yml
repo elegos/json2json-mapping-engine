@@ -36,6 +36,42 @@ jobs:
       - name: mapper check
         run: uv run mapper check
 
+  # Git without git (desktop/gitfallback, docs/ARCHITECTURE.md §Without git): builds the gitoxide
+  # helper and runs the git-side cases of the offline tests on both backends (the git binary and
+  # the helper). A job of its own: a cold build takes minutes, which the cache of ~/.cargo and
+  # target/ avoids. ubuntu-latest ships git, a C compiler and Rust.
+  gix:
+    name: Git fallback (gitoxide)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache of ~/.cargo and target/
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            desktop/gitfallback/target
+          key: gix-${{ runner.os }}-${{ hashFiles('desktop/gitfallback/Cargo.lock') }}
+          restore-keys: |
+            gix-${{ runner.os }}-
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Set up Python 3.14
+        run: uv python install 3.14
+
+      - name: Sync dependencies
+        run: uv sync --all-extras --dev
+
+      # builds the helper, then the git-side tests on both backends; the gix cases must not skip
+      - name: Build the helper and run the tests
+        run: dev_scripts/gix.sh
+
   # Integration tests (`mapper test --integration`, harness in cli/track2.py, PL/SQL part in
   # compiler/backends/plsql/integration.py) start an
   # ephemeral Oracle container (container-registry.oracle.com/database/adb-free);

@@ -40,6 +40,48 @@ jobs:
       - name: mapper check
         run: uv run mapper check
 
+  # Git without git (desktop/gitfallback, docs/ARCHITECTURE.md §Without git): builds the gitoxide
+  # helper and runs the git-side cases of the offline tests on both backends (the git binary and
+  # the helper). A job of its own: it needs Rust and a C compiler, and a cold build takes minutes,
+  # which the cache of ~/.cargo and target/ avoids. Without a cache server on the runner the cache
+  # steps only warn.
+  gix:
+    name: Git fallback (gitoxide)
+    runs-on: docker
+    container:
+      image: python:3.14-slim
+    steps:
+      - name: Install node, git, a C compiler and Rust
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends nodejs git ca-certificates build-essential curl
+          rm -rf /var/lib/apt/lists/*
+          curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - uses: actions/checkout@v4
+
+      - name: Cache of ~/.cargo and target/
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            desktop/gitfallback/target
+          key: gix-${{ runner.os }}-${{ hashFiles('desktop/gitfallback/Cargo.lock') }}
+          restore-keys: |
+            gix-${{ runner.os }}-
+
+      - name: Install uv
+        run: pip install --no-cache-dir uv
+
+      - name: Sync dependencies
+        run: uv sync --all-extras --dev
+
+      # builds the helper, then the git-side tests on both backends; the gix cases must not skip
+      - name: Build the helper and run the tests
+        run: dev_scripts/gix.sh
+
   # Integration tests (`mapper test --integration`, harness in cli/track2.py, PL/SQL part in
   # compiler/backends/plsql/integration.py) start an
   # ephemeral Oracle container (container-registry.oracle.com/database/adb-free)
