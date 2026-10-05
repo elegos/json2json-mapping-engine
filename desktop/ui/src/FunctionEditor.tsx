@@ -12,6 +12,7 @@ import {
   fnFiles,
   fnRead,
   fnWrite,
+  projectBackends,
 } from "./api";
 import { CodeEditor, type Completer } from "./CodeEditor";
 import { Confirm } from "./Confirm";
@@ -113,9 +114,34 @@ export function FunctionEditor({ project, file, nonce, control, focus, functions
     };
   }, [project, file, text, saved]);
 
+  // the backends an @override can name
+  const [backends, setBackends] = useState<string[]>(["python"]);
+  useEffect(() => {
+    projectBackends().then(
+      (schema) => setBackends(["python", ...Object.keys(schema.targets).filter((t) => t !== "python")]),
+      () => undefined,
+    );
+  }, []);
+
   const completer: Completer = useMemo(
     () => async (body, cursor) => {
-      const word = /[A-Za-z_]\w*$/.exec(body.slice(0, cursor))?.[0] ?? "";
+      const word = /@?[A-Za-z_]\w*$|@$/.exec(body.slice(0, cursor))?.[0] ?? "";
+      if (word.startsWith("@")) {
+        const items: CompletionItem[] = backends
+          .map((b) => ({
+            label: `@override(${b}="…")`,
+            insert: `@override(${b}="")`,
+            kind: "keyword" as const,
+            detail: b === "python" ? "a Python expression" : "a template, parameters as {name}",
+            doc:
+              b === "python"
+                ? 'What the Python backend runs instead of the body, with the parameters as {name}: @override(python="{s}.upper()")'
+                : `The code ${b} gets for a call, with the parameters as {name}`,
+            origin: "decorator",
+          }))
+          .filter((i) => i.insert.startsWith(word));
+        return { from: cursor - word.length, items };
+      }
       const items: CompletionItem[] = functions
         .filter((f) => f.name.startsWith(word))
         .map((f) => ({
@@ -128,7 +154,7 @@ export function FunctionEditor({ project, file, nonce, control, focus, functions
         }));
       return { from: cursor - word.length, items };
     },
-    [functions],
+    [functions, backends],
   );
 
   const save = async () => {

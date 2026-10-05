@@ -121,6 +121,13 @@ await page.click('.modal button:has-text("Save and continue")');
 await page.waitForFunction(() => document.querySelector(".fn-warning"));
 if (!file("text.fn").includes("# unsaved")) fail("not saved on continue");
 await page.waitForFunction(() => getSelection()?.anchorNode?.parentElement?.closest(".cm-line")?.textContent.includes("def split_nth"));
+
+// typing @ offers the @override of each backend
+await page.click(".fn-text .cm-content");
+await page.keyboard.press("Control+End");
+await page.keyboard.type("\n@ov");
+await page.waitForSelector('.cm-tooltip-autocomplete li:has-text("@override(plsql")');
+if (!(await page.locator('.cm-tooltip-autocomplete li:has-text("@override(python")').count())) fail("no python override offered");
 console.log(process.exitCode ? "FAILED" : "ok");
 await browser.close();
 await server.close();
