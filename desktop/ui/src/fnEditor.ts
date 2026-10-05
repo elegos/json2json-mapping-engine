@@ -45,3 +45,13 @@ export function validFunctionName(name: string): string | null {
   if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(name)) return "letters, digits and _, starting with a letter";
   return null;
 }
+
+/** The file of the built-in overrides: reserved, no new function goes there. */
+export const OVERRIDES_FILE = "builtin_overrides";
+
+/** Why `file` cannot be a new `.fn` file, or null. */
+export function newFileProblem(file: string, taken: string[]): string | null {
+  if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(file)) return "the file: letters, digits, _ and -";
+  if (file === OVERRIDES_FILE) return `${OVERRIDES_FILE} is kept for built-in overrides`;
+  return taken.includes(file) ? "a file with that name exists" : null;
+}

@@ -149,3 +149,10 @@ def test_a_new_function_is_a_stub_for_python_and_the_projects_backend(project: P
         fn_files.add_function(project, "money", "to_cents")
     with pytest.raises(FnYamlError, match="exists already"):
         fn_files.add_function(project, "money", "split_first")
+
+
+def test_the_overrides_file_is_kept_for_built_in_overrides(project: Path) -> None:
+    with pytest.raises(FnYamlError, match="kept for the built-in overrides"):
+        fn_files.add_function(project, "builtin_overrides", "mine")
+    with pytest.raises(FnYamlError, match="kept for the built-in overrides"):
+        fn_files.create_file(project, "builtin_overrides")

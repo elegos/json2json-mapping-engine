@@ -379,3 +379,4 @@ span.result-badge { cursor: default; }
 .fx.open .explorer { visibility: visible; pointer-events: auto; transform: none; transition-delay: 0s; }
 .fx.open.editing .fx-editor { visibility: visible; pointer-events: auto; transform: none; transition-delay: 0s; }
 @media (prefers-reduced-motion: reduce) { .fx > .explorer, .fx > .fx-editor { transition: none; } }
+.file-choice { display: flex; gap: 6px; } .file-choice > * { font: inherit; } .file-choice input, .file-choice select { flex: 1; min-width: 0; }

@@ -167,7 +167,13 @@ def write_file(project: Path, name: str, text: str) -> None:
     path.write_text(text)
 
 
+def _not_overrides(name: str) -> None:
+    if name == OVERRIDES_FILE.removesuffix(SUFFIX):
+        raise FnYamlError(f"{name} is kept for the built-in overrides")
+
+
 def create_file(project: Path, name: str, text: str | None = None) -> None:
+    _not_overrides(name)
     path = _path(project, name)
     if path.exists():
         raise FnYamlError(f"fn/{name}{SUFFIX} exists already")
@@ -193,6 +199,7 @@ def add_function(project: Path, file: str, name: str) -> None:
     """Appends a stub function to `fn/<file>.fn` (made when it does not exist)."""
     if name in all_functions(project):
         raise FnYamlError(f"a function called {name!r} exists already")
+    _not_overrides(file)
     path = _path(project, file)
     text = path.read_text() if path.is_file() else _template(file)
     if _target(project) not in ("", "python") and "import override" not in text:

@@ -16,7 +16,7 @@ import {
 } from "./api";
 import { CodeEditor, type Completer } from "./CodeEditor";
 import { Confirm } from "./Confirm";
-import { argsTemplate, functionNames, parseArgs } from "./fnEditor";
+import { argsTemplate, functionNames, newFileProblem, parseArgs } from "./fnEditor";
 import { PromptDialog } from "./PromptDialog";
 
 interface Props {
@@ -254,11 +254,7 @@ export function FunctionEditor({ project, file, nonce, control, focus, functions
           confirm="Create"
           fields={[{ key: "name", label: "File name", value: "", hint: "fn/<name>.fn" }]}
           validate={({ name }) =>
-            !/^[A-Za-z][A-Za-z0-9_-]*$/.test(name)
-              ? "letters, digits, _ and -, starting with a letter"
-              : files.some((f) => f.name === name)
-                ? "a file with that name exists"
-                : null
+            newFileProblem(name, files.map((f) => f.name))
           }
           onDone={(values) => {
             setAsking(null);

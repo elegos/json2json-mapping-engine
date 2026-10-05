@@ -98,7 +98,9 @@ if (!file("builtin_overrides.fn").startsWith("# Built-in functions")) fail("no w
 // a new function
 await page.click('.explorer-bar button:has-text("New function…")');
 await page.fill('.prompt input >> nth=0', "shout");
-await page.fill('.prompt input >> nth=1', "text");
+// the files offered are the project's own, never the overrides file
+const offered = await page.locator('.prompt select option').allTextContents();
+if (offered.join("|") !== "fn/text.fn|New file…") fail(`files offered: ${offered}`);
 await page.keyboard.press("Enter");
 await page.waitForFunction(() => document.querySelector(".fn-text")?.textContent.includes("def shout"));
 if (!file("text.fn").includes("def shout(value: str)")) fail("the new function is not in its file");
@@ -121,6 +123,19 @@ await page.click('.modal button:has-text("Save and continue")');
 await page.waitForFunction(() => document.querySelector(".fn-warning"));
 if (!file("text.fn").includes("# unsaved")) fail("not saved on continue");
 await page.waitForFunction(() => getSelection()?.anchorNode?.parentElement?.closest(".cm-line")?.textContent.includes("def split_nth"));
+
+// a new function in a new file: the select becomes a text box, the button gives the select back
+await page.click('.explorer-bar button:has-text("New function…")');
+await page.fill('.prompt input >> nth=0', "cents");
+await page.selectOption('.prompt select', "");
+await page.fill('.prompt input[aria-label="New file name"]', "money");
+await page.click('.prompt button:has-text("▾")');
+await page.waitForSelector(".prompt select");
+await page.selectOption('.prompt select', "");
+await page.fill('.prompt input[aria-label="New file name"]', "money");
+await page.click('.prompt button:has-text("Create")');
+await page.waitForFunction(() => document.querySelector(".fn-text")?.textContent.includes("def cents"));
+if (!file("money.fn").includes("def cents")) fail("no file for the new function");
 
 // typing @ offers the @override of each backend
 await page.click(".fn-text .cm-content");

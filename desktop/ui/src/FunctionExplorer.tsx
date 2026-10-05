@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { type FunctionEntry, fnAdd, fnOverride, functionList } from "./api";
+import { type FunctionEntry, fnAdd, fnFiles, fnOverride, functionList } from "./api";
 import { insertableColumn, insertIntoCellEditor, subscribeCellEditor } from "./cellEditor";
 import { callOf, filterFunctions } from "./functionExplorer";
-import { validFunctionName } from "./fnEditor";
+import { OVERRIDES_FILE } from "./fnEditor";
 import { Confirm } from "./Confirm";
 import { FunctionEditor, type EditorControl } from "./FunctionEditor";
-import { PromptDialog } from "./PromptDialog";
+import { NewFunctionDialog } from "./NewFunctionDialog";
 
 interface Props {
   project: string | null;
@@ -26,7 +26,7 @@ export function FunctionExplorer({ project, open, onClose }: Props) {
   // what the editor says about its text, to ask before an action replaces it
   const control = useRef<EditorControl>({ dirty: false, save: async () => true });
   const [pending, setPending] = useState<(() => void) | null>(null);
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState<string[] | null>(null);
   const [lastFile, setLastFile] = useState("functions");
   const canInsert = useSyncExternalStore(subscribeCellEditor, () => insertableColumn() !== null);
 
@@ -45,7 +45,7 @@ export function FunctionExplorer({ project, open, onClose }: Props) {
 
   const fail = (e: unknown) => setError(String(e instanceof Error ? e.message : e));
   const edit = (file: string, focus?: string) => {
-    setLastFile(file);
+    if (file !== OVERRIDES_FILE) setLastFile(file);
     setEditing((was) => ({ file, focus, nonce: (was?.nonce ?? 0) + 1 }));
   };
   /** Runs `action`; with unsaved changes in the editor it first asks to save them. */
@@ -97,7 +97,12 @@ export function FunctionExplorer({ project, open, onClose }: Props) {
       <div className="explorer-bar">
         <strong>Functions</strong>
         {project && (
-          <button onClick={() => setCreating(true)} title="Add a function to a file of the project">
+          <button onClick={() =>
+              fnFiles(project).then(
+                (files) => setCreating(files.filter((f) => !f.overrides).map((f) => f.name)),
+                fail,
+              )
+            } title="Add a function to a file of the project">
             New function…
           </button>
         )}
@@ -212,21 +217,13 @@ export function FunctionExplorer({ project, open, onClose }: Props) {
         />
       )}
       {creating && project && (
-        <PromptDialog
-          title="New function"
-          confirm="Create"
-          fields={[
-            { key: "name", label: "Function name", value: "" },
-            { key: "file", label: "In file", value: lastFile, hint: "fn/<file>.fn; made when it does not exist" },
-          ]}
-          validate={({ name, file }) =>
-            validFunctionName(name) ??
-            (all.some((f) => f.name === name) ? "a function with that name exists" : null) ??
-            (/^[A-Za-z][A-Za-z0-9_-]*$/.test(file) ? null : "the file: letters, digits, _ and -")
-          }
-          onDone={(values) => {
-            setCreating(false);
-            if (values) guarded(() => void create(values.name, values.file));
+        <NewFunctionDialog
+          files={creating}
+          last={lastFile}
+          taken={all.map((f) => f.name)}
+          onDone={(result) => {
+            setCreating(null);
+            if (result) guarded(() => void create(result.name, result.file));
           }}
         />
       )}
