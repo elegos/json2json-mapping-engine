@@ -16,6 +16,7 @@ from __future__ import annotations
 import contextvars
 import json
 import operator
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 
@@ -61,6 +62,33 @@ def _rule(name: str, function: Any, *args: Any) -> Any:
         if errors is not None and name not in errors:
             errors[name] = f"{type(exc).__name__}: {exc}"
         return OMIT
+
+
+def _pmap(target: list[Any], name: str, function: Any, degree: int, calls: list[tuple]) -> None:
+    """What a loop does with a `@parallel` element rule: the rule is called for each element in up
+    to `degree` threads, and what it gives is appended to `target` in element order. Each call
+    keeps its own errors, merged in element order afterwards, so the first failure of a rule is
+    the first element's and the result is the sequential one's, whatever the threads' timing."""
+
+    def one(args: tuple) -> tuple[Any, dict[str, str]]:
+        errors: dict[str, str] = {}
+        token = _errors.set(errors)
+        try:
+            return _rule(name, function, *args), errors
+        finally:
+            _errors.reset(token)
+
+    if degree > 1 and len(calls) > 1:
+        with ThreadPoolExecutor(max_workers=degree) as pool:
+            results = list(pool.map(one, calls))
+    else:
+        results = [one(args) for args in calls]
+    outer = _errors.get()
+    for value, errors in results:
+        _append(target, value)
+        if outer is not None:
+            for rule, cause in errors.items():
+                outer.setdefault(rule, cause)
 
 
 def _get(value: Any, *path: Any) -> Any:

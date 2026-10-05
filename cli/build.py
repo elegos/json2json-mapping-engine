@@ -83,7 +83,7 @@ def schema_refs(path: Path) -> SchemasSection:
         return SchemasSection()
     try:
         return load_functional_file(path).schemas
-    except (FnYamlError, OSError):
+    except FnYamlError, OSError:
         return SchemasSection()
 
 
@@ -105,7 +105,7 @@ def _refuse_unfinished(path: Path) -> None:
     requires what it would produce: that stops the build."""
     try:
         tree = load_functional_file(path)
-    except (FnYamlError, OSError):
+    except FnYamlError, OSError:
         return  # the transpiler reports it
     stem = source_stem(path)
     inp, out = schemas_for(Path("."), stem, tree.schemas)
@@ -231,7 +231,7 @@ def _compile_fresh(
     refs = schema_refs(path)
     input_schema = resolve_schema_for(stem, "input", refs)
     output_schema = resolve_schema_for(stem, "output", refs)
-    return compile_unit(
+    unit = compile_unit(
         source,
         default_mapping_id=stem,
         backend=backend,
@@ -240,6 +240,8 @@ def _compile_fresh(
         loop_fusion=config.optimizer.loop_fusion,
         parallel_conflict=config.optimizer.parallel_conflict,
     )
+    warnings.extend(backend.unit_warnings(unit))
+    return unit
 
 
 def mapping_id_of(path: Path) -> str:
@@ -303,7 +305,7 @@ def compile_mapping(path: Path, config: MapperConfig, force: bool = False) -> Co
                     backend_for(config).unit_from_json(cached["unit"]),
                     cached.get("warnings", []),
                 )
-        except (ValueError, KeyError, TypeError):
+        except ValueError, KeyError, TypeError:
             pass  # corrupt cache entry — recompile
 
     warnings: list[str] = []

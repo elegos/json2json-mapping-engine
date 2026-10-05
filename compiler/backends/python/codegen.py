@@ -72,9 +72,11 @@ def _is_dataclass(node: ast.ClassDef) -> bool:
 
 
 class _Rewriter(ast.NodeTransformer):
-    def __init__(self, rules: set[str], dataclasses: set[str]):
+    def __init__(self, rules: set[str], dataclasses: set[str], parallel: dict[str, int]):
         self.rules = rules
         self.dataclasses = dataclasses
+        # element functions of loops mapped by several threads (rule -> degree)
+        self.parallel = parallel
 
     # -- declarations ------------------------------------------------------------------
     def visit_FunctionDef(self, node: ast.FunctionDef) -> ast.FunctionDef:
@@ -170,7 +172,70 @@ class _Rewriter(ast.NodeTransformer):
             raise CodeGenError(f"method call .{func.attr}(...) is not supported")
         return self.generic_visit(node)  # type: ignore[return-value]
 
-    def visit_For(self, node: ast.For) -> ast.For:
+    def _parallel_loop(self, node: ast.For) -> ast.stmt | None:
+        """A loop that only appends what one `@parallel` rule gives for each element (after
+        skipping the elements a filter leaves out) becomes `_pmap(...)`: the calls run in
+        threads, the results are put back in element order. Any other loop stays as it is."""
+        if node.orelse or not isinstance(node.target, ast.Name):
+            return None
+        keep: list[ast.expr] = []  # what an element must satisfy to be mapped
+        body = list(node.body)
+        while body:
+            first = body[0]
+            if not isinstance(first, ast.If) or first.orelse:
+                break
+            if len(first.body) == 1 and isinstance(first.body[0], ast.Continue):
+                keep.append(ast.UnaryOp(op=ast.Not(), operand=first.test))  # skip when true
+                body.pop(0)
+            elif len(body) == 1:
+                keep.append(first.test)  # `if keep: append(...)`
+                body = list(first.body)
+            else:
+                break
+        if len(body) != 1 or not isinstance(body[0], ast.Expr):
+            return None
+        append = body[0].value
+        if not (
+            isinstance(append, ast.Call)
+            and isinstance(append.func, ast.Attribute)
+            and append.func.attr == "append"
+            and len(append.args) == 1
+        ):
+            return None
+        rule = append.args[0]
+        if not (
+            isinstance(rule, ast.Call)
+            and isinstance(rule.func, ast.Name)
+            and rule.func.id in self.parallel
+            and not rule.keywords
+        ):
+            return None
+        calls = ast.ListComp(
+            elt=ast.Tuple(elts=[self.visit(a) for a in rule.args], ctx=ast.Load()),
+            generators=[
+                ast.comprehension(
+                    target=node.target,
+                    iter=_call("_each", self.visit(node.iter)),
+                    ifs=[self.visit(c) for c in keep],
+                    is_async=0,
+                )
+            ],
+        )
+        return ast.Expr(
+            value=_call(
+                "_pmap",
+                self.visit(append.func.value),
+                ast.Constant(value=rule.func.id),
+                rule.func,
+                ast.Constant(value=self.parallel[rule.func.id]),
+                calls,
+            )
+        )
+
+    def visit_For(self, node: ast.For) -> ast.stmt:
+        threaded = self._parallel_loop(node)
+        if threaded is not None:
+            return threaded
         node.iter = _call("_each", self.visit(node.iter))
         node.body = [self.visit(s) for s in node.body]
         node.orelse = [self.visit(s) for s in node.orelse]
@@ -271,8 +336,12 @@ def _project_definitions(
 
 
 def compile_module(
-    tree: ast.Module, mapping_id: str, project: dict[str, FunctionInfo] | None = None
+    tree: ast.Module,
+    mapping_id: str,
+    project: dict[str, FunctionInfo] | None = None,
+    threads: bool = True,
 ) -> PythonUnit:
+    """`threads`: a loop whose element rule is `@parallel` runs in threads (else in order)."""
     functions: list[ast.FunctionDef] = []
     body: list[ast.stmt] = []
     dataclasses: set[str] = set()
@@ -297,7 +366,7 @@ def compile_module(
         if degree is not None:
             parallel[f.name] = degree
 
-    rewriter = _Rewriter(rules, dataclasses)
+    rewriter = _Rewriter(rules, dataclasses, parallel if threads else {})
     project_defs, missing = _project_definitions(tree, project or {})
     new_functions = [*project_defs, *(rewriter.visit(f) for f in functions)]
     unavailable = {

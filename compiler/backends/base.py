@@ -193,6 +193,10 @@ class Backend(ABC):
         `CodeGenError`. Called when `mapper.toml` is loaded."""
         return None
 
+    def unit_warnings(self, unit: CompiledUnit) -> list[str]:
+        """What the build should tell the user about a compiled unit (none by default)."""
+        return []
+
     @abstractmethod
     def assemble(self, units: list[CompiledUnit]) -> dict[str, str]:
         """All units of the project -> the deployable artifact files, as

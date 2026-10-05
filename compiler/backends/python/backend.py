@@ -70,7 +70,7 @@ def runtime_text() -> str:
 class PythonBackend(Backend):
     target: ClassVar[str] = "python"
     artifact_suffix: ClassVar[str] = ".py"
-    defaults: ClassVar[dict[str, Any]] = {"python": "3.12"}
+    defaults: ClassVar[dict[str, Any]] = {"python": "3.12", "parallel": "thread"}
     options: ClassVar[tuple[Option, ...]] = (
         Option(
             "python",
@@ -80,6 +80,15 @@ class PythonBackend(Backend):
             pattern=r"3\.\d+t?",
             pattern_hint="a version such as 3.12, or 3.14t for a free-threaded build",
         ),
+        Option(
+            "parallel",
+            "choice",
+            "How a loop whose rule is `@parallel(degree=N)` runs: `thread` maps its elements in up "
+            "to N threads (a speed-up only on a free-threaded Python, such as 3.14t; with the GIL "
+            "it is correct but not faster), `none` runs it in order",
+            default="thread",
+            choices=("thread", "none"),
+        ),
     )
     has_integration: ClassVar[bool] = True
 
@@ -87,7 +96,27 @@ class PythonBackend(Backend):
         self, tree: ast.Module, mapping_id: str, scope_resolution: ScopeResolution | None = None
     ) -> codegen.PythonUnit:
         # the project is the working directory (a build and a golden run both start there)
-        return codegen.compile_module(tree, mapping_id, project_functions(Path.cwd()))
+        return codegen.compile_module(
+            tree,
+            mapping_id,
+            project_functions(Path.cwd()),
+            self.config.get("parallel", "thread") == "thread",
+        )
+
+    def unit_warnings(self, unit: CompiledUnit) -> list[str]:
+        if (
+            not isinstance(unit, codegen.PythonUnit)
+            or not unit.parallel
+            or self.config.get("parallel", "thread") != "thread"
+            or str(self.config.get("python", "3.12")).endswith("t")
+        ):
+            return []
+        rules = ", ".join(sorted(unit.parallel))
+        return [
+            f"@parallel on {rules} runs in threads, but Python {self.config.get('python', '3.12')} has the "
+            "global lock: correct, not faster. Target a free-threaded Python (for example 3.14t) "
+            'in [target.python], or set parallel = "none"'
+        ]
 
     def unit_from_json(self, data: dict[str, Any]) -> codegen.PythonUnit:
         return codegen.PythonUnit.from_json(data)

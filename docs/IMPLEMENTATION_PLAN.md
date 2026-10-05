@@ -922,20 +922,19 @@ build in:
       `python = "3.14t"`), and the backend emits code for that interpreter: syntax and library
       features it has, and `@parallel` handled accordingly. The generated module must not import the
       engine.
-- [ ] `@parallel(degree=N)` for real, unlike PL/SQL (where it only yields a SQL-callable
-      wrapper): the elements of the loop are mapped by up to N workers. Strategy is a
-      `[target.python]` choice: `process` (`ProcessPoolExecutor`; elements and results
-      are plain JSON, so pickling is cheap, but start-up and transfer only pay off for
-      heavy per-element work), `thread` (`ThreadPoolExecutor`; a real speed-up only on a
-      free-threaded CPython — 3.13t, supported from 3.14 — while the project pins
-      `>=3.12,<3.13`), `none` (sequential, the default until measured). Which strategies are
-      allowed, and what `@parallel` means, follows from the target interpreter above (a
-      free-threaded target may use `thread`; an older one may only offer `process` or
-      `none`; asking for an unavailable strategy is a build error, not a silent fallback). Whatever the
-      strategy, the result must equal the sequential one: results collected in element order
-      (`map`, not completion order) and rule errors merged in element order, so "first
-      failure of a rule wins" stays deterministic. The `orders` golden cases (degree 2)
-      run under every strategy.
+- [x] `@parallel(degree=N)` for real, unlike PL/SQL (where it only yields a SQL-callable
+      wrapper): the elements of the loop are mapped by up to N threads.
+      Decided: `[target.python] parallel = "thread" | "none"` (default `thread`); `thread` is a real
+      speed-up on a free-threaded Python (the project's `python = "3.14t"`), and on one with the
+      GIL it still runs in threads, correct but not faster, and the build says so (a warning from
+      `Backend.unit_warnings`). The engine and the tool's worker run on 3.14; a project targets any
+      version. Whatever the strategy, the result equals the sequential one: results in element
+      order (`pool.map`), and each call keeps its own errors, merged in element order, so "first
+      failure of a rule wins" stays deterministic. Done: `_pmap` in the runtime, the loop rewrite in
+      `codegen.py` (a loop that only appends one `@parallel` rule's value, with its filters),
+      tests (also run on 3.14t). Still open: `process` (`ProcessPoolExecutor`: the generated
+      modules are loaded by path, so the functions would have to be importable by the workers); a
+      loop that does more than append one `@parallel` rule's value (fused loops) stays sequential.
 - [ ] Then the desktop preview (Extra mile in M6).
 - [ ] Then the golden runs in the tool (M6.8): the disabled ▶ buttons of the *Golden* tab (one
       case, and *Execute all…*) run the cases on this backend, and the tool shows the results

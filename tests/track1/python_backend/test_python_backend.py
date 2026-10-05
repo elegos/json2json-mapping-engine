@@ -208,3 +208,84 @@ def test_every_golden_mapping_also_compiles_to_plsql(name: str) -> None:
     backend = PlsqlBackend({"schema": "S", "error_code": -20000, "mapping_package_prefix": "M_"})
     unit = compile_unit((ROOT / "mappings" / f"{name}.map.py").read_text(), name, backend)
     assert backend.assemble([unit])
+
+
+_PARALLEL = """
+@dataclass
+class Item:
+    n: int
+    skip: bool
+
+
+@dataclass
+class Doc:
+    items: list[Item]
+
+
+@dataclass
+class Line:
+    N: int
+    Half: int
+
+
+def half(n: int) -> int:
+    return 10 // n
+
+
+@parallel(degree=3)
+def line(root: Doc, src: Item) -> Line:
+    return Line(N=src.n, Half=half(src.n))
+
+
+for src in root.items:
+    if src.skip:
+        continue
+    out.Lines.append(line(root, src))
+"""
+
+
+def _run(tmp_path: Path, options: dict[str, Any], items: list[dict[str, Any]]) -> tuple[Any, Any]:
+    backend = PythonBackend(options)
+    unit = compile_unit(_PARALLEL, "m", backend)
+    tmp_path.mkdir()
+    for name, text in backend.assemble([unit]).items():
+        (tmp_path / name).write_text(text)
+    module = _load_files(tmp_path)
+    return unit, module.map_m_safe({"items": items})
+
+
+def _load_files(folder: Path) -> Any:
+    for stale in [m for m in sys.modules if m == "j2jme_runtime" or m.startswith("map_")]:
+        del sys.modules[stale]
+    sys.path.insert(0, str(folder))
+    try:
+        spec = importlib.util.spec_from_file_location("map_m", folder / "map_m.py")
+        assert spec and spec.loader
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        return module
+    finally:
+        sys.path.remove(str(folder))
+
+
+def test_a_parallel_loop_gives_what_the_sequential_one_does(tmp_path: Path) -> None:
+    # 0 fails twice (division by zero, at elements 2 and 5); 4 is filtered out
+    items = [{"n": n, "skip": n == 4} for n in (1, 2, 0, 3, 4, 0, 5, 10)]
+    threaded_unit, threaded = _run(tmp_path / "t", {"parallel": "thread"}, items)
+    plain_unit, plain = _run(tmp_path / "p", {"parallel": "none"}, items)
+    assert "_pmap(" in threaded_unit.source and "_pmap(" not in plain_unit.source
+    assert threaded == plain
+    output, errors = threaded
+    assert [line["N"] for line in output["Lines"]] == [1, 2, 0, 3, 0, 5, 10]  # in element order
+    assert [e["rule"] for e in errors] == ["half"]  # reported once, for the first failing element
+
+
+def test_the_build_says_a_parallel_rule_is_not_faster_with_the_global_lock() -> None:
+    gil = PythonBackend({"python": "3.14", "parallel": "thread"})
+    unit = compile_unit(_PARALLEL, "m", gil)
+    (warning,) = gil.unit_warnings(unit)
+    assert "line" in warning and "3.14t" in warning
+    for options in ({"python": "3.14t"}, {"python": "3.12", "parallel": "none"}):
+        free = PythonBackend({"parallel": "thread", **options})
+        assert free.unit_warnings(compile_unit(_PARALLEL, "m", free)) == []
