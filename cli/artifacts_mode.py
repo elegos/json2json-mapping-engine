@@ -3,16 +3,17 @@
 
 `ignore` puts `build/compiled/` in the project's `.gitignore` and takes the files out of the git
 index (the files stay on disk; the removal is staged, never committed: that is the user's
-commit); `track` does the opposite. Both go through the `git` binary, run in the project folder, and
-check with `git check-ignore` that the result is what was asked, restoring `.gitignore` otherwise."""
+commit); `track` does the opposite. Both go through `cli/gitops.py` (git, or gitoxide when git is
+not installed) and check with `check-ignore` that the result is what was asked, restoring
+`.gitignore` otherwise."""
 
 from __future__ import annotations
 
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from cli import gitops
 from cli.config import MapperConfigError
 
 COMPILED = "build/compiled"
@@ -36,34 +37,19 @@ class ArtifactsState:
         return {"mode": self.mode, "tracked": list(self.tracked), "git": self.git}
 
 
-def _git(project: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    try:
-        return subprocess.run(
-            ["git", "-C", str(project), *args], capture_output=True, text=True, check=False
-        )
-    except FileNotFoundError as exc:
-        raise MapperConfigError("git is not installed") from exc
-
-
 def _is_repo(project: Path) -> bool:
-    try:
-        return _git(project, "rev-parse", "--is-inside-work-tree").returncode == 0
-    except MapperConfigError:
-        return False
+    return gitops.is_repo(project)
 
 
 def _ignored(project: Path) -> bool:
-    # `--no-index`: what the rules say, whether or not the files are tracked yet
-    return (
-        _git(project, "check-ignore", "-q", "--no-index", f"{COMPILED}/manifest.json").returncode
-        == 0
-    )
+    # what the rules say, whether or not the files are tracked yet
+    return gitops.check_ignore(project, f"{COMPILED}/manifest.json")
 
 
 def state(project: Path) -> ArtifactsState:
     if not _is_repo(project):
         return ArtifactsState("unknown", (), False)
-    listed = _git(project, "ls-files", "--", COMPILED).stdout.splitlines()
+    listed = gitops.ls_files(project, COMPILED)
     return ArtifactsState("ignored" if _ignored(project) else "committed", tuple(listed), True)
 
 
@@ -108,9 +94,10 @@ def ignore(project: Path) -> ArtifactsState:
             "folder's .gitignore (or `!` rule) re-includes it"
         )
     if before.tracked:
-        done = _git(project, "rm", "-r", "--cached", "-q", "--", COMPILED)
-        if done.returncode != 0:
-            raise MapperConfigError(f"git rm --cached {COMPILED}: {done.stderr.strip()}")
+        try:
+            gitops.rm_cached(project, COMPILED)
+        except gitops.GitError as exc:
+            raise MapperConfigError(str(exc)) from exc
     return before
 
 
@@ -137,7 +124,8 @@ def track(project: Path) -> ArtifactsState:
             f"{COMPILED} is still ignored after editing {GITIGNORE}: a rule elsewhere ignores it"
         )
     if (project / COMPILED).is_dir():
-        done = _git(project, "add", "--", COMPILED)
-        if done.returncode != 0:
-            raise MapperConfigError(f"git add {COMPILED}: {done.stderr.strip()}")
+        try:
+            gitops.add(project, [COMPILED])
+        except gitops.GitError as exc:
+            raise MapperConfigError(str(exc)) from exc
     return before

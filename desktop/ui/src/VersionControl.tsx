@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import {
+  type Credentials,
   type VcsConflictFile,
   type VcsState,
+  VcsAuthError,
   vcsAbort,
   vcsCommit,
   vcsConflicts,
@@ -48,6 +50,10 @@ export function VersionControl({ project, onClose, onChanged, ensureSaved }: Pro
   const [problems, setProblems] = useState<string[]>([]);
   const [files, setFiles] = useState<VcsConflictFile[]>([]);
   const [chosen, setChosen] = useState<Record<string, Record<string, Side>>>({});
+  // a remote that asks for a login the clone cannot give: asked once, kept while the panel is open
+  const [creds, setCreds] = useState<Credentials | null>(null);
+  const [needLogin, setNeedLogin] = useState<{ op: "pull" | "push"; why: string } | null>(null);
+  const [login, setLogin] = useState<Credentials>({ username: "", password: "" });
 
   const refresh = useCallback(async () => {
     const next = await vcsState(project);
@@ -93,24 +99,41 @@ export function VersionControl({ project, onClose, onChanged, ensureSaved }: Pro
       }
     });
 
-  const pull = () =>
+  /** Runs a pull or a push with the credentials known so far; a login the remote asks for, that
+   * the clone cannot give by itself, opens the form (the user is asked once per panel). */
+  const withLogin = (op: "pull" | "push", given: Credentials | null = creds) =>
     guarded(async () => {
-      if (!(await ensureSaved())) return;
-      const done = await vcsPull(project);
-      onChanged();
-      setChosen({});
-      setMessage(
-        done.ok
-          ? "Up to date with the remote."
-          : `The pull stopped on ${done.conflicts.length} file(s) that both sides changed: settle them below.`,
-      );
+      try {
+        if (op === "pull") {
+          if (!(await ensureSaved())) return;
+          const done = await vcsPull(project, given ?? undefined);
+          onChanged();
+          setChosen({});
+          setMessage(
+            done.ok
+              ? "Up to date with the remote."
+              : `The pull stopped on ${done.conflicts.length} file(s) that both sides changed: settle them below.`,
+          );
+        } else {
+          await vcsPush(project, given ?? undefined);
+          setMessage("Pushed.");
+        }
+        setNeedLogin(null);
+      } catch (e) {
+        if (!(e instanceof VcsAuthError)) throw e;
+        setNeedLogin({ op, why: e.message });
+        setMessage("");
+      }
     });
 
-  const push = () =>
-    guarded(async () => {
-      await vcsPush(project);
-      setMessage("Pushed.");
-    });
+  const pull = () => withLogin("pull");
+  const push = () => withLogin("push");
+
+  const sendLogin = () => {
+    if (!needLogin) return;
+    setCreds(login);
+    void withLogin(needLogin.op, login);
+  };
 
   const abort = () =>
     guarded(async () => {
@@ -259,11 +282,46 @@ export function VersionControl({ project, onClose, onChanged, ensureSaved }: Pro
             )}
           </>
         )}
+        {needLogin && (
+          <div className="vcs-login">
+            <p>
+              The remote asks for a login. With git installed the tool would use your credential
+              helper; here, give a user name and a password or access token. It is kept in memory
+              until this panel closes, and never saved.
+            </p>
+            <p className="vcs-hint">{needLogin.why}</p>
+            <label>
+              User name
+              <input
+                value={login.username}
+                onChange={(e) => setLogin({ ...login, username: e.target.value })}
+                autoFocus
+              />
+            </label>
+            <label>
+              Password or access token
+              <input
+                type="password"
+                value={login.password}
+                onChange={(e) => setLogin({ ...login, password: e.target.value })}
+                onKeyDown={(e) => e.key === "Enter" && login.username && sendLogin()}
+              />
+            </label>
+            <div className="modal-buttons">
+              <button disabled={busy} onClick={() => setNeedLogin(null)}>
+                Not now
+              </button>
+              <button className="primary" disabled={busy || !login.username} onClick={sendLogin}>
+                Continue the {needLogin.op}
+              </button>
+            </div>
+          </div>
+        )}
         {message && <p className="vcs-message">{message}</p>}
         <div className="modal-buttons">
           {info.repo && !rebasing && (
             <>
-              <button disabled={busy} onClick={() => void pull()} title="git pull --rebase">
+              <button disabled={busy} onClick={() => void pull()} title="Pull with a rebase">
                 Pull
               </button>
               <button disabled={busy || !info.ahead} onClick={() => void push()}>

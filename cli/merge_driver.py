@@ -4,10 +4,10 @@ is what git runs for `*.fn.yaml merge=j2jme`, `mapper merge-driver-install` sets
 from __future__ import annotations
 
 import shlex
-import subprocess
 import sys
 from pathlib import Path
 
+from cli import gitops
 from transpiler.merge import MergeError, merge_fn_texts, merge_texts, text_merge
 
 DRIVER = "j2jme"
@@ -58,69 +58,55 @@ def app_driver_line(python: str | None = None, engine: str | None = None) -> str
     )
 
 
-def _config(project: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    try:
-        return subprocess.run(
-            ["git", "-C", str(project), "config", "--local", *args],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except FileNotFoundError as exc:
-        raise MergeError("git is not installed") from exc
-
-
 def ensure(project: Path, line: str | None = None) -> dict[str, bool]:
     """Make sure the clone merges `*.fn.yaml` and `*.fn` with the driver, quietly: nobody who
     edits mappings should have to know about it. Writes the driver's command into the repository's
     local git config (it does not travel with the repository, so every clone needs it, and the
     command names this install, so it is rewritten when it differs) and the attributes into the
     project's `.gitattributes` (those travel with the repository). Does nothing outside a git
-    repository or without git. Returns `{installed, changed}`."""
+    repository or without git. Returns `{installed, changed}`.
+
+    Without the `git` binary (the gitoxide backend) there is no driver: gitoxide takes a driver that
+    exits non-zero (a conflict, for git) as an error that stops the whole merge, so a driver
+    left by an earlier git is removed, the attributes are still written (they travel to those who
+    use git) and the tool settles by itself what a rule-level merge settles (`cli/vcs.py`)."""
     wanted = line or app_driver_line()
-    try:
-        inside = subprocess.run(
-            ["git", "-C", str(project), "rev-parse", "--is-inside-work-tree"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except FileNotFoundError:
+    if not gitops.is_repo(project):
         return {"installed": False, "changed": False}
-    if inside.returncode != 0:
-        return {"installed": False, "changed": False}
-    current = _config(project, "--get", f"merge.{DRIVER}.driver").stdout.strip()
     attrs = project / ".gitattributes"
     present = set(attrs.read_text().splitlines()) if attrs.is_file() else set()
-    if current == wanted and all(a in present for a in ATTRIBUTES):
+    has_attributes = all(a in present for a in ATTRIBUTES)
+    if gitops.backend() == "gix":
+        removed = gitops.config_remove_section(project, "merge", DRIVER)
+        if not has_attributes:
+            install(project, config=False)
+        return {"installed": False, "changed": removed or not has_attributes}
+    current = gitops.config_get(project, f"merge.{DRIVER}.driver")
+    if current == wanted and has_attributes:
         return {"installed": True, "changed": False}
     install(project, driver=wanted)
     return {"installed": True, "changed": True}
 
 
-def install(project: Path, command: str = "mapper", driver: str | None = None) -> list[str]:
+def install(
+    project: Path, command: str = "mapper", driver: str | None = None, config: bool = True
+) -> list[str]:
     """Register the driver in the repository's git config and the attribute in the project's
     `.gitattributes`. The config is local to the clone, so every clone does this once. `driver` is
     the whole command line, else `<command> merge-driver %O %A %B %P`. The attributes are written
     in the project's folder, so they apply there and not to the rest of a bigger repository.
     Returns what was done."""
     done: list[str] = []
-    for key, value in (
-        (f"merge.{DRIVER}.name", "J2JME rule-level merge of .fn.yaml"),
-        (f"merge.{DRIVER}.driver", driver or f"{command} merge-driver %O %A %B %P"),
-    ):
-        try:
-            subprocess.run(
-                ["git", "-C", str(project), "config", "--local", key, value],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-        except FileNotFoundError as exc:
-            raise MergeError("git is not installed") from exc
-        except subprocess.CalledProcessError as exc:
-            raise MergeError(f"git config {key}: {exc.stderr.strip()}") from exc
-        done.append(f"git config {key}")
+    if config:
+        for key, value in (
+            (f"merge.{DRIVER}.name", "J2JME rule-level merge of .fn.yaml"),
+            (f"merge.{DRIVER}.driver", driver or f"{command} merge-driver %O %A %B %P"),
+        ):
+            try:
+                gitops.config_set(project, key, value)
+            except gitops.GitError as exc:
+                raise MergeError(str(exc)) from exc
+            done.append(f"git config {key}")
     attrs = project / ".gitattributes"
     text = attrs.read_text() if attrs.is_file() else ""
     for attribute in ATTRIBUTES:

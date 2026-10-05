@@ -405,3 +405,5 @@ span.result-badge { cursor: default; }
 .vcs-sides label.on { border-color: #3a7bd5; background: #3a7bd514; }
 .vcs-sides pre { margin: 4px 0 0; white-space: pre-wrap; word-break: break-word; font-size: 12px; max-height: 140px; overflow-y: auto; }
 .vcs-hint { color: GrayText; font-size: 12px; }
+.vcs-login { border: 1px solid #8886; border-radius: 6px; padding: 8px 12px; margin: 0 0 12px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+.vcs-login label { display: flex; flex-direction: column; gap: 2px; }

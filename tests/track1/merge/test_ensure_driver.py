@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -12,7 +13,11 @@ import yaml
 from cli import merge_driver as md
 from cli import vcs
 
-pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+# the fixtures (git as test scaffolding, in `git()`) need the binary; the cases run on both backends
+pytestmark = [
+    pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed"),
+    pytest.mark.usefixtures("backend"),
+]
 
 RULES = """\
 rules:
@@ -39,6 +44,12 @@ def _git_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
 
 
+def git_driver_only() -> None:
+    """A case about git's own use of the driver: gitoxide has none (see `merge_driver.ensure`)."""
+    if os.environ.get("J2JME_GIT_BACKEND") != "git":
+        pytest.skip("the git backend installs the merge driver; gitoxide has none")
+
+
 def git(where: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["git", "-C", str(where), *args], capture_output=True, text=True, check=check
@@ -53,14 +64,30 @@ def config(where: Path) -> str:
 
 def test_ensure_installs_quietly_and_only_once(tmp_path: Path) -> None:
     git(tmp_path, "init", "-q", "-b", "main")
-    assert md.ensure(tmp_path) == {"installed": True, "changed": True}
-    assert config(tmp_path) == md.app_driver_line()
+    git_backend = os.environ.get("J2JME_GIT_BACKEND") == "git"
+    assert md.ensure(tmp_path) == {"installed": git_backend, "changed": True}
+    # the attributes travel with the repository, whoever uses them; the command is the clone's own
     attrs = (tmp_path / ".gitattributes").read_text().splitlines()
     assert attrs == ["*.fn.yaml merge=j2jme", "*.fn merge=j2jme"]
-    assert md.ensure(tmp_path) == {"installed": True, "changed": False}
+    assert config(tmp_path) == (md.app_driver_line() if git_backend else "")
+    assert md.ensure(tmp_path) == {"installed": git_backend, "changed": False}
+
+
+def test_gitoxide_takes_a_driver_left_by_git_away(tmp_path: Path) -> None:
+    """gitoxide stops the whole merge when a driver exits non-zero (a conflict, for git)."""
+    if os.environ.get("J2JME_GIT_BACKEND") != "gix":
+        pytest.skip("about the gitoxide backend")
+    git(tmp_path, "init", "-q", "-b", "main")
+    git(tmp_path, "config", "--local", "merge.j2jme.driver", "false")
+    git(tmp_path, "config", "--local", "merge.j2jme.name", "J2JME")
+    git(tmp_path, "config", "--local", "user.name", "someone")
+    assert md.ensure(tmp_path) == {"installed": False, "changed": True}
+    assert config(tmp_path) == ""
+    assert git(tmp_path, "config", "--local", "--get", "user.name").stdout.strip() == "someone"
 
 
 def test_ensure_rewrites_a_command_that_names_another_install(tmp_path: Path) -> None:
+    git_driver_only()
     git(tmp_path, "init", "-q", "-b", "main")
     md.ensure(tmp_path, md.app_driver_line(python="/tmp/.mount_old/python3"))
     assert "/tmp/.mount_old/python3" in config(tmp_path)
@@ -85,8 +112,9 @@ def test_ensure_does_nothing_outside_a_repository_or_without_git(
 ) -> None:
     assert md.ensure(tmp_path) == {"installed": False, "changed": False}
     assert not (tmp_path / ".gitattributes").exists()
-    monkeypatch.setenv("PATH", "")
-    assert md.ensure(tmp_path) == {"installed": False, "changed": False}
+    if os.environ.get("J2JME_GIT_BACKEND") == "git":  # the helper needs no git on the PATH
+        monkeypatch.setenv("PATH", "")
+        assert md.ensure(tmp_path) == {"installed": False, "changed": False}
 
 
 def _commit(repo: Path, message: str) -> None:
@@ -110,6 +138,7 @@ def _branches(repo: Path, rel: str, ours: str, theirs: str) -> None:
 def test_the_line_the_tool_writes_merges_adjacent_edits_that_git_alone_cannot(
     tmp_path: Path,
 ) -> None:
+    git_driver_only()
     repo = tmp_path / "repo"
     repo.mkdir()
     git(repo, "init", "-q", "-b", "main")
@@ -124,6 +153,7 @@ def test_the_line_the_tool_writes_merges_adjacent_edits_that_git_alone_cannot(
 
 
 def test_a_project_folder_only_gets_the_driver_in_its_own_paths(tmp_path: Path) -> None:
+    git_driver_only()
     mono = tmp_path / "mono"
     project = mono / "mappings-project"
     project.mkdir(parents=True)
@@ -148,6 +178,7 @@ def test_a_project_folder_only_gets_the_driver_in_its_own_paths(tmp_path: Path) 
 
 
 def test_a_dead_interpreter_falls_back_to_gits_own_merge(tmp_path: Path) -> None:
+    git_driver_only()
     repo = tmp_path / "repo"
     repo.mkdir()
     git(repo, "init", "-q", "-b", "main")
@@ -190,4 +221,6 @@ def test_pull_installs_the_driver_by_itself(tmp_path: Path) -> None:
     git(repo, "push", "-q", "-u", "origin", "main")
     assert config(repo) == ""
     vcs.pull(repo)
-    assert config(repo) == md.app_driver_line()
+    expected = md.app_driver_line() if os.environ.get("J2JME_GIT_BACKEND") == "git" else ""
+    assert config(repo) == expected
+    assert "merge=j2jme" in (repo / ".gitattributes").read_text()

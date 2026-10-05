@@ -16,7 +16,11 @@ FIXTURE = Path(__file__).resolve().parents[3] / "desktop/fixtures/tour-project"
 ORDERS = "mappings/functional/orders.fn.yaml"
 TEXT_FN = "fn/text.fn"
 
-pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+# the fixtures (git as test scaffolding, in `git()`) need the binary; the cases run on both backends
+pytestmark = [
+    pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed"),
+    pytest.mark.usefixtures("backend"),
+]
 
 
 @pytest.fixture(autouse=True)
@@ -92,10 +96,24 @@ def test_state_of_a_clean_and_a_changed_project(pair: tuple[Path, Path]) -> None
     assert changes["fn/new.fn"]["status"] == "?"
 
 
-def test_state_without_git_or_repository(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_state_without_git_or_repository(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, backend: str
+) -> None:
     assert vcs.state(tmp_path) == {"git": True, "repo": False}
+    if backend == "git":  # the helper does not need git on the PATH: that is its point
+        monkeypatch.setenv("PATH", "")
+        assert vcs.state(tmp_path) == {"git": False, "repo": False}
+
+
+def test_neither_git_nor_the_helper_is_no_git(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("PATH", "")
+    monkeypatch.delenv("J2JME_GIT_BACKEND", raising=False)
+    monkeypatch.delenv("J2JME_GIT_HELPER", raising=False)
     assert vcs.state(tmp_path) == {"git": False, "repo": False}
+    with pytest.raises(vcs.VcsError, match="git is not installed"):
+        vcs.commit(tmp_path)
 
 
 def test_diff_rules_names_the_rules_and_the_groups() -> None:
@@ -222,15 +240,55 @@ def test_pull_brings_in_the_other_clones_work(pair: tuple[Path, Path]) -> None:
     assert vcs.state(b)["changes"] == []
 
 
-def test_pull_with_a_dirty_tree_keeps_the_work_in_progress(pair: tuple[Path, Path]) -> None:
+def test_pull_with_a_dirty_tree_keeps_the_work_in_progress(
+    pair: tuple[Path, Path], backend: str
+) -> None:
     a, b = pair
     edit(a, "The order id, unchanged.", "From A.")
     vcs.commit(a, "a")
     git(a, "push", "-q")
     edit(b, "Currency of the order's country; N/A when the country is unknown.", "Unsaved in B.")
+    if backend == "gix":
+        # gitoxide has no stash: a file the pull changes must not hold unsaved work
+        with pytest.raises(vcs.VcsError, match="commit or discard your changes first"):
+            vcs.pull(b)
+        assert "Unsaved in B." in (b / ORDERS).read_text()
+        assert not vcs.state(b)["rebasing"]
+        return
     assert vcs.pull(b)["ok"]
     text = (b / ORDERS).read_text()
     assert "From A." in text and "Unsaved in B." in text
+
+
+def test_a_file_the_pull_does_not_touch_keeps_its_unsaved_work(pair: tuple[Path, Path]) -> None:
+    a, b = pair
+    edit(a, "The order id, unchanged.", "From A.")
+    vcs.commit(a, "a")
+    git(a, "push", "-q")
+    edit(b, "parts = s.split()", "parts = s.strip().split()", TEXT_FN)  # not what the pull changes
+    (b / "fn" / "brand_new.fn").write_text("def f(s: str) -> str:\n    return s\n")
+    git(b, "add", "fn/brand_new.fn")  # staged by someone, and not part of the pull either
+    assert vcs.pull(b)["ok"]
+    assert "From A." in (b / ORDERS).read_text()
+    assert "s.strip().split()" in (b / TEXT_FN).read_text()
+    assert "A  fn/brand_new.fn" in git(b, "status", "--porcelain")
+
+
+def test_adjacent_edits_of_one_rule_are_settled_by_the_tool(pair: tuple[Path, Path]) -> None:
+    """Two edits of neighbouring lines of a rule: a text merge calls it a clash; no rule field
+    changed on both sides, so the rule-level merge settles it (git by its driver, gitoxide by the
+    tool), and nobody is asked."""
+    a, b = pair
+    edit(a, "    needs_review: true\n", "    needs_review: false\n")
+    vcs.commit(a, "a")
+    git(a, "push", "-q")
+    edit(b, "    notes: 'functional: confirmed", "    notes: 'functional: reconfirmed")
+    assert vcs.commit(b, "b")["committed"]
+    done = vcs.pull(b)
+    assert done == {"ok": True, "conflicts": []}, done
+    text = (b / ORDERS).read_text()
+    assert "needs_review: false" in text and "reconfirmed with the business" in text
+    assert not vcs.state(b)["rebasing"] and vcs.state(b)["changes"] == []
 
 
 def test_a_conflict_is_listed_with_both_values_and_settled(pair: tuple[Path, Path]) -> None:

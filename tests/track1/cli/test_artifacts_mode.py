@@ -25,7 +25,11 @@ from tests.track1.cli.test_build_cli import (
 
 runner = CliRunner()
 
-pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+# the fixtures (git as test scaffolding, in `git()`) need the binary; the cases run on both backends
+pytestmark = [
+    pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed"),
+    pytest.mark.usefixtures("backend"),
+]
 
 
 @pytest.fixture(autouse=True)

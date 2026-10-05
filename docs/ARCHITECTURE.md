@@ -2296,11 +2296,15 @@ tool does not tell them apart, it only ever commits the **project's paths** (a p
 submodule the commit goes to the submodule's own repository; the parent's pointer is outside the
 tool.
 
-Git operations go through the system **`git` binary** as a subprocess (the same way the tool
-already launches Python): Gitoxide does not cover rebase, merge or submodules well enough. If
-`git` is not installed the tool falls back to **Gitoxide** (embedded, pure Rust), accepting that
-merge and other operations are less capable; an operation Gitoxide cannot do is disabled, with a
-tooltip on the relevant UI control saying why.
+Git operations go through `cli/gitops.py`: the system **`git` binary** as a subprocess (the same
+way the tool already launches Python), and, if `git` is not installed, **gitoxide** (`gix` 0.88,
+pure Rust) in the desktop executable itself (`j2jme-desktop --git-helper`, the crate
+`desktop/gitfallback`; one JSON request on stdin, one answer on stdout; the tool tells Python where
+it is in `J2JME_GIT_HELPER`). Both answer the same questions the same way (state, add, commit, pull
+with a rebase, the conflicted index, abort, push, config), and the same tests run on both
+(`dev_scripts/gix.sh`; `J2JME_GIT_BACKEND=git|gix` forces one). What gitoxide lacks was found by
+trying it, not assumed: see §Without git below. The portable `mapper` archive for CI carries no
+helper: it needs `git`.
 
 Two ways of working share one merge engine; the second is for teams that work on SharePoint /
 OneDrive and is built only when a team needs it.
@@ -2368,6 +2372,40 @@ block per top-level statement with the comments above it, a function or class ma
 an import or constant by its own text; a function changed on one side only, added or deleted, merges,
 the same function changed on both sides is a conflict. Text-level fallback (standard `git` three-way merge) is used
 only if the YAML cannot be parsed — for example, a manually corrupted file.
+
+#### Without git (gitoxide)
+
+Written against `gix` 0.88.0 and checked case by case against the `git` binary (the results are
+compared with `git status`, `git diff --cached`, `git fsck --strict`, a fresh `git clone`). **What
+works with no `git` on the machine**: finding the repository from a subfolder; branch, upstream,
+ahead / behind; status, staged and unstaged; the index, once the cached trees it keeps are dropped
+(left in, `git diff --cached` called a modified file "added"); a commit of chosen paths, also the
+first of a repository and also leaving what else is staged staged; the ignore rules; the line-end
+and other filters of the clone (`core.autocrlf`, `eol`, `ident`, a `filter` driver) in both
+directions, so a commit stores LF and a pull writes CRLF where git would; the merge of two trees,
+with the clone's merge drivers; fetch over **https** (rustls, nothing else installed); config
+read and written so that git reads it back exactly.
+
+**What does not exist in gitoxide**, and what the tool does instead:
+
+| Missing | What the tool does |
+|---|---|
+| rebase | a **replay**: our commits one by one, by merging trees (`merge_trees`); a commit that ends up with nothing new is dropped, as git drops it; it stops at a conflict with the work tree and the index as git leaves them (stages 1-3, markers) and goes on when the files are settled. The result equals git's (same trees, same stage ids in the tests). The state of a stopped rebase is the tool's own (`.git/j2jme-rebase.json`): `git rebase --continue` does not know it, the tool's *Give up the pull* is the way back |
+| stash | a pull that would change a file with uncommitted work **refuses**, naming it (*commit or discard your changes first*); work in other files, and what is staged elsewhere, is untouched |
+| push | the **send-pack protocol written by hand** on gitoxide's transport and handshake: the objects the remote lacks (the new commits, and what changed in each tree against its first parent), a pack of undeltified entries, `report-status`. Checked against `git http-backend`, `git fsck --strict` on the server and a fresh clone (nested directories, deletions, symlinks, the executable bit); a push that is not a fast-forward is refused |
+| hooks | a commit runs **no hook** (a failing `pre-commit` stops git, not gitoxide) |
+| a merge driver that tells "conflict" | gitoxide takes a driver that exits non-zero as an **error** that stops the whole merge, where git takes it as a conflict. So there is **no driver** in this mode (`merge_driver.ensure` removes one left by git, and writes the attributes, which travel to those who use git) and the tool settles by itself the mapping and function files whose two sides changed no rule field and no function in common (`vcs._auto_settle`), which is what the driver did |
+
+**Needs a program that may not be there**: a remote on a local path (or `file://`) runs `git
+upload-pack` / `git receive-pack`; a **named** credential helper (`store`, `manager`,
+`osxkeychain`...) runs as `git credential-<name>`. Credentials by `GIT_ASKPASS`, by a helper
+given as an absolute path, or in the URL work with no git; a password over plain `http://` is
+refused (https only). Where a remote asks for a login nobody can give, the tool says so
+(`auth_required`) and the panel asks for a user name and a password or access token, kept in
+memory until it closes (with git, the same form is answered through a throw-away `GIT_ASKPASS`).
+
+**Not checked**: SSH remotes (gitoxide runs the `ssh` program), Windows (symbolic links, the shell
+a merge driver would need), LFS, submodules.
 
 #### Shared-folder mode (OneDrive / SharePoint)
 

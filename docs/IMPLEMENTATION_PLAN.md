@@ -569,14 +569,13 @@ Sliced; each slice is usable on its own:
             function by the same driver (picked by the file name). Not done: the merge editor in the
             UI (M6.3b) and a worker op for it. Limits: comments and key order of a hand-edited
             file are lost in a rule-level merge (as in any save by the tool).
-      - [x] **M6.3b — Git mode** (the Gitoxide fallback left).
+      - [x] **M6.3b — Git mode** (with the Gitoxide fallback).
         - The tool works on a folder with `mapper.toml`; the git root is found from there up. It
           commits **only the project's paths** (pathspec). In-tree (the project is part of a bigger
           repo) and submodule (the commit goes to the submodule's repo; the parent's pointer is
           outside the tool) are both supported with no submodule-specific logic.
-        - Git operations through the `git` CLI as a subprocess (Gitoxide does not cover rebase,
-          merge, submodules well); if `git` is not installed, fall back to Gitoxide, accepting
-          that merge and the rest are less capable (what it cannot do is disabled, with a tooltip).
+        - Git operations through the `git` CLI as a subprocess; if `git` is not installed, gitoxide
+          (see "Gitoxide fallback" below: done, with what it lacks found by trying it).
         - Commit = check + build; if the check fails the commit is blocked or marked WIP.
           The sources a commit and a manifest cover are the mappings, the schemas, `mapper.toml`
           **and `fn/*.fn`** (overrides and new functions), which also change what is generated.
@@ -611,8 +610,8 @@ Sliced; each slice is usable on its own:
           desktop tool's *Generated files…* (developer mode): `ignore` writes `build/compiled/` in the
           project's `.gitignore` and stages the removal from the git index (no commit, files stay
           on disk), `track` is the opposite; both verify with `git check-ignore` and restore
-          `.gitignore` if the result is not what was asked; they need `git` (no Gitoxide fallback
-          yet). New projects get a `.gitignore` committing only `build/compiled`. Tests:
+          `.gitignore` if the result is not what was asked; they go through `cli/gitops.py` (git, or
+          gitoxide). New projects get a `.gitignore` committing only `build/compiled`. Tests:
           `tests/track1/cli/test_artifacts_mode.py` (real repositories, also a project inside a
           bigger one). Not verified: the dialog in the running tool.
         - **Portable Linux CLI** (no desktop, no Tauri) to run `mapper` in CI: generation, and the
@@ -628,7 +627,7 @@ Sliced; each slice is usable on its own:
           by `release.yml` carrying the two files (the `dist/packages/*` glob should take them), the
           script from a draft release (needs a token). Not done: the same for Windows / macOS CI.
         - [x] Pull with rebase, the conflicts shown in the UI (merge editor on the M6.3a engine).
-        - **Git mode in the tool (done, except the Gitoxide fallback).** `cli/vcs.py` and the worker
+        - **Git mode in the tool (done).** `cli/vcs.py` and the worker
           ops `vcs_*`; the **Version control…** panel (`VersionControl.tsx`): the changes of the
           project's paths, the version notes, *Commit*, *Pull*, *Push*, and the conflict editor.
           - *Commit* = the check (rule errors, and a build of every mapping), then the build, then one
@@ -659,8 +658,27 @@ Sliced; each slice is usable on its own:
             under the project's folder, also in a bigger repository. Tests:
             `tests/track1/merge/test_ensure_driver.py` (a real merge by rule that git alone calls a
             clash; a folder of a bigger repository; the dead interpreter).
-          - **Not done**: the Gitoxide fallback when `git` is not installed (the panel says so and
-            does nothing; `gix` is not a dependency of the desktop crate).
+          - **Gitoxide fallback (done; `gix` 0.88.0, the latest).** `cli/gitops.py` is the one place
+            git is called from (the `git` binary, or `j2jme-desktop --git-helper`, set in
+            `J2JME_GIT_HELPER`; `desktop/gitfallback`, a crate of its own so that it builds without
+            the desktop's system libraries; the small `j2jme-git-helper` binary has the same
+            protocol and is what the tests run). Verified by trying, with `git` as the oracle: status,
+            the index (the cached trees must be dropped), commit (first commit, only the specs, the
+            rest stays staged), fetch over https with no git, tree merges with merge drivers, the
+            filters of the clone (autocrlf), ignore rules, config. **Missing in gitoxide, written by
+            hand**: the rebase (a replay of the commits by tree merges; same trees and stage ids as
+            git in the tests; stopped rebases are the tool's own state), the push (send-pack
+            on the transport; checked against `git http-backend` + `git fsck --strict`). **Missing, and
+            handled by saying so**: stash (a pull refuses when it would change a file with unsaved
+            work), hooks (not run), a merge driver that signals conflict (gitoxide: error; so no driver
+            there, the tool settles disjoint rule edits itself), a named credential helper and a local
+            remote (they need the `git` program; the panel asks for a login, in memory only).
+            Tests: `test_gitops.py` (23, both backends) and the cases of `test_vcs.py`,
+            `test_artifacts_mode.py`, `test_ensure_driver.py` run on both (`dev_scripts/gix.sh` builds
+            the helper; without it the gix runs are skipped). **Not done / not verified**: a CI job that
+            builds the helper (Rust in the job image) and runs the gix cases; SSH remotes, Windows, LFS,
+            submodules; the packaged builds with the new dependency (the Windows and macOS
+            cross-builds in particular: rustls and its C code), and a run in the packaged tool.
       - [ ] **M6.3c — Shared-folder mode (OneDrive / SharePoint).** Only when a real team needs
             it. A git repo inside a synced folder is **not supported** (it corrupts `.git`): the
             tool detects such a path and warns.

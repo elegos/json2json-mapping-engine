@@ -45,6 +45,10 @@ fn prepare(command: &mut Command, engine: &Path) {
         .env("PYTHONNOUSERSITE", "1")
         .env_remove("PYTHONHOME")
         .env_remove("PYTHONSTARTUP");
+    // git without git: the desktop executable is its own git helper (`--git-helper`)
+    if let Ok(me) = std::env::current_exe() {
+        command.env("J2JME_GIT_HELPER", me);
+    }
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;

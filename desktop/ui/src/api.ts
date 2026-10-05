@@ -484,9 +484,21 @@ async function vcsRequest<T>(request: Record<string, unknown>): Promise<T> {
   const answer = await invoke<string>("edit_request", {
     request: JSON.stringify({ id: 1, ...request }),
   });
-  const parsed = JSON.parse(answer) as { ok: boolean; error?: string } & T;
-  if (parsed.error) throw new Error(parsed.error);
+  const parsed = JSON.parse(answer) as { ok: boolean; error?: string; auth_required?: boolean } & T;
+  if (parsed.error) {
+    throw parsed.auth_required ? new VcsAuthError(parsed.error) : new Error(parsed.error);
+  }
   return parsed;
+}
+
+/** The remote asked for a login the clone cannot give by itself (no `git` to run a credential
+ * helper): the tool asks the user for a user name and a password or access token. */
+export class VcsAuthError extends Error {}
+
+/** What the user typed for a remote; kept in memory while the panel is open, never saved. */
+export interface Credentials {
+  username: string;
+  password: string;
 }
 
 /** Quietly makes this clone merge mappings and functions at the rule level (a git merge driver):
@@ -502,10 +514,15 @@ export const vcsState = (project: string) => vcsRequest<VcsState>({ op: "vcs_sta
 export const vcsCommit = (project: string, notes: string, wip: boolean) =>
   vcsRequest<VcsCommitResult>({ op: "vcs_commit", project, notes, wip });
 
-export const vcsPull = (project: string) =>
-  vcsRequest<{ ok: boolean; conflicts: string[]; message?: string }>({ op: "vcs_pull", project });
+export const vcsPull = (project: string, credentials?: Credentials) =>
+  vcsRequest<{ ok: boolean; conflicts: string[]; message?: string }>({
+    op: "vcs_pull",
+    project,
+    credentials,
+  });
 
-export const vcsPush = (project: string) => vcsRequest<{ ok: boolean }>({ op: "vcs_push", project });
+export const vcsPush = (project: string, credentials?: Credentials) =>
+  vcsRequest<{ ok: boolean }>({ op: "vcs_push", project, credentials });
 
 export const vcsConflicts = async (project: string) =>
   (await vcsRequest<{ files: VcsConflictFile[] }>({ op: "vcs_conflicts", project })).files;

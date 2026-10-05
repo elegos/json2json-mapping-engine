@@ -1,0 +1,26 @@
+[package]
+name = "j2jme-git"
+version = "0.1.0"
+edition = "2021"
+description = "git without git for the J2JME desktop tool: gitoxide, and what it lacks written by hand"
+
+[lib]
+name = "j2jme_git"
+path = "src/lib.rs"
+
+# a small executable with the same protocol as `j2jme-desktop --git-helper`: what the tests of the
+# Python side run, and what CI builds without the desktop's system libraries
+[[bin]]
+name = "j2jme-git-helper"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# No `max-performance` (C zlib), no curl: pure Rust, https through rustls.
+gix = { version = "0.88.0", default-features = false, features = [
+  "sha1", "basic", "status", "index", "merge", "revision", "blob-diff", "worktree-mutation",
+  "excludes", "attributes", "dirwalk", "credentials", "command", "max-performance-safe",
+  "blocking-network-client", "blocking-http-transport-reqwest-rust-tls",
+] }
+flate2 = "1"

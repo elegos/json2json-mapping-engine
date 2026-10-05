@@ -200,6 +200,11 @@ fn window_title() -> String {
 }
 
 fn main() {
+    // `j2jme-desktop --git-helper`: git for the Python side when the `git` binary is not installed
+    // (cli/gitops.py): one JSON request on stdin, one answer on stdout, no window
+    if std::env::args().nth(1).as_deref() == Some("--git-helper") {
+        j2jme_git::helper_main();
+    }
     // Wayland takes the window's icon from the .desktop file named like its application id
     #[cfg(target_os = "linux")]
     desktop_entry::match_program_name();

@@ -16,3 +16,6 @@ tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# git without git: status, commit, fetch, rebase by merging trees, push; used only when the `git`
+# binary is not installed (`j2jme-desktop --git-helper`)
+j2jme-git = { path = "../gitfallback" }

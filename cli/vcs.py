@@ -1,25 +1,25 @@
 """Version control for the desktop tool (docs/ARCHITECTURE.md, §Version control, git mode).
 
-Everything goes through the `git` binary, run in the project's folder and limited to the project's
-own paths (the project may be a folder of a bigger repository). Functions take the project folder,
-work with it as the current directory where the build needs that, and answer plain data.
+Everything goes through `cli/gitops.py`: the `git` binary, or the desktop tool's own gitoxide when
+git is not installed. Work is limited to the project's own paths (the project may be a folder of a
+bigger repository). Functions take the project folder, work with it as the current directory where
+the build needs that, and answer plain data.
 
 - `state` — branch, upstream, what changed, a rebase in progress, conflicted files;
 - `commit` — check and build, then one commit of the sources **and** the generated files
   (when they are committed), so that what is deployed from git is what was reviewed; a failing
   check blocks it, or makes it a WIP commit with no generated files;
-- `pull` / `push` — `git pull --rebase --autostash`; the conflicts that remain are settled
-  with the merge engine (`conflicts`, `resolve`, `abort`);
+- `pull` / `push` — a pull is a rebase (with git, `git pull --rebase --autostash`); the conflicts
+  that remain are settled with the merge engine (`conflicts`, `resolve`, `abort`);
 """
 
 from __future__ import annotations
 
 import contextlib
-import subprocess
 from pathlib import Path
 from typing import Any
 
-from cli import artifacts_mode
+from cli import artifacts_mode, gitops
 from cli.config import MapperConfigError
 from transpiler.merge import MergeError, load_raw, merge3, merge_fn_texts, merge_texts
 
@@ -38,39 +38,18 @@ COMPILED = artifacts_mode.COMPILED
 WIP = "WIP: "
 
 
-class VcsError(Exception):
-    """A version-control operation that cannot be done (no git, not a repository, a rebase
-    already stopped, a commit with nothing to say)."""
-
-
-def _git(
-    project: Path, *args: str, check: bool = True, text: bool = True
-) -> subprocess.CompletedProcess[Any]:
-    try:
-        done = subprocess.run(
-            ["git", "-C", str(project), *args], capture_output=True, text=text, check=False
-        )
-    except FileNotFoundError as exc:
-        raise VcsError("git is not installed") from exc
-    if check and done.returncode != 0:
-        err = done.stderr if text else done.stderr.decode(errors="replace")
-        raise VcsError(f"git {args[0]}: {err.strip() or 'failed'}")
-    return done
+VcsError = gitops.GitError
 
 
 def _require_repo(project: Path) -> None:
-    if _git(project, "rev-parse", "--is-inside-work-tree", check=False).returncode != 0:
+    if not gitops.available():
+        raise VcsError("git is not installed")
+    if not gitops.is_repo(project):
         raise VcsError(f"{project} is not in a git repository")
 
 
-def _git_dir(project: Path) -> Path:
-    out = _git(project, "rev-parse", "--absolute-git-dir").stdout.strip()
-    return Path(out)
-
-
 def _rebasing(project: Path) -> bool:
-    gd = _git_dir(project)
-    return (gd / "rebase-merge").is_dir() or (gd / "rebase-apply").is_dir()
+    return gitops.rebasing(project)
 
 
 def _authored(project: Path) -> list[str]:
@@ -89,68 +68,24 @@ def _pathspec(project: Path, *, generated: bool) -> list[str]:
     return specs
 
 
-def _relative_to_project(project: Path, path: str) -> str:
-    """`path`, as git prints it (from the repository's root), as a path from the project's."""
-    prefix = _git(project, "rev-parse", "--show-prefix").stdout.strip()
-    return path.removeprefix(prefix)
-
-
 def state(project: Path) -> dict[str, Any]:
     """`{git, repo, branch, upstream, ahead, behind, rebasing, changes, conflicts}`. `changes`
     are `{path, status, generated}` for the project's paths (paths from the project), `conflicts`
     the unmerged files. Without git or a repository, only `git` / `repo`."""
-    try:
-        have = _git(project, "--version", check=False).returncode == 0
-    except VcsError:
+    if not gitops.available():
         return {"git": False, "repo": False}
-    if not have or _git(project, "rev-parse", "--is-inside-work-tree", check=False).returncode != 0:
-        return {"git": have, "repo": False}
-    branch = _git(project, "branch", "--show-current").stdout.strip() or None
-    upstream = None
-    ahead = behind = 0
-    found = _git(project, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}", check=False)
-    if found.returncode == 0:
-        upstream = found.stdout.strip()
-        counts = _git(project, "rev-list", "--left-right", "--count", f"HEAD...{upstream}")
-        ahead, behind = (int(n) for n in counts.stdout.split())
-    changes = []
-    out = _git(
-        project,
-        "status",
-        "--porcelain=v1",
-        "-z",
-        "--untracked-files=all",
-        "--",
-        *_pathspec(project, generated=True),
-        text=False,
-    ).stdout.decode()
-    entries = out.split("\0")
-    i = 0
-    while i < len(entries) and entries[i]:
-        code, path = entries[i][:2], entries[i][3:]
-        if code[0] in "RC":  # a rename lists the old path next
-            i += 1
-        i += 1
-        rel = _relative_to_project(project, path)
-        changes.append(
-            {
-                "path": rel,
-                "status": "?" if code == "??" else code.strip() or "?",
-                "generated": rel.startswith(f"{COMPILED}/"),
-            }
-        )
-    unmerged = _git(project, "diff", "--name-only", "--diff-filter=U").stdout.split()
-    return {
-        "git": True,
-        "repo": True,
-        "branch": branch,
-        "upstream": upstream,
-        "ahead": ahead,
-        "behind": behind,
-        "rebasing": _rebasing(project),
-        "changes": changes,
-        "conflicts": [_relative_to_project(project, p) for p in unmerged],
-    }
+    if not gitops.is_repo(project):
+        return {"git": True, "repo": False}
+    raw = gitops.state(project, _pathspec(project, generated=True))
+    changes = [
+        {
+            "path": c["path"],
+            "status": "?" if c["code"] == "??" else c["code"].strip() or "?",
+            "generated": c["path"].startswith(f"{COMPILED}/"),
+        }
+        for c in raw["changes"]
+    ]
+    return {"git": True, "repo": True, **{**raw, "changes": changes}}
 
 
 # --- what changed, in the words of the grid -----------------------------------------------------
@@ -194,8 +129,7 @@ def diff_rules(old: dict[str, Any], new: dict[str, Any]) -> dict[str, list[str]]
 
 
 def _head_text(project: Path, rel: str) -> str:
-    done = _git(project, "show", f"HEAD:./{rel}", check=False)
-    return done.stdout if done.returncode == 0 else ""
+    return gitops.show_head(project, rel) or ""
 
 
 def summary(project: Path) -> list[str]:
@@ -295,24 +229,27 @@ def commit(project: Path, notes: str = "", *, wip: bool = False) -> dict[str, An
     if generated:
         _build(project)
     specs = _pathspec(project, generated=generated)
-    # also what was deleted: `add -A` with a pathspec sees it, as long as git still knows the path
-    _git(project, "add", "-A", "--", *[s for s in specs if (project / s).exists()])
-    if _git(project, "diff", "--cached", "--quiet", "--", *specs, check=False).returncode == 0:
-        return {"ok": True, "committed": False, "message": "nothing to commit", "problems": []}
     first, _, rest = notes.strip().partition("\n")
     subject = first.strip() or "Update mappings"
     if problems:
         subject = WIP + subject
-    body = [rest.strip()] if rest.strip() else []
+    # what the title says about the rules is read from the work tree against HEAD, before it is staged
+    parts = [subject]
+    if rest.strip():
+        parts.append(rest.strip())
     lines = summary(project)
     if lines:
-        body.append("\n".join(lines))
-    args = ["commit", "-q", "-m", subject]
-    for part in body:
-        args += ["-m", part]
-    _git(project, *args, "--", *specs)
-    rev = _git(project, "rev-parse", "--short", "HEAD").stdout.strip()
-    return {"ok": True, "committed": True, "commit": rev, "subject": subject, "problems": problems}
+        parts.append("\n".join(lines))
+    done = gitops.commit(project, parts, specs)
+    if not done["committed"]:
+        return {"ok": True, "committed": False, "message": "nothing to commit", "problems": []}
+    return {
+        "ok": True,
+        "committed": True,
+        "commit": done["commit"],
+        "subject": subject,
+        "problems": problems,
+    }
 
 
 # --- pull, push, conflicts ----------------------------------------------------------------------
@@ -320,6 +257,25 @@ def commit(project: Path, notes: str = "", *, wip: bool = False) -> dict[str, An
 
 def _is_generated(rel: str) -> bool:
     return rel.startswith(f"{COMPILED}/")
+
+
+def _auto_settle(project: Path, conflicted: list[str]) -> bool:
+    """Settle the conflicted mapping and function files that the rule- or function-level merge
+    settles by itself (what a text merge calls a clash, two edits of neighbouring lines: no rule
+    field, no function changed on both sides). With git the merge driver does it while merging;
+    gitoxide takes no driver that signals a conflict, so it is done here. True if any was."""
+    settled = False
+    for rel in conflicted:
+        if _is_generated(rel) or not rel.endswith((".fn.yaml", ".fn")):
+            continue
+        try:
+            text = _settle(project, rel, {})
+        except VcsError:  # a real conflict: the panel asks
+            continue
+        (project / rel).write_text(text)
+        gitops.mark_resolved(project, rel)
+        settled = True
+    return settled
 
 
 def _continue(project: Path) -> dict[str, Any]:
@@ -331,15 +287,17 @@ def _continue(project: Path) -> dict[str, Any]:
         info = state(project)
         if not info["rebasing"]:
             return {"conflicts": [], "rebasing": False}
+        if _auto_settle(project, info["conflicts"]):
+            info = state(project)
         left = [c for c in info["conflicts"] if not _is_generated(c)]
         if left:
             return {"conflicts": left, "rebasing": True}
         if info["conflicts"]:  # only generated files: regenerate them
             _build(project)
-            _git(project, "add", "-A", "--", COMPILED)
-        done = _git(project, "-c", "core.editor=true", "rebase", "--continue", check=False)
-        if done.returncode != 0 and not state(project)["conflicts"]:
-            raise VcsError(f"git rebase --continue: {done.stderr.strip() or 'failed'}")
+            gitops.add(project, [COMPILED])
+        done = gitops.rebase_continue(project)
+        if not done["ok"] and not state(project)["conflicts"]:
+            raise VcsError(f"rebase --continue: {done.get('message') or 'failed'}")
     raise VcsError("the rebase does not end")
 
 
@@ -351,49 +309,36 @@ def ensure_driver(project: Path) -> dict[str, bool]:
     return ensure(project)
 
 
-def pull(project: Path) -> dict[str, Any]:
-    """`git pull --rebase --autostash`. `{ok, conflicts}`: when the rebase stops on files it could
-    not merge, `conflicts` lists them (settle them with `conflicts` / `resolve`, or `abort`)."""
+def pull(project: Path, credentials: dict[str, str] | None = None) -> dict[str, Any]:
+    """Pull with a rebase. `{ok, conflicts}`: when the rebase stops on files it could not merge,
+    `conflicts` lists them (settle them with `conflicts` / `resolve`, or `abort`). `credentials`
+    (`username`, `password`) are for a remote that asks and has no helper, with gix only."""
     _require_repo(project)
     if _rebasing(project):
         raise VcsError("a rebase is in progress: finish or abort it first")
     ensure_driver(project)
     if state(project)["upstream"] is None:
         raise VcsError("this branch has no upstream to pull from")
-    done = _git(project, "pull", "--rebase", "--autostash", "-q", check=False)
-    if done.returncode == 0:
+    done = gitops.pull(project, credentials)
+    if done["ok"]:
         return {"ok": True, "conflicts": []}
-    stopped = state(project)
-    if stopped["rebasing"] or stopped["conflicts"]:
-        left = _continue(project)
-        if not left["rebasing"]:
-            return {"ok": True, "conflicts": []}
-        return {"ok": False, "conflicts": left["conflicts"], "message": done.stderr.strip()}
-    raise VcsError(f"git pull: {done.stderr.strip() or 'failed'}")
+    left = _continue(project)
+    if not left["rebasing"]:
+        return {"ok": True, "conflicts": []}
+    return {"ok": False, "conflicts": left["conflicts"], "message": done.get("message", "")}
 
 
-def push(project: Path) -> dict[str, Any]:
+def push(project: Path, credentials: dict[str, str] | None = None) -> dict[str, Any]:
     _require_repo(project)
-    info = state(project)
-    if info["upstream"] is None:
-        done = _git(project, "push", "-q", "-u", "origin", "HEAD", check=False)
-    else:
-        done = _git(project, "push", "-q", check=False)
-    if done.returncode != 0:
-        raise VcsError(f"git push: {done.stderr.strip() or 'failed'}")
+    gitops.push(project, credentials)
     return {"ok": True}
-
-
-def _stage(project: Path, n: int, rel: str) -> str | None:
-    done = _git(project, "show", f":{n}:./{rel}", check=False)
-    return done.stdout if done.returncode == 0 else None
 
 
 def _sides(project: Path, rel: str) -> tuple[str, str, str]:
     """(base, remote, mine) of a conflicted file. In a rebase the index calls the branch being
     rebased onto *ours* (stage 2) and the commit being replayed *theirs* (stage 3); in a merge,
     the other way round."""
-    base, two, three = (_stage(project, n, rel) for n in (1, 2, 3))
+    base, two, three = (gitops.stage_text(project, n, rel) for n in (1, 2, 3))
     rebasing = _rebasing(project)
     remote, mine = (two, three) if rebasing else (three, two)
     return base or "", remote or "", mine or ""
@@ -472,7 +417,7 @@ def resolve(project: Path, file: str, choices: dict[str, str] | None = None) -> 
     _require_repo(project)
     text = _settle(project, file, choices or {})
     (project / file).write_text(text)
-    _git(project, "add", "--", file)
+    gitops.mark_resolved(project, file)
     if not _rebasing(project):
         left = [c for c in state(project)["conflicts"] if not _is_generated(c)]
         return {"ok": True, "conflicts": left, "done": not left}
@@ -485,5 +430,5 @@ def abort(project: Path) -> dict[str, Any]:
     _require_repo(project)
     if not _rebasing(project):
         raise VcsError("no rebase in progress")
-    _git(project, "rebase", "--abort")
+    gitops.rebase_abort(project)
     return {"ok": True}
