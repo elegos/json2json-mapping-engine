@@ -190,6 +190,11 @@ _BUILTIN_ARG_EXPECTED: dict[str, list[str | None]] = {
     "lookup": ["VARCHAR2", "OBJECT", "VARCHAR2"],
     "parse_date": ["VARCHAR2", "VARCHAR2"],
     "count": ["ARRAY"],
+    # only reached when the project overrides them: otherwise they are lowered to a loop
+    "max": ["ARRAY", "VARCHAR2"],
+    "min": ["ARRAY", "VARCHAR2"],
+    "sum": ["ARRAY", "VARCHAR2"],
+    "avg": ["ARRAY", "VARCHAR2"],
     "replace": ["VARCHAR2", "VARCHAR2", "VARCHAR2"],
     "regexp_replace": ["VARCHAR2", "VARCHAR2", "VARCHAR2"],
     "regexp_group": ["VARCHAR2", "VARCHAR2", "NUMBER"],
@@ -855,11 +860,14 @@ _EXPECTED_TO_JSON_ELEMENT_EXTRACTOR = {
 }
 
 
-def _is_aggregate_call(node: ast.expr) -> bool:
+def _is_aggregate_call(node: ast.expr, linker: FunctionLinker) -> bool:
+    """A `max` / `min` / `sum` / `avg` call that the backend lowers to a loop: not one the
+    project overrides (that one is an expression, its `@override(plsql=...)` template)."""
     return (
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)
         and node.func.id in _AGGREGATE_FUNCS
+        and not linker.overrides(node.func.id)
     )
 
 
@@ -1107,7 +1115,7 @@ def _translate_fn_body(
                     _materialize_dataclass(stmt.value, translator, tmp_var, ctx, loop_counter)
                 )
                 out.append(f"RETURN {tmp_var};")
-            elif _is_aggregate_call(stmt.value):
+            elif _is_aggregate_call(stmt.value, translator.function_linker):
                 assert isinstance(stmt.value, ast.Call)
                 tmp_var = f"v_{ctx.local_prefix}__agg"
                 decl_type = _EXPECTED_TO_DECL_TYPE.get(return_expected, return_expected)
@@ -1563,7 +1571,7 @@ class PlsqlCodeGenerator:
                 declare=[f"{tmp_var} JSON_OBJECT_T;"],
                 body=[*setup_lines, sink(tmp_var)],
             )
-        if _is_aggregate_call(value):
+        if _is_aggregate_call(value, translator.function_linker):
             assert isinstance(value, ast.Call)
             fn_ctx_for_infer = _FnCtx(params=[], local_prefix="_")
             inferred = infer_type(value, fn_ctx_for_infer)

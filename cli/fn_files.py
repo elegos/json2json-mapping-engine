@@ -296,6 +296,12 @@ def _backend_overrides(name: str, target: str) -> tuple[list[ast.expr], list[str
             keywords=[ast.keyword(backend_name, ast.Constant(text))],
         )
         decorators.append(call)
+    if name in ("max", "min", "sum", "avg") and target and target != "python":
+        notes.append(
+            f"# {target}: the backend lowers this to a loop; to change it write an expression of "
+            "the parameters, calling a function you deploy, e.g."
+        )
+        notes.append(f'# @override({target}="MY_PKG.{name}_of({{items}}, {{field}})")')
     shown = {k.arg for d in decorators if isinstance(d, ast.Call) for k in d.keywords}
     if target and target != "python" and target not in shown:
         stub = f"{STUB_PREFIX}'{target} stub')"

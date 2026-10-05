@@ -46,3 +46,27 @@ def test_a_project_function_with_nothing_for_plsql_stops_the_build(
     _project(tmp_path, "def shout(s: str) -> str:\n    return s.upper()\n", monkeypatch)
     with pytest.raises((CodeGenError, FunctionLinkError), match="no implementation.*plsql"):
         compile_unit(MAPPING, "m", PlsqlBackend(CONFIG))
+
+
+AGGREGATE = (
+    "from __mapping__ import *\n"
+    "def a(root: Any) -> float:\n    return avg(root.items, 'qty')\n"
+    "out.Avg = a(root)\n"
+)
+
+
+def test_an_aggregate_is_a_loop_unless_the_project_overrides_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    backend = PlsqlBackend(CONFIG)
+    sql = backend.assemble([compile_unit(AGGREGATE, "m", backend)])["m_m.sql"]
+    assert "FOR v_aggk_" in sql
+    _project(
+        tmp_path,
+        'from __mapping__ import override\n\n@override(plsql="MY_PKG.mean({items}, {field})")\n'
+        "def avg(items: list[Any], field: str = '') -> Any:\n    ...\n",
+        monkeypatch,
+    )
+    sql = backend.assemble([compile_unit(AGGREGATE, "m", backend)])["m_m.sql"]
+    assert "MY_PKG.mean(p_root.get_Array('items'), 'qty')" in sql and "v_aggk_" not in sql

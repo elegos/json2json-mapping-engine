@@ -57,6 +57,10 @@ class FunctionLinker:
         # inject them ahead of that.
         self._project_functions = project_functions or {}
 
+    def overrides(self, name: str) -> bool:
+        """The project defines `name` (so it replaces the built-in, whatever the built-in is)."""
+        return name in self._project_functions
+
     def resolve(self, name: str) -> FunctionImpl:
         if name in self._project_functions:
             return self._project_functions[name]

@@ -178,3 +178,4 @@ def test_a_built_in_the_backend_lowers_gets_a_stub_for_the_projects_backend(proj
     text = fn_files.read_file(project, "builtin_overrides")
     assert "@override(plsql=\"NOT_IMPLEMENTED('plsql stub')\")" in text
     assert "def _column" in text
+    assert '# @override(plsql="MY_PKG.avg_of({items}, {field})")' in text

@@ -58,6 +58,14 @@ the function is suggested while they type.
 `max`, `min`, `sum`, `avg` and `count` reduce a list to one value, e.g. `max($.myList.numAttr)`.
 They can appear only as the direct value of a rule, not nested in a larger expression.
 
+On PL/SQL, `count` is an expression (`list.get_size`), while `max`, `min`, `sum` and `avg` are
+**generated as a loop** with an accumulator: there is no template to copy. To change one, define a
+function of the same name in `fn/` with an `@override(plsql="...")` that is an *expression* of the
+parameters, `{items}` (the list, as a `JSON_ARRAY_T`) and `{field}` (the field name, as text), for
+example `@override(plsql="MY_PKG.mean({items}, {field})")`, where `MY_PKG.mean` is a PL/SQL function
+you deploy. The loop is then not generated, and such a call may be nested in an expression. For
+Python the function's body is the code.
+
 ## One list for everything
 
 The tool's checks, the suggestions in the grid and the stubs for your editor all read the same
