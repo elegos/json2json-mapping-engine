@@ -9,7 +9,6 @@ dependencies = [
     "tomli>=2.0; python_version < '3.11'",
     "pyyaml>=6.0",
     "jsonschema>=4.21",
-    "oracledb>=2.0",
     "tomlkit>=0.15.1",
 ]
 
@@ -28,6 +27,8 @@ dev = [
     "pytest>=8.0",
     "ruff>=0.6",
     "basedpyright>=1.18",
+    # only the PL/SQL integration tests (`mapper test --integration`) connect to Oracle
+    "oracledb>=2.0",
 ]
 
 [tool.ruff]

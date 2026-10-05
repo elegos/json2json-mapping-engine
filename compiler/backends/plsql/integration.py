@@ -15,6 +15,7 @@ mapping's own).
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import secrets
@@ -82,7 +83,7 @@ def detect_runtime() -> str | None:
             continue
         try:
             done = subprocess.run(_info_cmd(name), capture_output=True, timeout=30)
-        except (OSError, subprocess.TimeoutExpired):
+        except OSError, subprocess.TimeoutExpired:
             continue
         # docker-cli 26 can exit 0 with an empty --format result when the daemon is
         # unreachable, so a docker answer counts only if it printed a server version.
@@ -317,7 +318,10 @@ def run_case(
 
 
 def integration_unavailable() -> str | None:
-    """Why the tests cannot run here: no container runtime answers."""
+    """Why the tests cannot run here: no `oracledb` (a development dependency, not shipped with
+    the tool), or no container runtime answers."""
+    if importlib.util.find_spec("oracledb") is None:
+        return "the oracledb package is not installed (it is in the `dev` dependency group)"
     if detect_runtime() is not None:
         return None
     return f"no podman/docker available\n  {runtime_diagnostic()}"

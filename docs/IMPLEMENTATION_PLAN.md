@@ -844,6 +844,19 @@ point, not decided: whether CI should fail when `mapper build` produces a diff a
 tracked artifacts (it would catch a generator change committed without them). Also here,
 after M7: check that the GitHub pipeline behaves like the forgejo one (not checked so far).
 
+Decided for the bundled Python (not built yet): the engine and the tool's worker need Python
+>= 3.14 (a project still targets any version in `[target.python]`), and only what the tool uses
+to transpile, compile and run the editor is shipped: `oracledb` (with `cryptography`, native) is in
+the `dev` dependency group, since only `mapper test --integration` connects to Oracle, as are the
+other CI tools. **Windows**: embed the interpreter (python.org's embeddable package, with the
+engine's dependencies installed beside it by `pip install --target`, `python314._pth` edited; or
+python-build-standalone, which also has free-threaded 3.14t builds: to be checked for the
+embeddable package); the licence of Python goes in. **Linux**: a package depending on Python 3.14
+(the dependencies with native wheels, `pyyaml`, are tied to the minor version, so "Python >= 3.14"
+is not enough on its own: ship a private venv / `site-packages` built for that exact version, or
+bundle the interpreter in an AppImage / Flatpak). `desktop/src-tauri/src/python.rs` already looks
+for a bundled interpreter after the engine's `.venv`.
+
 ---
 
 ## ✅ More built-ins (done; `decode` left out)
