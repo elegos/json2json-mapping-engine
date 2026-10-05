@@ -328,6 +328,43 @@ def build(
 
 
 @app.command()
+@json_capable
+def publish(
+    to: str | None = typer.Option(
+        None,
+        "--to",
+        help="Folder to publish to (relative to the project, or absolute); else "
+        "$J2JME_PUBLISH_DIR, else [publish] dir of mapper.toml, else build/compiled",
+    ),
+    json_output: bool = JSON_OPTION,
+) -> None:
+    """Build, then publish the generated files and manifest.json to the publish directory.
+    Nothing is published when the build fails. The folder is never emptied: only files the
+    previous manifest listed are removed; the manifest is removed first and written last."""
+    from cli.build import compiled_files
+    from cli.publish import PublishError, publish_dir
+    from cli.publish import publish as write_set
+
+    config = _load_config_or_exit()
+    generate_stubs()
+    _compile_and_package(config, None)
+    manifest = read_manifest(BUILD_COMPILED_DIR)
+    dest = publish_dir(config, to, BUILD_COMPILED_DIR)
+    if manifest is None:
+        typer.echo(f"error: no manifest in {BUILD_COMPILED_DIR} after the build", err=True)
+        raise typer.Exit(code=1)
+    if dest.resolve() == BUILD_COMPILED_DIR.resolve():
+        typer.echo(f"published: {BUILD_COMPILED_DIR} (the build folder, nothing to copy)")
+        return
+    try:
+        written = write_set(compiled_files(config), manifest, dest)
+    except (PublishError, BuildError) as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"published: {len(written) - 1} file(s) and {written[-1].name} in {dest}")
+
+
+@app.command()
 def test(
     track: int | None = typer.Option(
         None, "--track", help="1 = offline tests, 2 = integration tests (same as the flags below)"

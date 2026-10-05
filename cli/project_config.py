@@ -76,6 +76,18 @@ ENGINE_SECTIONS: tuple[Section, ...] = (
             ),
         ),
     ),
+    Section(
+        ("publish",),
+        "Publish",
+        (
+            Option(
+                "dir",
+                "string",
+                "Folder `mapper publish` puts the generated files in: relative to the project, "
+                "or absolute. Empty: build/compiled",
+            ),
+        ),
+    ),
 )
 
 

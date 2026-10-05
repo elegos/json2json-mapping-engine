@@ -33,6 +33,14 @@ class ProjectConfig:
 
 
 @dataclass(frozen=True)
+class PublishConfig:
+    """`[publish]`: where `mapper publish` puts the artifacts. `dir` is relative to the project
+    or absolute; None: where the build writes them (`build/compiled`)."""
+
+    dir: str | None = None
+
+
+@dataclass(frozen=True)
 class OptimizerConfig:
     loop_fusion: bool = True
     parallel_conflict: Literal["exception", "max", "min"] = "exception"
@@ -56,6 +64,7 @@ class MapperConfig:
     project: ProjectConfig
     optimizer: OptimizerConfig
     compiler: CompilerConfig
+    publish: PublishConfig = field(default_factory=lambda: PublishConfig())
     targets: dict[str, dict[str, Any]] = field(default_factory=dict)
     # Full parsed TOML, verbatim. §Build folder and incremental compilation:
     # the build cache key is source hash + the hash of this *entire* raw dict,
@@ -108,6 +117,18 @@ def _validate_mode(value: Any) -> Literal["driven", "bootstrap"]:
     if value not in ("driven", "bootstrap"):
         raise MapperConfigError(f"[project] mode must be 'driven' or 'bootstrap' — got {value!r}")
     return value
+
+
+def _parse_publish(raw: Any) -> PublishConfig:
+    if not isinstance(raw, dict):
+        raise MapperConfigError("[publish] must be a table")
+    unknown = sorted(set(raw) - {"dir"})
+    if unknown:
+        raise MapperConfigError(f"[publish] unknown key(s): {', '.join(unknown)} (allowed: dir)")
+    folder = raw.get("dir")
+    if folder is not None and not isinstance(folder, str):
+        raise MapperConfigError(f"[publish] dir must be a path (a string) — got {folder!r}")
+    return PublishConfig(dir=folder.strip() or None if folder is not None else None)
 
 
 def _validate_engine(value: Any) -> str | None:
@@ -166,6 +187,8 @@ def parse_config(raw: dict[str, Any]) -> MapperConfig:
         default_choices=_parse_default_choices(compiler_raw.get("default_choices", {})),
     )
 
+    publish = _parse_publish(raw.get("publish", {}))
+
     if "test" in raw:
         raise MapperConfigError(
             "[test] is gone: what the integration tests need depends on the target, so it is "
@@ -189,6 +212,7 @@ def parse_config(raw: dict[str, Any]) -> MapperConfig:
         project=project,
         optimizer=optimizer,
         compiler=compiler,
+        publish=publish,
         targets=targets,
         raw=raw,
     )

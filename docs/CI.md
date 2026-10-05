@@ -280,6 +280,58 @@ jobs:
 Both examples assume nothing of the engine beyond `mapper build`; the database part is whatever the
 project already does to deploy PL/SQL.
 
+## Publishing to a folder
+
+`mapper publish` builds and then writes the generated files and `manifest.json` to the **publish
+folder**, for whoever reads it: a deploy job of another team, a SharePoint library, a "guest"
+project that keeps its own SQL. Which folder:
+
+1. `--to DIR`, else
+2. the environment variable `J2JME_PUBLISH_DIR` (a per-user choice: a path differs on each machine), else
+3. `[publish] dir` in `mapper.toml`, relative to the project or absolute, else
+4. `build/compiled`, where the build already put them (nothing to copy).
+
+```toml
+[publish]
+dir = "../acme-deploy/sql"
+```
+
+A build that fails publishes nothing and leaves the last published set as it was. The folder is
+**never emptied or replaced**: it may hold other people's files. Each file is written whole and read
+back against the hash in the manifest; the old `manifest.json` is removed first and the new one
+written last, and only files the old manifest listed and the new one does not are removed. So a
+reader that finds a `manifest.json` has a complete set, and one that finds none must wait: the set is
+being published, or never was. A reader verifies a folder by comparing each file with the hash its
+manifest lists:
+
+```sh
+# in a deploy job of the consuming side, before deploying what was published
+cd published/sql
+jq -r '.outputs | to_entries[] | "\(.value)  \(.key)"' manifest.json | sha256sum -c -
+```
+
+(The manifest's hashes read a CRLF as an LF, so that a Windows checkout hashes like a Linux one;
+`sha256sum` compares bytes. On files with LF line ends, as a Linux build writes them, the two agree;
+files written on Windows may need the line ends normalised first. Checked on a Linux build.)
+
+Publishing from CI, artifacts not committed, GitHub (the Forgejo job differs only in its header, as
+above):
+
+```yaml
+      - name: Install mapper
+        run: sh ci/install-mapper.sh
+        env:
+          J2JME_RELEASES_URL: ${{ vars.J2JME_RELEASES_URL }}
+
+      - name: Publish the generated files
+        run: mapper publish --to "$RUNNER_TEMP/sql"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sql
+          path: ${{ runner.temp }}/sql
+```
+
 ## Upgrading the engine
 
 Upgrading is a commit, with the artifacts committed or not:
@@ -319,9 +371,9 @@ development checkout) has no archive.
 - Archives for Windows and macOS runners: only Linux x86-64.
 - `mapper test` from the archive: the offline suite runs through `pytest`, which the bundled Python
   does not have (it ships only what `build`, `check` and `publish` need).
-- `mapper publish` (check, build, then write the artifacts and their manifest to a folder of the
-  project's choice) and the tool's action that puts the artifacts in `.gitignore`: planned
-  (docs/IMPLEMENTATION_PLAN.md, M6.3b).
+- The tool's action that puts the artifacts in `.gitignore` and removes them from the repository
+  (docs/IMPLEMENTATION_PLAN.md, M6.3b): today you edit `.gitignore` and `git rm --cached` by hand.
+- A per-user publish folder kept by the desktop tool itself: today `J2JME_PUBLISH_DIR`.
 - A run of these examples in real pipelines: they are written from the pieces that exist and that
   were tested one by one (`mapper check`, the manifest, `install-mapper.sh` against a local
   release), not from a green run on GitHub or Forgejo.

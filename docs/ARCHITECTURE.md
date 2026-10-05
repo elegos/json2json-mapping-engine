@@ -961,6 +961,9 @@ export_rule_functions = false  # true = list every fn_<rule_id> in the package s
 format     = "round"         # round | truncate (default: round) — `format` decimals
 multipleOf = "round"         # round | truncate (default: round) — `allowed.multipleOf` snapping
 
+[publish]                    # optional — where `mapper publish` writes the generated files
+dir = "deploy/sql"           # relative to the project, or absolute; default: build/compiled
+
 [target.plsql.test]            # what this target's integration tests need (PL/SQL: a container)
 container_image = "container-registry.example.com/oracle-db"
 container_tag   = "19.3.0-ee"
@@ -1025,10 +1028,13 @@ mapper upgrade
 # Work on a project whose mapper.toml names a newer engine than this tool (otherwise refused):
 mapper --allow-older-engine build           # env J2JME_ALLOW_OLDER_ENGINE=1; mapper.toml is not changed
 
-# Publish: check + build (nothing is published if the check fails), then write the artifacts
-# to the publish directory. Default: build/compiled; `[publish] dir` in mapper.toml (relative
-# or absolute) overrides it, and so does a per-user setting. The set is consistent: written to
-# a temporary folder and swapped in, or manifest.json last, with the hash of each output.
+# Publish: build (nothing is published if it fails), then write the generated files and
+# manifest.json to the publish directory. Which one: --to, else $J2JME_PUBLISH_DIR (a per-user
+# choice), else `[publish] dir` of mapper.toml (relative to the project, or absolute), else
+# build/compiled, where the build already put them. The folder is never emptied or replaced
+# (it may be a guest project's, or a synced library): each file is written whole (temporary file
+# + rename) and read back against its hash, the old manifest is removed first and the new one
+# written last, and only files the old manifest listed and the new one does not are removed.
 mapper publish [--to DIR]
 
 # Run tests

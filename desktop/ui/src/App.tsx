@@ -164,7 +164,7 @@ function mappingName(file: string): string {
   return file.replace(/^.*\//, "").replace(/\.fn\.yaml$/, "");
 }
 
-const COMMANDS = ["transpile", "build", "check"] as const;
+const COMMANDS = ["transpile", "build", "check", "publish"] as const;
 
 export function App() {
   const [python, setPython] = useState<PythonStatus | null>(null);
@@ -1654,9 +1654,14 @@ export function App() {
           <button disabled={!dirty || busy} onClick={() => void save()}>
             Save{dirty ? " ●" : ""}
           </button>
-          {/* transpile and build are the developer's: a functional user only checks */}
+          {/* transpile, build and publish are the developer's: a functional user only checks */}
           {COMMANDS.filter((c) => developerMode || c === "check").map((c) => (
-            <button key={c} disabled={!canBuild} onClick={() => run(c)}>
+            <button
+              key={c}
+              disabled={!canBuild}
+              title={c === "publish" ? "Build, then write the files and manifest.json to the publish folder" : undefined}
+              onClick={() => run(c)}
+            >
               {c[0].toUpperCase() + c.slice(1)}
             </button>
           ))}

@@ -607,7 +607,7 @@ Sliced; each slice is usable on its own:
           version of a project). Tests: `tests/track1/cli/test_engine_version.py`. Not verified: the
           dialogs in the running desktop tool (types, unit tests and `cargo check` pass; no run). `mapper check` is
           now a step of the offline job in both pipelines. Not done: the "put the artifacts in
-          `.gitignore` and remove them from the repo" action (tool), `mapper publish`.
+          `.gitignore` and remove them from the repo" action (tool).
         - **Portable Linux CLI** (no desktop, no Tauri) to run `mapper` in CI: generation, and the
           comparison against the committed artifacts. Same bundled Python as the AppImage; part of
           the release (see Release artifacts).
@@ -641,13 +641,24 @@ Sliced; each slice is usable on its own:
         - **Presence**, advisory: one file per user, `.j2jme/presence/<mapping>.<user>.json` (never
           conflicts: one writer each), shows who is editing which mapping.
         - It is eventual consistency, not real-time editing.
-      - **Publish (both modes).** `mapper publish [--to DIR]` and a button: check + build (nothing
-        is published if the check fails), the artifacts written to the publish directory.
+      - [x] **Publish (both modes).** `mapper publish [--to DIR]` and a button: build (nothing
+        is published if it fails), the artifacts written to the publish directory.
         Default: the current `build/compiled`; `[publish] dir` in `mapper.toml` overrides it,
-        relative or absolute (a "guest" project); a per-user override in the app's config. The
-        set is **consistent**: written to a temporary folder and swapped in, or `manifest.json`
-        written last, with the hash of each output, so a reader never sees half a set. What the
-        developer does with the folder afterwards is not the tool's business.
+        relative or absolute (a "guest" project); a per-user override. The set is **consistent**:
+        `manifest.json` removed first and written last, with the hash of each output, so a reader
+        never sees half a set. What the developer does with the folder afterwards is not the
+        tool's business.
+        Done: `cli/publish.py` and the `publish` command (also `--json`): precedence `--to` >
+        `$J2JME_PUBLISH_DIR` (the per-user choice) > `[publish] dir` > `build/compiled` (then there
+        is nothing to copy). The folder is never replaced or emptied (a guest's, a synced library):
+        every file is written whole (temporary file + rename) and read back against its hash, the
+        old manifest goes first, the new one is written last, and only files the old manifest listed
+        and the new one does not are removed (a path outside the folder in a manifest is ignored).
+        `publish.verify(folder)` checks a published folder against its manifest. `[publish] dir` is a
+        field of the project-properties form; a **Publish** button (developer mode) next to
+        Build. Tests: `tests/track1/cli/test_publish.py`. Not done: the per-user folder in the
+        app's own config (today the environment variable), a `mapper verify` command for readers,
+        and the check that the committed artifacts equal the sources before publishing.
 - [ ] **M6.4 — LLM assist.** Validation suggestions, expression builder (Ollama / API).
 - [ ] **M6.5 — Schemas per mapping.** Each mapping owns its input and output JSON Schema, chosen
       in the tool; changing one forces the Targets and Sources to be validated again (the check

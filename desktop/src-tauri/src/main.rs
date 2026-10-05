@@ -69,7 +69,7 @@ fn run_mapper(project: &str, args: &[&str], stdin: Option<&str>) -> Result<Mappe
     python::run_mapper(&found, &PathBuf::from(project), args, stdin)
 }
 
-/// `mapper <command> --json` (build, check, transpile, compile).
+/// `mapper <command> --json` (build, check, transpile, compile, publish).
 #[tauri::command]
 ///
 /// `allow_older`: the user accepted to work on a project whose `mapper.toml` names a newer engine
@@ -79,7 +79,7 @@ fn mapper_command(
     command: String,
     allow_older: Option<bool>,
 ) -> Result<MapperOutput, String> {
-    if !["build", "check", "transpile", "compile"].contains(&command.as_str()) {
+    if !["build", "check", "transpile", "compile", "publish"].contains(&command.as_str()) {
         return Err(format!("unsupported command: {command}"));
     }
     if allow_older == Some(true) {
