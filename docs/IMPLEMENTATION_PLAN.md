@@ -678,9 +678,9 @@ Sliced; each slice is usable on its own:
             the helper; without it the gix runs are skipped, unless `J2JME_REQUIRE_GIX` is set, which
             makes a missing helper a failure). **CI**: a job `gix` in both pipelines (own job: it needs
             Rust and a C compiler) runs `dev_scripts/gix.sh`, with `actions/cache` on `~/.cargo/registry`,
-            `~/.cargo/git` and `desktop/gitfallback/target`, keyed on the crate's `Cargo.lock`. Written
-            and its script run locally, **not run on a real runner**: the Forgejo image installs Rust
-            with rustup and needs the runner's cache server (without one the cache steps only warn).
+            `~/.cargo/git` and `desktop/gitfallback/target`, keyed on the crate's `Cargo.lock`. Run
+            on the real runners of both pipelines: green. The Forgejo image installs Rust with rustup
+            and uses the runner's cache server (without one the cache steps only warn).
             **Not verified**: SSH remotes, Windows, LFS, submodules; the packaged builds with the new
             dependency (the Windows and macOS cross-builds in particular: rustls and its C code), and a
             run in the packaged tool.
