@@ -1021,6 +1021,9 @@ mapper compile
 # With the artifacts git-ignored there is nothing to diff: it only builds.
 mapper check
 
+# Commit the generated files (build/compiled), or leave them to CI: .gitignore + the git index
+mapper artifacts status | ignore | track
+
 # Record this tool's version as the project's engine ([project] engine in mapper.toml), when it
 # is newer than the one there. Never lowers it.
 mapper upgrade
@@ -1497,6 +1500,16 @@ which config keys affect which stage.
 the repository, so that they show up in review and a deploy reads what was reviewed; on request
 the tool puts them in `.gitignore` and removes them from the repository, and CI builds and deploys
 them instead. All other `build/` contents are ephemeral and git-ignored.
+
+The switch is `mapper artifacts ignore` / `track` (in the desktop tool, *Generated files…*;
+`cli/artifacts_mode.py`). `ignore` replaces what `.gitignore` says about `build/compiled` with
+`build/compiled/` and runs `git rm -r --cached` on it: the removal is **staged, never committed**
+(the commit is the user's), and the files stay on disk. `track` takes the rule out (turning a
+`build/` rule into `build/*`, which a `!build/compiled/` can then re-include) and stages the files.
+Both check with `git check-ignore` that the result is what was asked and put `.gitignore` back
+otherwise; they work from the project's folder, also when it is inside a bigger repository, and they
+need `git` (without it, or outside a repository, they refuse, and `status` says `unknown`). A
+project made by the tool starts with a `.gitignore` that commits only `build/compiled`.
 
 **`build/compiled/manifest.json`** is written with the artifacts: the hash of each source (each
 mapping, the schemas, the shared lookups, each `fn/*.fn` file, `mapper.toml`; a CRLF is read as LF,

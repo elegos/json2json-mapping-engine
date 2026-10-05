@@ -35,6 +35,9 @@ import {
   completeAt,
   configCheck,
   configRead,
+  artifactsIgnore,
+  artifactsState,
+  artifactsTrack,
   engineStatus,
   engineUpgrade,
   configWrite,
@@ -630,6 +633,46 @@ export function App() {
       } else if (choice === "reset") {
         await publishDirSet(project, null);
         setStatus("Publish writes to the project's setting again");
+      }
+    } catch (e) {
+      setStatus(String(e instanceof Error ? e.message : e));
+    }
+  }, [project, ask]);
+
+  /** Commit the generated files (build/compiled), or leave them to CI: .gitignore and the git index. */
+  const chooseArtifacts = useCallback(async () => {
+    if (!project) return;
+    try {
+      const found = await artifactsState(project);
+      if (found.mode === "unknown") {
+        await ask(
+          "This project is not in a git repository (or git is not installed), so there is nothing to " +
+            "commit or ignore.",
+          [{ id: "ok", label: "OK", primary: true }],
+        );
+        return;
+      }
+      const committed = found.mode === "committed";
+      const choice = await ask(
+        committed
+          ? `The generated files (build/compiled) are committed: ${found.tracked.length} in the repository. ` +
+              "Stop committing them? They are added to .gitignore and removed from the repository (the " +
+              "removal is staged, not committed; the files stay on your disk). Whoever deploys from the " +
+              "repository then needs CI to build them."
+          : "The generated files (build/compiled) are not committed: git ignores them and CI builds them. " +
+              "Commit them again? They are taken out of .gitignore and staged.",
+        [
+          { id: "change", label: committed ? "Stop committing them" : "Commit them again", primary: true },
+          { id: "cancel", label: "Cancel" },
+        ],
+      );
+      if (choice !== "change") return;
+      if (committed) {
+        await artifactsIgnore(project);
+        setStatus("build/compiled is ignored; commit .gitignore and the removal");
+      } else {
+        await artifactsTrack(project);
+        setStatus("build/compiled is committed again; its files are staged");
       }
     } catch (e) {
       setStatus(String(e instanceof Error ? e.message : e));
@@ -1705,6 +1748,15 @@ export function App() {
               onClick={() => void choosePublishDir()}
             >
               Publish folder…
+            </button>
+          )}
+          {developerMode && (
+            <button
+              disabled={!canBuild || busy}
+              title="Commit the generated files, or leave them to CI (.gitignore)"
+              onClick={() => void chooseArtifacts()}
+            >
+              Generated files…
             </button>
           )}
         </span>

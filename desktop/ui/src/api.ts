@@ -407,6 +407,28 @@ export async function engineUpgrade(project: string): Promise<EngineStatus> {
   return configRequest<EngineStatus>({ op: "engine_upgrade", project });
 }
 
+/** Whether the project commits its generated files (`build/compiled`) or git ignores them (CI
+ * builds them); `tracked` are the ones in the git index. `unknown`: no git, or no repository. */
+export interface ArtifactsState {
+  mode: "committed" | "ignored" | "unknown";
+  tracked: string[];
+  git: boolean;
+}
+
+export async function artifactsState(project: string): Promise<ArtifactsState> {
+  return configRequest<ArtifactsState>({ op: "artifacts_state", project });
+}
+
+/** Adds `build/compiled` to `.gitignore` and stages its removal from the index (no commit). */
+export async function artifactsIgnore(project: string): Promise<ArtifactsState> {
+  return (await configRequest<{ before: ArtifactsState }>({ op: "artifacts_ignore", project })).before;
+}
+
+/** The opposite: no longer ignored, its files staged. */
+export async function artifactsTrack(project: string): Promise<ArtifactsState> {
+  return (await configRequest<{ before: ArtifactsState }>({ op: "artifacts_track", project })).before;
+}
+
 export async function configCheck(values: ConfigValues): Promise<ConfigIssue[]> {
   return (await configRequest<{ issues: ConfigIssue[] }>({ op: "config_check", values })).issues;
 }

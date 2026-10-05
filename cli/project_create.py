@@ -12,6 +12,11 @@ from cli.config import CONFIG_FILENAME, MapperConfigError
 from compiler.backends.registry import backends
 
 FOLDERS = ("schemas", "mappings/functional", "fn")
+GITIGNORE = """\
+# build/ is generated; only build/compiled is committed (`mapper artifacts ignore` stops that too)
+build/*
+!build/compiled/
+"""
 
 
 def create_project(project: Path, target: str, options: dict[str, Any] | None = None) -> None:
@@ -44,3 +49,6 @@ def create_project(project: Path, target: str, options: dict[str, Any] | None = 
     project_config.write(project, values)
     for folder in FOLDERS:
         (project / folder).mkdir(parents=True, exist_ok=True)
+    ignore = project / ".gitignore"
+    if not ignore.exists():  # what `mapper build` writes besides build/compiled is not committed
+        ignore.write_text(GITIGNORE)

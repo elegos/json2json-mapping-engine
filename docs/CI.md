@@ -33,6 +33,12 @@ and the release files described here.
 `mapper check` knows which way a project works: if git ignores `build/compiled` it only builds (the
 mappings must compile) and never complains about missing files; otherwise it compares.
 
+To switch, `mapper artifacts ignore` (or *Generated files…* in the desktop tool) adds
+`build/compiled/` to the project's `.gitignore` and removes the files from the repository's index,
+**staged, not committed** (the files stay on your disk): commit `.gitignore` and the removal together,
+and give CI the build and deploy job of the second column. `mapper artifacts track` goes back, and
+`mapper artifacts status` says which it is.
+
 ## The manifest
 
 `build/compiled/manifest.json` records what produced the artifacts:
@@ -377,8 +383,6 @@ development checkout) has no archive.
 - Archives for Windows and macOS runners: only Linux x86-64.
 - `mapper test` from the archive: the offline suite runs through `pytest`, which the bundled Python
   does not have (it ships only what `build`, `check`, `publish` and `verify` need).
-- The tool's action that puts the artifacts in `.gitignore` and removes them from the repository
-  (docs/IMPLEMENTATION_PLAN.md, M6.3b): today you edit `.gitignore` and `git rm --cached` by hand.
 - A run of these examples in real pipelines: they are written from the pieces that exist and that
   were tested one by one (`mapper check`, the manifest, `install-mapper.sh` against a local
   release), not from a green run on GitHub or Forgejo.

@@ -606,8 +606,15 @@ Sliced; each slice is usable on its own:
           box; `--allow-older-engine`); `mapper.toml` is never moved back (ARCHITECTURE.md §Engine
           version of a project). Tests: `tests/track1/cli/test_engine_version.py`. Not verified: the
           dialogs in the running desktop tool (types, unit tests and `cargo check` pass; no run). `mapper check` is
-          now a step of the offline job in both pipelines. Not done: the "put the artifacts in
-          `.gitignore` and remove them from the repo" action (tool).
+          now a step of the offline job in both pipelines.
+          **Committed or ignored (done).** `mapper artifacts status | ignore | track` and the
+          desktop tool's *Generated files…* (developer mode): `ignore` writes `build/compiled/` in the
+          project's `.gitignore` and stages the removal from the git index (no commit, files stay
+          on disk), `track` is the opposite; both verify with `git check-ignore` and restore
+          `.gitignore` if the result is not what was asked; they need `git` (no Gitoxide fallback
+          yet). New projects get a `.gitignore` committing only `build/compiled`. Tests:
+          `tests/track1/cli/test_artifacts_mode.py` (real repositories, also a project inside a
+          bigger one). Not verified: the dialog in the running tool.
         - **Portable Linux CLI** (no desktop, no Tauri) to run `mapper` in CI: generation, and the
           comparison against the committed artifacts. Same bundled Python as the AppImage; part of
           the release (see Release artifacts).

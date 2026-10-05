@@ -602,6 +602,62 @@ def fn_write(file: str = typer.Argument(..., help=".fn.yaml file to write")) -> 
     typer.echo(json.dumps({"ok": True, "decayed": decayed}))
 
 
+artifacts_app = typer.Typer(
+    no_args_is_help=True,
+    help="Commit the generated files (build/compiled), or build them in CI instead.",
+)
+app.add_typer(artifacts_app, name="artifacts")
+
+
+@artifacts_app.command("status")
+def artifacts_status() -> None:
+    """Say whether build/compiled is committed or git-ignored."""
+    from cli import artifacts_mode
+
+    found = artifacts_mode.state(Path.cwd())
+    if found.mode == "unknown":
+        typer.echo("not a git repository (or git is not installed): nothing says either way")
+    elif found.mode == "ignored":
+        left = f"; {len(found.tracked)} file(s) still in the index" if found.tracked else ""
+        typer.echo(f"ignored: build/compiled is built by CI, not committed{left}")
+    else:
+        typer.echo(f"committed: {len(found.tracked)} file(s) of build/compiled in the repository")
+
+
+@artifacts_app.command("ignore")
+def artifacts_ignore() -> None:
+    """Stop committing build/compiled: add it to .gitignore and take its files out of the git index
+    (they stay on disk; the removal is staged, not committed). CI then builds them."""
+    from cli import artifacts_mode
+
+    try:
+        before = artifacts_mode.ignore(Path.cwd())
+    except MapperConfigError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    if before.mode == "ignored" and not before.tracked:
+        typer.echo("already ignored")
+        return
+    typer.echo(
+        f"build/compiled is ignored; {len(before.tracked)} file(s) removed from the index "
+        "(staged): commit .gitignore and the removal"
+    )
+
+
+@artifacts_app.command("track")
+def artifacts_track() -> None:
+    """Commit build/compiled again: take it out of .gitignore and stage its files. Run `mapper
+    build` first if they are not there."""
+    from cli import artifacts_mode
+
+    try:
+        artifacts_mode.track(Path.cwd())
+    except MapperConfigError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo("build/compiled is committed again; its files are staged")
+
+
 @app.command()
 def upgrade() -> None:
     """Record this tool's version as the project's engine (`[project] engine` in mapper.toml),
