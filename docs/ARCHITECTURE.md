@@ -1008,6 +1008,10 @@ mapper test                    # both tracks
 
 # Single file
 mapper build mappings/functional/order_event.fn.yaml
+
+# Git merge driver for *.fn.yaml (rule-level merge, §The merge engine)
+mapper merge-driver-install     # once per clone: git config + .gitattributes
+mapper merge-driver %O %A %B %P # what git runs; exit 1 = conflicts left in the file
 ```
 
 In `bootstrap` mode, `mapper build` skips the transpiler and runs the compiler

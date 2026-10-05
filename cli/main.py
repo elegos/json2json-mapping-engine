@@ -9,7 +9,7 @@ import json
 import re
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 import typer
 
@@ -467,6 +467,42 @@ def fn_write(file: str = typer.Argument(..., help=".fn.yaml file to write")) -> 
         typer.echo(json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"}))
         raise typer.Exit(code=1) from exc
     typer.echo(json.dumps({"ok": True, "decayed": decayed}))
+
+
+@app.command(name="merge-driver")
+def merge_driver(
+    base: Annotated[Path, typer.Argument(help="%O: the common ancestor")],
+    ours: Annotated[Path, typer.Argument(help="%A: our version; the result is written here")],
+    theirs: Annotated[Path, typer.Argument(help="%B: their version")],
+    path: Annotated[
+        str, typer.Argument(help="%P: the file's path in the tree (for messages)")
+    ] = "",
+) -> None:
+    """Git merge driver for *.fn.yaml: merges at the rule level (rules matched by id); falls
+    back to a text merge with conflict markers. Exit 1 = conflicts left."""
+    from cli.merge_driver import run_driver
+
+    clean, note = run_driver(base, ours, theirs)
+    if note:
+        typer.echo(f"{path or ours}: {note}", err=True)
+    if not clean:
+        raise typer.Exit(code=1)
+
+
+@app.command(name="merge-driver-install")
+def merge_driver_install(
+    command: str = typer.Option("mapper", help="How git should call mapper"),
+) -> None:
+    """Register the *.fn.yaml merge driver for this clone (git config + .gitattributes)."""
+    from cli.merge_driver import install
+    from transpiler.merge import MergeError
+
+    try:
+        for line in install(Path.cwd(), command):
+            typer.echo(line)
+    except MergeError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
 
 
 @app.command()

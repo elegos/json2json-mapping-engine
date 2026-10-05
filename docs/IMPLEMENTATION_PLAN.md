@@ -551,12 +551,21 @@ Sliced; each slice is usable on its own:
       --rebase, semantic rule-level merge" is replaced by this (ARCHITECTURE.md §VCS says
       Gitoxide first and no custom merge driver: to be updated when a slice lands). Two ways of
       working, one merge engine under both.
-      - [ ] **M6.3a — Rule-level merge engine.** 3-way merge of two `.fn.yaml` from a base, in the
+      - [x] **M6.3a — Rule-level merge engine.** 3-way merge of two `.fn.yaml` from a base, in the
             engine (Python, track 1 tests): rules identified by id, a conflict only on the same
             field of the same rule, text-level fallback if the YAML does not parse. Exposed as a
             **git merge driver** (`.gitattributes`: `*.fn.yaml merge=j2jme`), so it works from any
             git client and in CI, not only inside the tool. Generated files are never merged, they
             are regenerated.
+            Done: `transpiler/merge.py` (`merge3` on the raw YAML data: a `rules` list matched by
+            id, a rule without one by what it writes; a reorder, an add and a delete merge too; a
+            conflict keeps *ours* and is reported with its path, e.g. `rules[cust].source.path`,
+            and the three values; `choices` settle it per path), `mapper merge-driver %O %A %B %P`
+            (rule-level merge, else `git merge-file` with conflict markers, exit 1), and `mapper
+            merge-driver-install` (git config of the clone + `.gitattributes`), tests in
+            `tests/track1/merge` including a real `git merge`. Not done: the merge editor in the
+            UI (M6.3b) and a worker op for it. Limits: comments and key order of a hand-edited
+            file are lost in a rule-level merge (as in any save by the tool).
       - [ ] **M6.3b — Git mode.**
         - The tool works on a folder with `mapper.toml`; the git root is found from there up. It
           commits **only the project's paths** (pathspec). In-tree (the project is part of a bigger
