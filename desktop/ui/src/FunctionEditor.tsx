@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { EditorView } from "@codemirror/view";
+import { type MutableRefObject, useEffect, useMemo, useRef, useState } from "react";
 import {
   type CompletionItem,
   type FnFile,
@@ -21,6 +22,10 @@ interface Props {
   project: string;
   /** The file to edit (name without `.fn`). */
   file: string;
+  /** Changes with each request to open a file: the same file is read again from disk. */
+  nonce: number;
+  /** What the editor tells its parent: unsaved changes, and a way to save them. */
+  control: MutableRefObject<EditorControl>;
   /** The function to try first, when the editor is opened on one. */
   focus?: string;
   /** The registry's functions, for the completion. */
@@ -31,6 +36,12 @@ interface Props {
   onClose: () => void;
 }
 
+export interface EditorControl {
+  dirty: boolean;
+  /** Saves the text; false when the file was refused. */
+  save: () => Promise<boolean>;
+}
+
 type Asking = null | "new-file" | "delete" | { switchTo: string } | "close";
 
 /**
@@ -38,7 +49,7 @@ type Asking = null | "new-file" | "delete" | { switchTo: string } | "close";
  * highlighting and the function names to complete, the issues the registry and the backends
  * find (as the text is typed), and a test call on the Python backend with the text as it is.
  */
-export function FunctionEditor({ project, file, focus, functions, onChanged, onOpen, onClose }: Props) {
+export function FunctionEditor({ project, file, nonce, control, focus, functions, onChanged, onOpen, onClose }: Props) {
   const [files, setFiles] = useState<FnFile[]>([]);
   const [saved, setSaved] = useState<string | null>(null);
   const [text, setText] = useState("");
@@ -53,8 +64,12 @@ export function FunctionEditor({ project, file, focus, functions, onChanged, onO
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project, file]);
 
+  const view = useRef<EditorView | null>(null);
+  const cursorAt = useRef<string | undefined>(undefined);
   useEffect(() => {
     let stale = false;
+    cursorAt.current = focus;
+    // the same file again (a function was added to it): keep the editor, change the text
     setSaved(null);
     fnRead(project, file).then(
       (body) => {
@@ -68,7 +83,19 @@ export function FunctionEditor({ project, file, focus, functions, onChanged, onO
     return () => {
       stale = true;
     };
-  }, [project, file]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project, file, nonce]);
+
+  // the cursor goes to the function the file was opened for
+  useEffect(() => {
+    const editor = view.current;
+    if (saved === null || !cursorAt.current || !editor) return;
+    const at = new RegExp(`^def\\s+${cursorAt.current}\\b`, "m").exec(saved)?.index;
+    cursorAt.current = undefined;
+    if (at === undefined) return;
+    editor.dispatch({ selection: { anchor: at }, effects: EditorView.scrollIntoView(at, { y: "start", yMargin: 20 }) });
+    editor.focus();
+  }, [saved]);
 
   // the issues follow the text, a moment after the last key
   useEffect(() => {
@@ -111,10 +138,13 @@ export function FunctionEditor({ project, file, focus, functions, onChanged, onO
       setError("");
       onChanged();
       void loadFiles();
+      return true;
     } catch (e) {
       setError(String(e instanceof Error ? e.message : e));
+      return false;
     }
   };
+  control.current = { dirty, save };
 
   const current = files.find((f) => f.name === file);
   const guarded = (next: Asking, go: () => void) => (dirty ? setAsking(next) : go());
@@ -172,6 +202,7 @@ export function FunctionEditor({ project, file, focus, functions, onChanged, onO
       {saved !== null && (
         <CodeEditor
           key={file}
+          viewRef={view}
           className="code-editor multi fn-text"
           singleLine={false}
           language="python"
@@ -251,7 +282,7 @@ export function FunctionEditor({ project, file, focus, functions, onChanged, onO
             setAsking(null);
             if (id === "cancel") return;
             const go = () => onOpen((next as { switchTo: string }).switchTo);
-            if (id === "save") void save().then(go);
+            if (id === "save") void save().then((ok) => ok && go());
             else go();
           }}
         />
@@ -267,7 +298,7 @@ export function FunctionEditor({ project, file, focus, functions, onChanged, onO
           onChoose={(id) => {
             setAsking(null);
             if (id === "cancel") return;
-            if (id === "save") void save().then(onClose);
+            if (id === "save") void save().then((ok) => ok && onClose());
             else onClose();
           }}
         />

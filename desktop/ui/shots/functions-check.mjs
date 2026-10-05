@@ -82,7 +82,10 @@ await page.keyboard.type("def (:\n");
 await page.waitForSelector(".fn-issues li.error:has-text('syntax error')");
 await page.click('.fn-bar button:has-text("Save")');
 await page.waitForSelector(".wizard-error:has-text('not saved')");
-await page.keyboard.press("Control+z");
+await page.click(".fn-text .cm-content");
+await page.keyboard.press("Control+End");
+for (let i = 0; i < 14 && !(await page.locator(".fn-bar .primary").isDisabled()); i++) await page.keyboard.press("Backspace");
+await page.waitForFunction(() => document.querySelector(".fn-bar .primary")?.disabled);
 
 // override a built-in: a copy under a warning
 await page.fill(".explorer-search", "split_first");
@@ -101,6 +104,23 @@ await page.waitForFunction(() => document.querySelector(".fn-text")?.textContent
 if (!file("text.fn").includes("def shout(value: str)")) fail("the new function is not in its file");
 if (!file("text.fn").includes("NOT_IMPLEMENTED('plsql stub')") || !file("text.fn").includes('NotImplementedError("python stub")')) fail("no stubs");
 await page.waitForSelector(".fn-issues li.error:has-text('stub for plsql')");
+
+// an action that replaces the open file asks first when it has unsaved changes
+await page.click(".fn-text .cm-content");
+await page.keyboard.press("Control+End");
+await page.keyboard.type("# unsaved\n");
+await page.fill(".explorer-search", "split_nth");
+await page.click('.explorer-list button:has-text("split_nth")');
+await page.click('.explorer-detail button:has-text("Override…")');
+await page.waitForSelector('.modal button:has-text("Save and continue")');
+await page.click('.modal button:has-text("Cancel")');
+if (file("text.fn").includes("# unsaved")) fail("saved on cancel");
+if (file("builtin_overrides.fn").includes("def split_nth")) fail("override made on cancel");
+await page.click('.explorer-detail button:has-text("Override…")');
+await page.click('.modal button:has-text("Save and continue")');
+await page.waitForFunction(() => document.querySelector(".fn-warning"));
+if (!file("text.fn").includes("# unsaved")) fail("not saved on continue");
+await page.waitForFunction(() => getSelection()?.anchorNode?.parentElement?.closest(".cm-line")?.textContent.includes("def split_nth"));
 console.log(process.exitCode ? "FAILED" : "ok");
 await browser.close();
 await server.close();

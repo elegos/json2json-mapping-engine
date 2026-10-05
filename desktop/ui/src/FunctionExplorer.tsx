@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { type FunctionEntry, fnAdd, fnOverride, functionList } from "./api";
 import { insertableColumn, insertIntoCellEditor, subscribeCellEditor } from "./cellEditor";
 import { callOf, filterFunctions } from "./functionExplorer";
 import { validFunctionName } from "./fnEditor";
-import { FunctionEditor } from "./FunctionEditor";
+import { Confirm } from "./Confirm";
+import { FunctionEditor, type EditorControl } from "./FunctionEditor";
 import { PromptDialog } from "./PromptDialog";
 
 interface Props {
@@ -21,7 +22,10 @@ export function FunctionExplorer({ project, open, onClose }: Props) {
   const [query, setQuery] = useState("");
   const [chosen, setChosen] = useState<string | null>(null);
   // the file being edited: the panel widens to the left to hold the editor
-  const [editing, setEditing] = useState<{ file: string; focus?: string } | null>(null);
+  const [editing, setEditing] = useState<{ file: string; focus?: string; nonce: number } | null>(null);
+  // what the editor says about its text, to ask before an action replaces it
+  const control = useRef<EditorControl>({ dirty: false, save: async () => true });
+  const [pending, setPending] = useState<(() => void) | null>(null);
   const [creating, setCreating] = useState(false);
   const [lastFile, setLastFile] = useState("functions");
   const canInsert = useSyncExternalStore(subscribeCellEditor, () => insertableColumn() !== null);
@@ -42,7 +46,12 @@ export function FunctionExplorer({ project, open, onClose }: Props) {
   const fail = (e: unknown) => setError(String(e instanceof Error ? e.message : e));
   const edit = (file: string, focus?: string) => {
     setLastFile(file);
-    setEditing({ file, focus });
+    setEditing((was) => ({ file, focus, nonce: (was?.nonce ?? 0) + 1 }));
+  };
+  /** Runs `action`; with unsaved changes in the editor it first asks to save them. */
+  const guarded = (action: () => void) => {
+    if (editing && control.current.dirty) setPending(() => action);
+    else action();
   };
   const override = (name: string) => {
     if (!project) return;
@@ -75,6 +84,8 @@ export function FunctionExplorer({ project, open, onClose }: Props) {
             project={project}
             file={editing.file}
             focus={editing.focus}
+            nonce={editing.nonce}
+            control={control}
             functions={all}
             onChanged={() => void reload()}
             onOpen={(file) => edit(file)}
@@ -167,7 +178,9 @@ export function FunctionExplorer({ project, open, onClose }: Props) {
           </button>
           {project && !current.builtin && (
             <button
-              onClick={() => edit(current.origin.replace(/^fn\//, "").replace(/\.fn$/, ""), current.name)}
+              onClick={() =>
+                guarded(() => edit(current.origin.replace(/^fn\//, "").replace(/\.fn$/, ""), current.name))
+              }
               title="Edit the file this function is in"
             >
               Edit…
@@ -175,7 +188,7 @@ export function FunctionExplorer({ project, open, onClose }: Props) {
           )}
           {project && current.builtin && (
             <button
-              onClick={() => override(current.name)}
+              onClick={() => guarded(() => override(current.name))}
               title="Copy it into fn/builtin_overrides.fn and edit the copy"
             >
               Override…
@@ -184,6 +197,20 @@ export function FunctionExplorer({ project, open, onClose }: Props) {
         </div>
       )}
       </aside>
+      {pending && (
+        <Confirm
+          message="The open file has changes that are not saved."
+          choices={[
+            { id: "save", label: "Save and continue", primary: true },
+            { id: "cancel", label: "Cancel" },
+          ]}
+          onChoose={(id) => {
+            const action = pending;
+            setPending(null);
+            if (id === "save") void control.current.save().then((saved) => saved && action());
+          }}
+        />
+      )}
       {creating && project && (
         <PromptDialog
           title="New function"
@@ -199,7 +226,7 @@ export function FunctionExplorer({ project, open, onClose }: Props) {
           }
           onDone={(values) => {
             setCreating(false);
-            if (values) void create(values.name, values.file);
+            if (values) guarded(() => void create(values.name, values.file));
           }}
         />
       )}

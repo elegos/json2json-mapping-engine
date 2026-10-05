@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 
 export interface PromptField {
   key: string;
@@ -24,7 +25,7 @@ export function PromptDialog({ title, fields, confirm, validate, onDone }: Props
   );
   const problem = validate(values);
   const submit = () => problem === null && onDone(values);
-  return (
+  return createPortal(
     <div className="modal-backdrop" onClick={() => onDone(null)}>
       <div
         className="modal prompt"
@@ -57,6 +58,7 @@ export function PromptDialog({ title, fields, confirm, validate, onDone }: Props
           <button onClick={() => onDone(null)}>Cancel</button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

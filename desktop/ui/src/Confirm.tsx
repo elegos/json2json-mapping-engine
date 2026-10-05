@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 
 export interface Choice {
   id: string;
@@ -19,7 +20,7 @@ interface Props {
 export function Confirm({ message, choices, onChoose, option }: Props) {
   const [checked, setChecked] = useState(false);
   const dismiss = choices[choices.length - 1].id;
-  return (
+  return createPortal(
     <div className="modal-backdrop" onClick={() => onChoose(dismiss, false)}>
       <div
         className="modal"
@@ -48,6 +49,7 @@ export function Confirm({ message, choices, onChoose, option }: Props) {
           ))}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
