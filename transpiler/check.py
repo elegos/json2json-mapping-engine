@@ -304,8 +304,9 @@ class _Checker:
         self.has_out = output_schema is not None
         self.issues: list[Issue] = []
         found = [r for r in self._all(file.rules) if isinstance(r, LookupRule)]
-        self.lookups = {r.label: dict(r.entries) for r in found}
-        self.lookup_nodes = {r.label: _lookup_node(r) for r in found}
+        everything = [*file.shared.values(), *found]
+        self.lookups = {r.label: dict(r.entries) for r in everything}
+        self.lookup_nodes = {r.label: _lookup_node(r) for r in everything}
 
     def _all(self, rules: list[Rule]):
         for r in rules:
@@ -327,6 +328,12 @@ class _Checker:
             load_rule(path, raw)
         except FnYamlError as exc:
             self.add(path, _column_of(str(exc)), str(exc).split(": ", 1)[-1])
+        if isinstance(rule, LookupRule) and rule.label in self.file.shared:
+            self.add(
+                path,
+                "label",
+                f"@{rule.label} is also a project-wide lookup: remove this one, or rename it",
+            )
 
     def block(
         self, path: str, text: str, scope: AnchorScope, column: str, dev: bool = False

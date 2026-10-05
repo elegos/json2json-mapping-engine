@@ -81,6 +81,8 @@ export interface FunctionalFile {
   path: string | null;
   paths: PathsSection;
   schemas: SchemasSection;
+  /** The project's own lookups, read as `@label` like the mapping's (never part of its file). */
+  shared: Record<string, LookupRule>;
 }
 
 /** `aliases` plus a new one with a free name (`alias`, `alias2`, …). */

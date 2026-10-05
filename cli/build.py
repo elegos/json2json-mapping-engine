@@ -24,6 +24,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -36,6 +37,7 @@ from compiler.schema_files import Kind, resolve_schema_path
 from compiler.schema_generator import SchemaTypes, resolve_schema_types
 from transpiler.check import check_functional, schemas_for
 from transpiler.model import FnYamlError, SchemasSection, load_functional_file
+from transpiler.shared_lookups import load_shared, lookup_file, project_of
 from transpiler.stages import STAGES, run_stages
 from transpiler.transpile import TranspileOptions, transpile_file
 
@@ -132,6 +134,19 @@ def _schema_bytes(stem: str, refs: SchemasSection) -> list[bytes]:
         p.read_bytes()
         for p in (schema_file(stem, "input", refs), schema_file(stem, "output", refs))
         if p.is_file()
+    ]
+
+
+def _lookup_bytes(path: Path, source: bytes) -> list[bytes]:
+    """The project-wide lookups a mapping reads (`@label` in its text): its cache key follows them."""
+    project = project_of(path)
+    if project is None:
+        return []
+    text = source.decode(errors="replace")
+    return [
+        lookup_file(project, label).read_bytes()
+        for label in sorted(load_shared(project))
+        if re.search(rf"@{re.escape(label)}(?![\w])", text)
     ]
 
 
@@ -271,7 +286,11 @@ def compile_mapping(path: Path, config: MapperConfig, force: bool = False) -> Co
     source hash + full `mapper.toml`. Units are assembled into the project's
     artifact by `write_package`."""
     source = path.read_bytes()
-    digest = compute_hash(source, config.raw, _schema_bytes(source_stem(path), schema_refs(path)))
+    digest = compute_hash(
+        source,
+        config.raw,
+        _schema_bytes(source_stem(path), schema_refs(path)) + _lookup_bytes(path, source),
+    )
     cache_file = BUILD_CACHE_DIR / f"{path.name}.unit.json"
 
     if not force and cache_file.is_file():

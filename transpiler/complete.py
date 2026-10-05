@@ -323,7 +323,11 @@ def _labels(file: FunctionalFile, loop_labels: list[str | None]) -> list[Item]:
     from transpiler.model import _names_of  # noqa: PLC0415
 
     lookups, _loops = _names_of(file.rules)
-    found += [Item(n, n, "lookup", "lookup table") for n in sorted(lookups)]
+    lookups |= set(file.shared)
+    found += [
+        Item(n, n, "lookup", "project-wide lookup" if n in file.shared else "lookup table")
+        for n in sorted(lookups)
+    ]
     found += [Item(n, n, "alias", file.paths.aliases[n]) for n in file.paths.aliases]
     found += [Item("root", "root", "label", "the document root")]
     found += [Item("index", "index", "label", "position in the loop")]

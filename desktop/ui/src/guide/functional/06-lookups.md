@@ -30,6 +30,26 @@ lookup(value, @countryCurrency, "N/A")
 The third argument is what to give when the key is not in the table. Without it the field is left
 out of the output.
 
+## A table for the whole project
+
+A table that hardly changes and that several mappings need (countries, currencies, VAT rates) is
+better kept once. Tick **Project wide** under a lookup and its table moves out of the mapping into
+the project; every mapping then reads it as `@label`, exactly as before. The Lookups view lists
+those under **Project wide**, and says which mappings read each one. Use **+ Project lookup** to
+make one from scratch.
+
+- A project-wide table is edited in one place, with **Save**. A label is chosen when it is created
+  and does not change afterwards.
+- **When it changes**, the rules that read it, in every mapping, go back to **To review** if they
+  were validated, and each gets a note saying what changed since the last validation, for example
+  `@countryCurrency changed (2026-10-05): added DE = 'EUR'`. The reviewer sees at once what to
+  check. Rules that were never validated are left alone.
+- A mapping cannot also have a lookup with the same label: the Check says so, and the one in the
+  mapping has to go.
+- A table that mappings read cannot be deleted. Clear **Project wide** instead: every mapping that
+  reads it gets its own copy of the table, and the project's file is removed.
+- Because the mapping is read again after these changes, the tool asks you to save it first.
+
 ## A table of your own, inline
 
 For a handful of values you can write the table in the expression itself, without a lookup:

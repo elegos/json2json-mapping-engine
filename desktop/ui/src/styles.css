@@ -337,3 +337,6 @@ span.result-badge { cursor: default; }
 .golden-doubt { color: #d19a2a; font-size: 12.5px; margin-top: 2px; }
 .result-badge.inconclusive { background: #d19a2a33; color: #e0b050; border-color: #d19a2a; }
 .golden-summary .doubt { color: #d19a2a; }
+.lookup-section { margin: 12px 8px 2px; font-size: 11px; font-weight: 600; text-transform: uppercase; opacity: 0.7; }
+.wide-flag { display: flex; gap: 6px; align-items: center; margin-top: 14px; font-size: 12px; }
+.lookup-readers, .lookup-note { font-size: 12px; opacity: 0.8; margin: 0 0 8px; }

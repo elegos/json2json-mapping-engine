@@ -57,6 +57,7 @@ const file: FunctionalFile = {
   path: null,
   paths: { root: null, aliases: {} },
   schemas: { input: null, output: null },
+  shared: {},
   rules: [
     field("a", "A", "$.a"),
     {

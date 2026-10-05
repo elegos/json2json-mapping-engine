@@ -428,3 +428,43 @@ export async function completeAt(
   if (!parsed.ok) throw new Error(parsed.error ?? "completion failed");
   return { from: parsed.from ?? request.cursor, items: parsed.items ?? [] };
 }
+
+/** A lookup kept in the project (`lookups/<label>.lookup.yaml`) and the mappings that read it. */
+export interface SharedLookup {
+  label: string;
+  type: string | null;
+  description: string | null;
+  entries: Record<string, unknown>;
+  used_by: string[];
+}
+
+export const sharedLookups = async (project: string) =>
+  (await reviewRequest<{ lookups: SharedLookup[] }>({ op: "lookups_shared", project })).lookups;
+
+/** Creates (`create`) or changes a project-wide lookup. Answers the mappings -> rules that went
+ * back to review because the table changed. */
+export const sharedLookupSave = async (
+  project: string,
+  table: Pick<SharedLookup, "label" | "type" | "description" | "entries">,
+  create = false,
+) =>
+  (
+    await reviewRequest<{ marked: Record<string, string[]> }>({
+      op: "lookup_save",
+      project,
+      ...table,
+      create,
+    })
+  ).marked;
+
+export const sharedLookupDelete = (project: string, label: string) =>
+  reviewRequest<object>({ op: "lookup_delete", project, label });
+
+/** Moves a lookup of the (saved) mapping into the project; answers the other mappings that have
+ * a lookup of the same name. */
+export const sharedLookupShare = async (project: string, stem: string, label: string) =>
+  (await reviewRequest<{ clashing: string[] }>({ op: "lookup_share", project, stem, label })).clashing;
+
+/** Gives every mapping that reads the lookup its own copy and removes it from the project. */
+export const sharedLookupUnshare = async (project: string, label: string) =>
+  (await reviewRequest<{ changed: string[] }>({ op: "lookup_unshare", project, label })).changed;

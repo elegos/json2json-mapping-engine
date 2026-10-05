@@ -742,19 +742,28 @@ Sliced; each slice is usable on its own:
       which open this editor. Until it exists the explorer shows the functions and says where
       the file is.
 
-- [ ] **M6.10 — Project-wide lookups.** A lookup table (a country → currency coding, say) that
+- [x] **M6.10 — Project-wide lookups.** A lookup table (a country → currency coding, say) that
       does not change and is useful to several mappings: it can be flagged *Project wide*, lives
       in the project instead of in one mapping, and any mapping of the project reads it as
       `@label`, as it does a local lookup today. The Lookups view lists both kinds (project-wide
-      ones marked, with the mappings that use them), and a project-wide one is edited once.
-      - Still open: where it is stored (one file per table in the project, e.g.
-        `lookups/<label>.lookup.yaml`, or a single file); the label namespace (the anchor
-        namespace of a mapping is already shared by loops and lookups: a project-wide label
-        must not clash with a local one, and the check must say so); flagging an existing local
-        lookup (it moves to the project, after a confirmation; clearing the flag copies it back
-        into the mapping); how the build uses it (embedded as a constant in each mapping's
-        package, as today, or a shared package); what a change does to the rules that use it in
-        other mappings (validation decay, or a review flag); deleting one that mappings use.
+      ones with the mappings that read them), and a project-wide one is edited once.
+      - Decided: one file per table, `lookups/<label>.lookup.yaml` (the file name is the label,
+        which never changes); embedded as a constant in each mapping's package, as a local lookup
+        is (no shared package); a change sends the rules that read the table, validated or
+        waiting for review, back to **To review** in every mapping, adding to `validation.notes`
+        a line saying what changed (`@label changed (date): added DE = 'EUR'; …`); flagging moves
+        the table into the project (after a confirmation), clearing the flag copies it into each
+        mapping that reads it and removes the file; deleting a table that mappings read is
+        refused, naming them; a label that clashes with a lookup, loop label or alias of a
+        mapping is an error.
+      - Done: `transpiler/shared_lookups.py` (load, write, uses, change description, marking,
+        share / unshare / delete); `FunctionalFile.shared`, read by the transpiler, the check and
+        the completion; cache key of the build; ops `lookups_shared` / `lookup_save` /
+        `lookup_delete` / `lookup_share` / `lookup_unshare` in `mapper serve`; the Lookups view
+        (project-wide section, readers, Save / Revert / Delete, *Project wide* flag, *+ Project
+        lookup*); the guide's Lookups page. Walked through by `ui/shots/lookups-check.mjs`.
+      - Still open: the Lookups screenshot of the guide does not show the project-wide section;
+        the tour fixture has no project-wide table.
 
 - [ ] **M6.8 — Golden data in the tool.** Manage the cases of `tests/golden/<mapping>/` from the
       UI, so that a functional user can check on their own machine that, given an input, the

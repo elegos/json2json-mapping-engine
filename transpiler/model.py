@@ -183,6 +183,9 @@ class FunctionalFile:
     path: Path | None = None
     paths: PathsSection = dc_field(default_factory=PathsSection)
     schemas: SchemasSection = dc_field(default_factory=SchemasSection)
+    # the project-wide lookups, read as `@label` like the mapping's own (transpiler/shared_lookups.py);
+    # set when the file is loaded and never written into it
+    shared: dict[str, LookupRule] = dc_field(default_factory=dict)
 
 
 # `@root` always reaches the real document root; `@index` is the loop position
@@ -498,7 +501,7 @@ def parse_functional(raw: Any, default_id: str, path: Path | None = None) -> Fun
     qualify_paths(rules)
     paths = _load_paths(where, raw.get("paths"), rules)
     schemas = _load_schemas(where, raw.get("schemas"))
-    return FunctionalFile(
+    file = FunctionalFile(
         name=str(raw.get("name", file_id)),
         id=file_id,
         rules=rules,
@@ -506,6 +509,10 @@ def parse_functional(raw: Any, default_id: str, path: Path | None = None) -> Fun
         paths=paths,
         schemas=schemas,
     )
+    from transpiler.shared_lookups import attach  # noqa: PLC0415 - it imports this module
+
+    attach(file, path)
+    return file
 
 
 def _names_of(rules: list[Rule]) -> tuple[set[str], set[str]]:
@@ -660,6 +667,7 @@ def functional_from_dict(data: dict[str, Any]) -> FunctionalFile:
         path=Path(data["path"]) if data.get("path") else None,
         paths=PathsSection(**data.get("paths", {})),
         schemas=SchemasSection(**data.get("schemas", {})),
+        shared={k: LookupRule(**v) for k, v in data.get("shared", {}).items()},
     )
 
 

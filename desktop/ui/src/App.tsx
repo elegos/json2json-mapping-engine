@@ -66,6 +66,8 @@ import {
   readFn,
   reviewEdit,
   runMapper,
+  sharedLookupShare,
+  sharedLookupUnshare,
   writeFn,
 } from "./api";
 import {
@@ -214,6 +216,7 @@ export function App() {
   const [flags, setFlags] = useState<ReadonlyMap<string, ReviewFlag>>(new Map());
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const filterInput = useRef<HTMLInputElement>(null);
+  const [lookupsVersion, setLookupsVersion] = useState(0);
   const [view, setView] = useState<"rules" | "lookups" | "paths" | "golden" | "project">("rules");
   // mapper.toml: the form's descriptors, the file's values, the draft being edited
   const [configSchema, setConfigSchema] = useState<ConfigSchema | null>(null);
@@ -596,6 +599,53 @@ export function App() {
     }
   }, [project, current, tree, load, config, fnDirty, configDirty]);
   saveRef.current = save;
+
+  /** Clearing / setting "Project wide" on a lookup: the files change, so the mapping is saved
+   * first and read again. */
+  const shareLookup = async (label: string) => {
+    if (!project || !current) return;
+    const stem = current.replace(/^.*\//, "").replace(/\.fn\.yaml$/, "");
+    const choice = await ask(
+      `Make @${label} a project-wide lookup? Its table moves out of ${stem} into lookups/${label}.lookup.yaml, and any mapping of the project can read it as @${label}. It is edited once, there.`,
+      [
+        { id: "share", label: "Make it project wide", primary: true },
+        { id: "cancel", label: "Cancel" },
+      ],
+    );
+    if (choice !== "share") return;
+    if (!(await guardRef.current("Save the mapping before moving the lookup?", "Discard my changes"))) return;
+    try {
+      const clashing = await sharedLookupShare(project, stem, label);
+      await load(current, true);
+      setLookupsVersion((v) => v + 1);
+      setStatus(
+        `@${label} is project wide now` +
+          (clashing.length ? `; ${clashing.join(", ")} still declare their own @${label}: remove it there` : ""),
+      );
+    } catch (e) {
+      setStatus(String(e instanceof Error ? e.message : e));
+    }
+  };
+  const unshareLookup = async (label: string) => {
+    if (!project || !current) return;
+    const choice = await ask(
+      `Stop @${label} being project wide? Every mapping that reads it gets its own copy of the table, and lookups/${label}.lookup.yaml is removed. Later changes to the table are then made in each mapping.`,
+      [
+        { id: "unshare", label: "Give each mapping a copy" },
+        { id: "cancel", label: "Cancel", primary: true },
+      ],
+    );
+    if (choice !== "unshare") return;
+    if (!(await guardRef.current("Save the mapping before copying the lookup into the mappings?", "Discard my changes"))) return;
+    try {
+      const changed = await sharedLookupUnshare(project, label);
+      await load(current, true);
+      setLookupsVersion((v) => v + 1);
+      setStatus(`@${label} copied into ${changed.length ? changed.join(", ") : "no mapping"}`);
+    } catch (e) {
+      setStatus(String(e instanceof Error ? e.message : e));
+    }
+  };
 
   const run = useCallback(
     async (command: string) => {
@@ -1588,9 +1638,24 @@ export function App() {
               onChange={editPaths}
             />
           )}
-          {tree && view === "lookups" && (
+          {tree && project && view === "lookups" && (
             <Lookups
               tree={tree}
+              project={project}
+              version={lookupsVersion}
+              beforeDiskChange={() =>
+                guardRef.current(
+                  "The project's lookups change files the open mapping is read from, and it is read again afterwards. Save it first?",
+                  "Discard my changes",
+                )
+              }
+              afterDiskChange={async (message) => {
+                if (current) await load(current, true);
+                setLookupsVersion((v) => v + 1);
+                setStatus(message);
+              }}
+              onShare={(label) => void shareLookup(label)}
+              onUnshare={(label) => void unshareLookup(label)}
               diagnostics={diagnostics}
               onEdit={(path, change) =>
                 edit(

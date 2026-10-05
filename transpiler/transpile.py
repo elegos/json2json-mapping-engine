@@ -441,8 +441,14 @@ class _Builder:
     # -- rules -------------------------------------------------------------
 
     def build(self) -> None:
+        for label, shared in self.file.shared.items():
+            self.lookups[label] = dict(shared.entries)
         for _fq, rule in walk(self.file.rules):
             if isinstance(rule, LookupRule):
+                if rule.label in self.file.shared:
+                    raise FnYamlError(
+                        f"lookup '{rule.label}' is also a project-wide lookup: remove the one in the mapping"
+                    )
                 self.lookups[rule.label] = dict(rule.entries)
         labels = [
             r.label for _fq, r in walk(self.file.rules) if isinstance(r, LoopRule) and r.label

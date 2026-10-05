@@ -1837,6 +1837,20 @@ that doesn't is a compile error, not an implicit zero.
 The anchor namespace is shared between loop labels and lookup table labels; names must
 be unique across the entire `.fn.yaml` file.
 
+##### Project-wide lookups
+
+A table several mappings need can live in the project instead: `lookups/<label>.lookup.yaml`
+(the file name is the label; keys `type`, `description`, `entries`, as for a lookup rule). Every
+mapping of the project reads it as `@label`; the loader gives it to the file as `shared` and it is
+never written back into the mapping. A label must be free across the project: a lookup rule, a loop
+label or an alias of a mapping with the same name is an error (the check says so; the transpiler
+refuses). The build embeds the table as a constant in each mapping that reads it, as for a local
+lookup, and a mapping's cache key follows the tables it reads. Changing a table (the tool's
+`lookup_save`) sends every rule that reads it and was validated, or was waiting for review, back to
+review in every mapping, with a line in `validation.notes` saying what changed since then
+(`transpiler/shared_lookups.py`). A table that a mapping reads cannot be deleted; clearing *Project
+wide* copies it into each mapping that reads it.
+
 The `label:` field on a `loop` rule is the anchor name used in expressions.
 Both `@label` and `@N` positional forms are valid and interchangeable for loops:
 
