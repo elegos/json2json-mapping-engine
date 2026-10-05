@@ -193,6 +193,12 @@ class Backend(ABC):
         `CodeGenError`. Called when `mapper.toml` is loaded."""
         return None
 
+    @classmethod
+    def builtin_implementations(cls) -> dict[str, Any]:
+        """The built-ins this backend writes out itself, name -> `FunctionImpl` (none by
+        default: a backend that runs the built-ins' Python needs none)."""
+        return {}
+
     def unit_warnings(self, unit: CompiledUnit) -> list[str]:
         """What the build should tell the user about a compiled unit (none by default)."""
         return []

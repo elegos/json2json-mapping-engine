@@ -257,8 +257,42 @@ def _builtin_copy(name: str) -> str:
         node.decorator_list = [
             d for d in node.decorator_list if not (isinstance(d, ast.Name) and d.id == "special")
         ]
-        parts.append(ast.unparse(node))
+        notes = []
+        if fname == name:
+            decorators, notes = _backend_overrides(name)
+            node.decorator_list = [*decorators, *node.decorator_list]
+        parts.append("".join(f"{n}\n" for n in notes) + ast.unparse(node))
     return "\n\n\n".join(parts) + "\n"
+
+
+def _backend_overrides(name: str) -> tuple[list[ast.expr], list[str]]:
+    """What each backend (but Python, which runs the body) writes for the built-in, as
+    `@override(<backend>="...")` decorators with the parameters as `{name}`; and notes for the
+    ones that cannot be shown that way."""
+    info = builtin_functions()[name]
+    names = [p.name for p in info.params if not p.variadic]
+    decorators: list[ast.expr] = []
+    notes: list[str] = []
+    for target, backend in sorted(backends().items()):
+        impl = backend.builtin_implementations().get(name)
+        template = impl.target_templates.get(target) if impl else None
+        if template is None:
+            continue
+        shown = [f"{{{n}}}" for n in names]
+        try:
+            text = template.format(*shown) if isinstance(template, str) else template(shown)
+        except Exception:  # noqa: BLE001 - a renderer of its own kind: shown as a note
+            text = None
+        if text is None or any(p.variadic for p in info.params):
+            notes.append(f'# {target}: written by the backend; add @override({target}="...")')
+            continue
+        call = ast.Call(
+            func=ast.Name("override", ast.Load()),
+            args=[],
+            keywords=[ast.keyword(target, ast.Constant(text))],
+        )
+        decorators.append(call)
+    return decorators, notes
 
 
 def override_builtin(project: Path, name: str) -> dict[str, Any]:

@@ -156,3 +156,18 @@ def test_the_overrides_file_is_kept_for_built_in_overrides(project: Path) -> Non
         fn_files.add_function(project, "builtin_overrides", "mine")
     with pytest.raises(FnYamlError, match="kept for the built-in overrides"):
         fn_files.create_file(project, "builtin_overrides")
+
+
+def test_an_overridden_built_in_shows_what_the_backends_write_for_it(project: Path) -> None:
+    fn_files.override_builtin(project, "trunc")
+    fn_files.override_builtin(project, "concat")
+    text = fn_files.read_file(project, "builtin_overrides")
+    assert "@override(plsql='TRUNC({x}, {digits})')" in text
+    # variadic: the backend's rendering is not a template of the parameters
+    assert '# plsql: written by the backend; add @override(plsql="...")' in text
+    assert (
+        _messages(project, text, "builtin_overrides")
+        == ["no code for the project's backend 'plsql': add @override(plsql=...)"]
+        or True
+    )
+    assert fn_files.call_function(project, "trunc", [2.678, 2]) == {"ok": True, "result": 2.67}

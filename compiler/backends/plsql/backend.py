@@ -156,6 +156,10 @@ class PlsqlBackend(Backend):
     )
     has_integration: ClassVar[bool] = True
 
+    @classmethod
+    def builtin_implementations(cls) -> dict[str, Any]:
+        return BUILTIN_FUNCTIONS
+
     def integration_unavailable(self) -> str | None:
         return integration.integration_unavailable()
 
