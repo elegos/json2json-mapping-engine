@@ -143,6 +143,26 @@ await page.keyboard.press("Control+End");
 await page.keyboard.type("\n@ov");
 await page.waitForSelector('.cm-tooltip-autocomplete li:has-text("@override(plsql")');
 if (!(await page.locator('.cm-tooltip-autocomplete li:has-text("@override(python")').count())) fail("no python override offered");
+
+// after _py. the suggestions are Python's built-ins, not J2JME's
+await page.click(".fn-text .cm-content");
+await page.keyboard.press("Control+End");
+await page.keyboard.type("\n_py.le");
+await page.waitForSelector('.cm-tooltip-autocomplete li:has-text("len")');
+if (await page.locator('.cm-tooltip-autocomplete li:has-text("concat")').count()) fail("J2JME functions after _py.");
+await page.keyboard.press("Escape");
+// Tab indents (and Shift-Tab outdents) instead of leaving the editor
+await page.keyboard.press("Control+End");
+await page.keyboard.type("\nx");
+await page.keyboard.press("Home");
+await page.keyboard.press("Tab");
+if (!(await page.locator(".fn-text .cm-line", { hasText: /^ {4}x$/ }).count())) fail("Tab did not indent");
+if (!(await page.evaluate(() => document.activeElement?.classList.contains("cm-content")))) fail("Tab left the editor");
+await page.keyboard.press("Shift+Tab");
+if (!(await page.locator(".fn-text .cm-line", { hasText: /^x$/ }).count())) fail("Shift-Tab did not outdent");
+// the names help
+await page.click('.fn-bar button:has-text("Names")');
+await page.waitForSelector(".fn-names:has-text('_py')");
 console.log(process.exitCode ? "FAILED" : "ok");
 await browser.close();
 await server.close();

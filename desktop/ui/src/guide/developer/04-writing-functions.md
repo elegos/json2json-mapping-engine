@@ -63,6 +63,22 @@ The issues under the code update as you type: syntax errors, a missing type, a m
 no code for Python, no code for the backend, and a name that is also defined elsewhere. **Save**
 (Ctrl+S) writes the file; a text that does not parse is refused, so `fn/` always reads.
 
+### The names you can use
+
+The **Names** button in the editor lists them. In a function body you have:
+
+| Name | What it is |
+|---|---|
+| the parameters | by their names |
+| every J2JME function | built-in or the project's, by name: `split_first(s, ",")` |
+| `_py` | **Python's own built-ins**: `_py.len(x)`, `_py.sum(xs)`, `_py.sorted(xs)`… (typing `_py.` suggests them) |
+| `re`, `json`, `operator` | Python modules, already imported |
+| `Decimal`, `ROUND_HALF_UP`, `ROUND_DOWN` | for exact arithmetic and rounding |
+
+Why `_py`? The J2JME functions shadow four Python names: inside a function `max`, `min`, `round` and
+`sum` are the J2JME ones (`sum(items, field)`), not Python's. `_py.sum(values)` is Python's. That is
+why a copied built-in such as `avg` reads `_py.sum(values) / _py.len(values)`.
+
 ## 4. Try it
 
 **Test call** runs a function of the file on Python, with the text as it is: no save needed. Type the
@@ -116,6 +132,8 @@ Support for a whole new target (not a function) is a different, developer-side t
 | add a function | **New function…**: name, file (or **New file…**) → fill in the stub |
 | make it work on every backend | body (Python) **and** `@override(<backend>="...")`, parameters as `{name}` |
 | find the decorator | type `@` in the editor |
+| use a Python built-in | `_py.len(x)`, `_py.sum(xs)`… (`max`, `min`, `round`, `sum` are the J2JME ones); **Names** lists what is available |
+| indent | Tab / Shift+Tab |
 | check a function | **Test call**: arguments as a JSON array, **Run** (Python only) |
 | save | **Save** or Ctrl+S (not saved if the text does not parse) |
 | edit an existing function | select it → **Edit…** |

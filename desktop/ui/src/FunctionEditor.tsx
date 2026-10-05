@@ -16,6 +16,7 @@ import {
 } from "./api";
 import { CodeEditor, type Completer } from "./CodeEditor";
 import { Confirm } from "./Confirm";
+import { FUNCTION_SCOPE, pyBuiltinItems, scopeItems } from "./fnNames";
 import { argsTemplate, functionNames, newFileProblem, parseArgs } from "./fnEditor";
 import { PromptDialog } from "./PromptDialog";
 
@@ -57,6 +58,7 @@ export function FunctionEditor({ project, file, nonce, control, focus, functions
   const [issues, setIssues] = useState<FnIssue[]>([]);
   const [error, setError] = useState("");
   const [asking, setAsking] = useState<Asking>(null);
+  const [names, setNames] = useState(false);
   const dirty = saved !== null && text !== saved;
 
   const loadFiles = () => fnFiles(project).then(setFiles, (e) => setError(String(e.message ?? e)));
@@ -125,7 +127,11 @@ export function FunctionEditor({ project, file, nonce, control, focus, functions
 
   const completer: Completer = useMemo(
     () => async (body, cursor) => {
-      const word = /@?[A-Za-z_]\w*$|@$/.exec(body.slice(0, cursor))?.[0] ?? "";
+      const before = body.slice(0, cursor);
+      // after `_py.`: Python's own built-ins
+      const py = /\b_py\.(\w*)$/.exec(before);
+      if (py) return { from: cursor - py[1].length, items: pyBuiltinItems(py[1]) };
+      const word = /@?[A-Za-z_]\w*$|@$/.exec(before)?.[0] ?? "";
       if (word.startsWith("@")) {
         const items: CompletionItem[] = backends
           .map((b) => ({
@@ -142,16 +148,17 @@ export function FunctionEditor({ project, file, nonce, control, focus, functions
           .filter((i) => i.insert.startsWith(word));
         return { from: cursor - word.length, items };
       }
-      const items: CompletionItem[] = functions
+      const items: CompletionItem[] = [...scopeItems(word)];
+      items.push(...functions
         .filter((f) => f.name.startsWith(word))
         .map((f) => ({
           label: f.signature,
           insert: f.name,
-          kind: "function",
+          kind: "function" as const,
           detail: f.returns,
           doc: f.doc,
           origin: f.origin,
-        }));
+        })));
       return { from: cursor - word.length, items };
     },
     [functions, backends],
@@ -209,6 +216,9 @@ export function FunctionEditor({ project, file, nonce, control, focus, functions
         <button onClick={() => setAsking("delete")} title="Delete this file from the project">
           Delete file
         </button>
+        <button onClick={() => setNames((on) => !on)} aria-pressed={names} title="The names a function can use">
+          Names
+        </button>
         <span className="grow" />
         <button className="primary" disabled={!dirty} onClick={() => void save()} title="Ctrl+S">
           Save
@@ -223,6 +233,24 @@ export function FunctionEditor({ project, file, nonce, control, focus, functions
           here replaces the built-in of the same name; delete it (or the file) to get the built-in
           back.
         </p>
+      )}
+      {names && (
+        <dl className="fn-names">
+          <div>
+            <dt>parameters</dt>
+            <dd>the ones in the signature, by their names.</dd>
+          </div>
+          <div>
+            <dt>J2JME functions</dt>
+            <dd>every function of the list on the right, built-in or the project's.</dd>
+          </div>
+          {FUNCTION_SCOPE.map((n) => (
+            <div key={n.name}>
+              <dt>{n.name}</dt>
+              <dd>{n.about}</dd>
+            </div>
+          ))}
+        </dl>
       )}
       {error && <p className="wizard-error">{error}</p>}
       {saved !== null && (

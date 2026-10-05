@@ -380,3 +380,7 @@ span.result-badge { cursor: default; }
 .fx.open.editing .fx-editor { visibility: visible; pointer-events: auto; transform: none; transition-delay: 0s; }
 @media (prefers-reduced-motion: reduce) { .fx > .explorer, .fx > .fx-editor { transition: none; } }
 .file-choice { display: flex; gap: 6px; } .file-choice > * { font: inherit; } .file-choice input, .file-choice select { flex: 1; min-width: 0; }
+.fn-names { margin: 0; padding: 6px 8px; font-size: 12px; line-height: 1.4; background: color-mix(in srgb, CanvasText 6%, Canvas); border-radius: 4px; max-height: 180px; overflow-y: auto; }
+.fn-names div { display: flex; gap: 8px; margin-bottom: 4px; }
+.fn-names dt { font-family: monospace; min-width: 120px; flex: none; }
+.fn-names dd { margin: 0; opacity: 0.85; }

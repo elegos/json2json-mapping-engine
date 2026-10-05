@@ -5,10 +5,10 @@ import {
   type CompletionContext,
   startCompletion,
 } from "@codemirror/autocomplete";
-import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import { defaultKeymap, history, historyKeymap, indentLess, indentMore } from "@codemirror/commands";
 import { json } from "@codemirror/lang-json";
 import { python } from "@codemirror/lang-python";
-import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { HighlightStyle, indentUnit, syntaxHighlighting } from "@codemirror/language";
 import { Annotation, EditorState, Prec } from "@codemirror/state";
 import { EditorView, keymap, tooltips } from "@codemirror/view";
 import { type MutableRefObject, useEffect, useRef } from "react";
@@ -139,7 +139,10 @@ export function CodeEditor({
                 return true;
               },
             },
-            { key: "Tab", run: acceptCompletion },
+            // Tab accepts a suggestion; in a multi-line editor it otherwise indents (Shift-Tab
+            // outdents) instead of moving the focus to the next control
+            { key: "Tab", run: (view) => acceptCompletion(view) || (!singleLine && indentMore(view)) },
+            { key: "Shift-Tab", run: (view) => !singleLine && indentLess(view) },
             {
               key: "Escape",
               run: () => {
@@ -157,6 +160,7 @@ export function CodeEditor({
           }
         }),
         EditorView.lineWrapping,
+        singleLine ? [] : indentUnit.of("    "),
         language ? [language === "json" ? json() : python(), syntaxHighlighting(PYTHON_COLOURS)] : [],
         EditorView.domEventHandlers({
           blur: (_event, editor) => {
