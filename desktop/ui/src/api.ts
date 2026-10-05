@@ -401,6 +401,42 @@ export async function functionList(project: string | null): Promise<FunctionEntr
   return (await configRequest<{ functions: FunctionEntry[] }>({ op: "functions", project })).functions;
 }
 
+export interface FnFile {
+  /** The file name without `.fn`. */
+  name: string;
+  functions: string[];
+  /** `builtin_overrides`: the copies of built-ins the project changed. */
+  overrides: boolean;
+}
+
+export interface FnIssue {
+  severity: "error" | "warning";
+  line: number;
+  function: string | null;
+  message: string;
+}
+
+export const fnFiles = async (project: string) =>
+  (await configRequest<{ files: FnFile[] }>({ op: "fn_files", project })).files;
+export const fnRead = async (project: string, file: string) =>
+  (await configRequest<{ text: string }>({ op: "fn_read", project, file })).text;
+export const fnCheck = async (project: string, file: string, text: string) =>
+  (await configRequest<{ issues: FnIssue[] }>({ op: "fn_check", project, file, text })).issues;
+export const fnWrite = async (project: string, file: string, text: string) => {
+  await configRequest({ op: "fn_write", project, file, text });
+};
+export const fnCreate = async (project: string, file: string, text?: string) => {
+  await configRequest({ op: "fn_create", project, file, text });
+};
+export const fnDelete = async (project: string, file: string) =>
+  (await configRequest<{ functions: string[] }>({ op: "fn_delete", project, file })).functions;
+/** Copies a built-in into the overrides file; answers the file to edit. */
+export const fnOverride = (project: string, name: string) =>
+  configRequest<{ file: string; created: boolean }>({ op: "fn_override", project, name });
+/** A test call on the Python backend, with the file as edited (no save needed). */
+export const fnCall = (project: string, name: string, args: unknown[], text: string) =>
+  configRequest<{ result?: unknown; error?: string }>({ op: "fn_call", project, name, args, text });
+
 /** The backends and their options (what the start wizard draws its project form from). */
 export const projectBackends = () => configRequest<ConfigSchema>({ op: "project_backends" });
 

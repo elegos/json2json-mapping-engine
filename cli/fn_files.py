@@ -1,0 +1,284 @@
+"""The project's functions as files (`fn/*.fn`), edited from the desktop tool (ops `fn_*` of
+`mapper serve`). A file is plain typed Python read with `ast`, never imported by the tool; the
+only place project code runs is the test call, in a child interpreter with a time limit.
+
+A built-in is overridden by a function of the same name: `fn/builtin_overrides.fn` holds the
+copies of the built-ins the project changed, with a warning at the top. Removing the file (or a
+function from it) gives the built-in back."""
+
+from __future__ import annotations
+
+import ast
+import contextlib
+import json
+import re
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+from typing import Any
+
+from cli.config import MapperConfigError, load_config
+from compiler import function_registry as registry
+from compiler.backends.python.backend import runtime_text
+from compiler.backends.python.codegen import _project_definitions
+from compiler.backends.registry import backends
+from compiler.function_registry import (
+    builtin_functions,
+    project_functions,
+    read_functions,
+)
+from transpiler.model import FnYamlError
+
+FN_DIR = "fn"
+SUFFIX = ".fn"
+OVERRIDES_FILE = "builtin_overrides.fn"
+OVERRIDES_WARNING = (
+    "# Built-in functions: changing them might break the mappings that call them!\n"
+    "# Each function here replaces the built-in of the same name, in every mapping of the\n"
+    "# project. Delete a function (or this file) to get the built-in back.\n"
+)
+CALL_TIMEOUT = 10
+
+_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
+
+
+def _folder(project: Path) -> Path:
+    return project / FN_DIR
+
+
+def _path(project: Path, name: str) -> Path:
+    if not _NAME.match(name):
+        raise FnYamlError(f"{name!r} is not a valid file name: letters, digits, _ and -")
+    return _folder(project) / f"{name}{SUFFIX}"
+
+
+def _target(project: Path) -> str:
+    with contextlib.chdir(project):
+        try:
+            return load_config().project.target
+        except MapperConfigError:
+            return ""
+
+
+def list_files(project: Path) -> list[dict[str, Any]]:
+    """The `fn/*.fn` files with the public functions each defines."""
+    files = []
+    for path in sorted(_folder(project).glob(f"*{SUFFIX}")):
+        try:
+            names = sorted(read_functions(path.read_text(), f"fn/{path.name}"))
+        except SyntaxError, UnicodeDecodeError:
+            names = []
+        files.append(
+            {
+                "name": path.stem,
+                "functions": names,
+                "overrides": path.name == OVERRIDES_FILE,
+            }
+        )
+    return files
+
+
+def read_file(project: Path, name: str) -> str:
+    path = _path(project, name)
+    if not path.is_file():
+        raise FnYamlError(f"no file fn/{name}{SUFFIX} in the project")
+    return path.read_text()
+
+
+def check_text(project: Path, name: str, text: str) -> list[dict[str, Any]]:
+    """What is wrong with the text of a file, as the registry and the backends will read it:
+    `{severity, line, function, message}`. A syntax error is the only one that stops a save."""
+    try:
+        tree = ast.parse(text)
+    except SyntaxError as exc:
+        return [
+            {
+                "severity": "error",
+                "line": exc.lineno or 1,
+                "function": None,
+                "message": f"syntax error: {exc.msg}",
+            }
+        ]
+    target = _target(project)
+    builtins = builtin_functions()
+    here = f"fn/{name}{SUFFIX}"
+    others = {k: v for k, v in project_functions(project).items() if v.origin != here}
+    issues: list[dict[str, Any]] = []
+
+    def add(severity: str, node: ast.AST, function: str, message: str) -> None:
+        issues.append(
+            {
+                "severity": severity,
+                "line": getattr(node, "lineno", 1),
+                "function": function,
+                "message": message,
+            }
+        )
+
+    nodes = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
+    known = set(backends())
+    for fname, info in read_functions(text, here).items():
+        node = nodes[fname]
+        if fname in others:
+            add("warning", node, fname, f"also defined in {others[fname].origin}: one of them wins")
+        elif fname in builtins and name != OVERRIDES_FILE.removesuffix(SUFFIX):
+            add("warning", node, fname, "replaces the built-in of the same name")
+        if not info.doc:
+            add("warning", node, fname, "no description: the first line of the docstring is shown")
+        for p in info.params:
+            if not p.annotation:
+                add("error", node, fname, f"parameter {p.name!r} has no type")
+        if not info.returns:
+            add("error", node, fname, "no return type")
+        for key in sorted(set(info.overrides) - known):
+            add("error", node, fname, f"@override for {key!r}: not a backend of this tool")
+        if not info.python_code:
+            add(
+                "error",
+                node,
+                fname,
+                "no code for Python: write a body or @override(python=...) (the tool and the "
+                "golden cases run Python)",
+            )
+        elif target and target != "python" and target not in info.overrides:
+            add(
+                "error",
+                node,
+                fname,
+                f"no code for the project's backend {target!r}: add @override({target}=...)",
+            )
+    return issues
+
+
+def write_file(project: Path, name: str, text: str) -> None:
+    """Saves a file; text that does not parse is refused, so the folder always reads."""
+    try:
+        ast.parse(text)
+    except SyntaxError as exc:
+        raise FnYamlError(f"not saved, line {exc.lineno}: {exc.msg}") from exc
+    path = _path(project, name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+
+
+def create_file(project: Path, name: str, text: str | None = None) -> None:
+    path = _path(project, name)
+    if path.exists():
+        raise FnYamlError(f"fn/{name}{SUFFIX} exists already")
+    write_file(project, name, text if text is not None else _template(name))
+
+
+def _template(name: str) -> str:
+    return (
+        f"# fn/{name}.fn — functions the mappings of the project can call.\n"
+        "# Typed Python; the first docstring line is the description in the explorer.\n"
+        '# A body is the Python code; for another backend add @override(<target>="...").\n'
+    )
+
+
+def delete_file(project: Path, name: str) -> list[str]:
+    """Removes the file; answers the names of the functions it defined."""
+    path = _path(project, name)
+    if not path.is_file():
+        raise FnYamlError(f"no file fn/{name}{SUFFIX} in the project")
+    gone = sorted(read_functions(path.read_text(), path.name)) if _parses(path) else []
+    path.unlink()
+    return gone
+
+
+def _parses(path: Path) -> bool:
+    try:
+        ast.parse(path.read_text())
+    except SyntaxError, UnicodeDecodeError:
+        return False
+    return True
+
+
+def _builtin_copy(name: str) -> str:
+    """The source of a built-in as written in `compiler/builtins.py`, with the private helpers
+    it uses, and without the `@special` marker (a project function is typed by its own
+    annotations)."""
+    source = Path(registry.__file__).with_name("builtins.py").read_text()
+    tree = ast.parse(source)
+    defs = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
+    if name not in defs:
+        raise FnYamlError(f"{name!r} is not a built-in function")
+    wanted, pending = [], [name]
+    while pending:
+        current = pending.pop(0)
+        if current in wanted:
+            continue
+        wanted.append(current)
+        for sub in ast.walk(defs[current]):
+            if isinstance(sub, ast.Name) and sub.id in defs and sub.id.startswith("_"):
+                pending.append(sub.id)
+    parts = []
+    for fname in reversed(wanted):
+        node = defs[fname]
+        node.decorator_list = [
+            d for d in node.decorator_list if not (isinstance(d, ast.Name) and d.id == "special")
+        ]
+        parts.append(ast.unparse(node))
+    return "\n\n\n".join(parts) + "\n"
+
+
+def override_builtin(project: Path, name: str) -> dict[str, Any]:
+    """Copies a built-in into `fn/builtin_overrides.fn` (made with its warning when missing) and
+    answers the file to edit. A function already overridden is left as it is."""
+    path = _path(project, OVERRIDES_FILE.removesuffix(SUFFIX))
+    existing = path.read_text() if path.is_file() else OVERRIDES_WARNING
+    if name in read_functions(existing, path.name):
+        return {"file": path.stem, "created": False}
+    copy = _builtin_copy(name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(existing.rstrip("\n") + "\n\n\n" + copy)
+    return {"file": path.stem, "created": True}
+
+
+_RUNNER = """
+import json, sys
+from j2jme_runtime import *
+{definitions}
+
+try:
+    result = {name}(*json.loads(sys.argv[1]))
+    print(json.dumps({{"ok": True, "result": result}}, ensure_ascii=False, default=str))
+except Exception as exc:
+    print(json.dumps({{"ok": False, "error": f"{{type(exc).__name__}}: {{exc}}"}}))
+"""
+
+
+def call_function(project: Path, name: str, args: list[Any], text: str | None = None) -> dict:
+    """Runs a project function on the Python backend with `args`. `text` is the file being
+    edited, used instead of what is on disk (a test call needs no save)."""
+    functions = project_functions(project)
+    if text is not None:
+        try:
+            functions.update(read_functions(text, "edited"))
+        except SyntaxError as exc:
+            raise FnYamlError(f"line {exc.lineno}: syntax error: {exc.msg}") from exc
+    if name not in functions:
+        raise FnYamlError(f"no project function called {name!r}")
+    definitions, missing = _project_definitions(ast.parse(f"{name}()"), functions)
+    if missing:
+        raise FnYamlError(f"no code for Python in {', '.join(sorted(missing))}")
+    source = _RUNNER.format(definitions="\n\n".join(ast.unparse(d) for d in definitions), name=name)
+    with tempfile.TemporaryDirectory(prefix="j2jme-call-") as folder:
+        (Path(folder) / "j2jme_runtime.py").write_text(runtime_text())
+        try:
+            done = subprocess.run(
+                [sys.executable, "-c", source, json.dumps(args)],
+                cwd=folder,
+                env={"PYTHONPATH": folder},
+                capture_output=True,
+                text=True,
+                timeout=CALL_TIMEOUT,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "error": f"no answer after {CALL_TIMEOUT} seconds"}
+    try:
+        return json.loads(done.stdout.strip().splitlines()[-1])
+    except IndexError, ValueError:
+        return {"ok": False, "error": (done.stderr or done.stdout).strip() or "no output"}

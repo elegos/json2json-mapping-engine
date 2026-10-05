@@ -65,5 +65,22 @@ list of functions, so they never disagree.
 
 ## Creating and editing project functions
 
-For now a project function is a text file in `fn/`; the explorer shows it with the file it comes
-from. Creating and editing them inside the tool is planned.
+You do not need an external editor. In the [function explorer](explorer:open):
+
+- **New function…** asks for a name and the file (`fn/<file>.fn`, made when it does not exist) and
+  opens the file with a typed skeleton.
+- **Edit…** on a project function opens its file. The explorer grows to the left to hold the
+  editor: a whole `.fn` file, with Python colours and the function names to complete. The issues
+  list is live: syntax errors, a parameter or a result with no type, no description, no code for
+  Python, and no code for the project's backend (`@override(plsql="…")`, say). A text that does not
+  parse is not saved, so `fn/` always reads. **Save** (or Ctrl+S) writes the file.
+- **Test call** runs a function of the file on the Python backend with arguments you type as a JSON
+  array (`["hello big world"]`), with the text as it is: no save needed. A function with no Python
+  code says so.
+- **Override…** on a built-in copies its source (with the helpers it uses) into
+  `fn/builtin_overrides.fn`, under a warning: *changing a built-in might break the mappings that
+  call it*. The copy replaces the built-in in every mapping of the project. Delete the function, or
+  the file, to get the built-in back.
+
+Every function needs code for Python (the tool and the golden cases run on it, whatever the
+project's backend) and for the project's own backend, when that is not Python.

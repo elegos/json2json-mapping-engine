@@ -734,13 +734,22 @@ Sliced; each slice is usable on its own:
       - Still open: the tutorial project is found next to the executable or in the checkout, but
         nothing copies it into a package yet (`bundle.active` is false); the guide pages are short and want a read by someone who uses the tool.
 
-- [ ] **M6.9 — Project functions in the tool.** Creating and editing the project's `fn/*.fn`
-      without an external editor: the tool is self-contained. A dedicated editor view (code
-      editor with the same highlighting and completion as the override pane, the docstring and
-      signature checked as the registry reads them, a test call). The function explorer of
-      M6.7 only lists and inserts; for a project function it offers *Edit…* / *New function…*,
-      which open this editor. Until it exists the explorer shows the functions and says where
-      the file is.
+- [x] **M6.9 — Project functions in the tool.** Creating and editing the project's `fn/*.fn`
+      without an external editor: the tool is self-contained.
+      - Decided: the editor lives in the function explorer, which widens to the left when a file
+        is opened; it edits a whole `.fn` file (custom functions in their own files), and a
+        built-in is overridden by a copy in `fn/builtin_overrides.fn`, under a warning comment
+        ("changing them might break mappings"), which can be removed (the file or one function)
+        to get the built-in back; the test call runs on the Python backend, and every function
+        needs code for Python (the tool, the golden cases) and for the project's backend.
+      - Done: `cli/fn_files.py` (list, read, check, write — a text that does not parse is
+        refused —, create, delete, `override_builtin`, `call_function`: a child interpreter with a
+        10 s limit, the file as edited); ops `fn_files` / `fn_read` / `fn_check` / `fn_write` /
+        `fn_create` / `fn_delete` / `fn_override` / `fn_call`; `FunctionEditor.tsx` (file select,
+        New file / Delete file, Save / Ctrl+S, live issues, test call, name completion);
+        *Edit…* / *Override…* / *New function…* in the explorer; e2e `functions`.
+      - Still open: the issues are not clickable (no jump to the line); no rename of a function
+        across the mappings that call it.
 
 - [x] **M6.10 — Project-wide lookups.** A lookup table (a country → currency coding, say) that
       does not change and is useful to several mappings: it can be flagged *Project wide*, lives

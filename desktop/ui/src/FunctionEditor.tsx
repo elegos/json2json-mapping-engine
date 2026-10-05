@@ -1,0 +1,343 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  type CompletionItem,
+  type FnFile,
+  type FnIssue,
+  type FunctionEntry,
+  fnCall,
+  fnCheck,
+  fnCreate,
+  fnDelete,
+  fnFiles,
+  fnRead,
+  fnWrite,
+} from "./api";
+import { CodeEditor, type Completer } from "./CodeEditor";
+import { Confirm } from "./Confirm";
+import { argsTemplate, functionNames, parseArgs } from "./fnEditor";
+import { PromptDialog } from "./PromptDialog";
+
+interface Props {
+  project: string;
+  /** The file to edit (name without `.fn`). */
+  file: string;
+  /** The function to try first, when the editor is opened on one. */
+  focus?: string;
+  /** The registry's functions, for the completion. */
+  functions: FunctionEntry[];
+  /** A file was saved, created or deleted: the explorer's list is stale. */
+  onChanged: () => void;
+  onOpen: (file: string) => void;
+  onClose: () => void;
+}
+
+type Asking = null | "new-file" | "delete" | { switchTo: string } | "close";
+
+/**
+ * The editor of a project's `fn/*.fn` file, in the explorer's wider panel: the text with Python
+ * highlighting and the function names to complete, the issues the registry and the backends
+ * find (as the text is typed), and a test call on the Python backend with the text as it is.
+ */
+export function FunctionEditor({ project, file, focus, functions, onChanged, onOpen, onClose }: Props) {
+  const [files, setFiles] = useState<FnFile[]>([]);
+  const [saved, setSaved] = useState<string | null>(null);
+  const [text, setText] = useState("");
+  const [issues, setIssues] = useState<FnIssue[]>([]);
+  const [error, setError] = useState("");
+  const [asking, setAsking] = useState<Asking>(null);
+  const dirty = saved !== null && text !== saved;
+
+  const loadFiles = () => fnFiles(project).then(setFiles, (e) => setError(String(e.message ?? e)));
+  useEffect(() => {
+    void loadFiles();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project, file]);
+
+  useEffect(() => {
+    let stale = false;
+    setSaved(null);
+    fnRead(project, file).then(
+      (body) => {
+        if (stale) return;
+        setSaved(body);
+        setText(body);
+        setError("");
+      },
+      (e) => !stale && setError(String(e.message ?? e)),
+    );
+    return () => {
+      stale = true;
+    };
+  }, [project, file]);
+
+  // the issues follow the text, a moment after the last key
+  useEffect(() => {
+    if (saved === null) return;
+    let stale = false;
+    const timer = setTimeout(() => {
+      fnCheck(project, file, text).then(
+        (found) => !stale && setIssues(found),
+        () => undefined,
+      );
+    }, 250);
+    return () => {
+      stale = true;
+      clearTimeout(timer);
+    };
+  }, [project, file, text, saved]);
+
+  const completer: Completer = useMemo(
+    () => async (body, cursor) => {
+      const word = /[A-Za-z_]\w*$/.exec(body.slice(0, cursor))?.[0] ?? "";
+      const items: CompletionItem[] = functions
+        .filter((f) => f.name.startsWith(word))
+        .map((f) => ({
+          label: f.signature,
+          insert: f.name,
+          kind: "function",
+          detail: f.returns,
+          doc: f.doc,
+          origin: f.origin,
+        }));
+      return { from: cursor - word.length, items };
+    },
+    [functions],
+  );
+
+  const save = async () => {
+    try {
+      await fnWrite(project, file, text);
+      setSaved(text);
+      setError("");
+      onChanged();
+      void loadFiles();
+    } catch (e) {
+      setError(String(e instanceof Error ? e.message : e));
+    }
+  };
+
+  const current = files.find((f) => f.name === file);
+  const guarded = (next: Asking, go: () => void) => (dirty ? setAsking(next) : go());
+  const blocking = issues.some((i) => i.severity === "error");
+
+  return (
+    <section
+      className="fn-editor"
+      aria-label="Project function editor"
+      onKeyDown={(e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+          e.preventDefault();
+          if (dirty) void save();
+        }
+      }}
+    >
+      <div className="fn-bar">
+        <select
+          aria-label="Function file"
+          value={file}
+          onChange={(e) => {
+            const next = e.target.value;
+            if (next === "") guarded("new-file", () => setAsking("new-file"));
+            else guarded({ switchTo: next }, () => onOpen(next));
+          }}
+        >
+          {files.map((f) => (
+            <option key={f.name} value={f.name}>
+              fn/{f.name}.fn
+              {f.overrides ? " (built-in overrides)" : ""}
+            </option>
+          ))}
+          {!current && <option value={file}>fn/{file}.fn</option>}
+          <option value="">New file…</option>
+        </select>
+        <button onClick={() => setAsking("delete")} title="Delete this file from the project">
+          Delete file
+        </button>
+        <span className="grow" />
+        <button className="primary" disabled={!dirty} onClick={() => void save()} title="Ctrl+S">
+          Save
+        </button>
+        <button onClick={() => guarded("close", onClose)} aria-label="Close the editor" title="Close the editor">
+          ✕
+        </button>
+      </div>
+      {current?.overrides && (
+        <p className="fn-warning">
+          Built-in functions: changing them might break the mappings that call them! Each function
+          here replaces the built-in of the same name; delete it (or the file) to get the built-in
+          back.
+        </p>
+      )}
+      {error && <p className="wizard-error">{error}</p>}
+      {saved !== null && (
+        <CodeEditor
+          key={file}
+          className="code-editor multi fn-text"
+          singleLine={false}
+          language="python"
+          completer={completer}
+          value={text}
+          onChange={setText}
+        />
+      )}
+      <ul className="fn-issues" aria-label="Issues">
+        {issues.length === 0 && saved !== null && <li className="ok">No issues.</li>}
+        {issues.map((i, n) => (
+          <li key={n} className={i.severity}>
+            line {i.line}
+            {i.function ? ` · ${i.function}` : ""}: {i.message}
+          </li>
+        ))}
+      </ul>
+      {blocking && <p className="explorer-about">An error here makes a build or a golden run fail.</p>}
+      <TestCall project={project} text={text} focus={focus} />
+      {asking === "new-file" && (
+        <PromptDialog
+          title="New function file"
+          confirm="Create"
+          fields={[{ key: "name", label: "File name", value: "", hint: "fn/<name>.fn" }]}
+          validate={({ name }) =>
+            !/^[A-Za-z][A-Za-z0-9_-]*$/.test(name)
+              ? "letters, digits, _ and -, starting with a letter"
+              : files.some((f) => f.name === name)
+                ? "a file with that name exists"
+                : null
+          }
+          onDone={(values) => {
+            setAsking(null);
+            if (!values) return;
+            fnCreate(project, values.name).then(
+              () => {
+                onChanged();
+                onOpen(values.name);
+              },
+              (e) => setError(String(e.message ?? e)),
+            );
+          }}
+        />
+      )}
+      {asking === "delete" && (
+        <Confirm
+          message={`Delete fn/${file}.fn${current?.functions.length ? ` and ${current.functions.join(", ")}` : ""}? Mappings that call them stop building.`}
+          choices={[
+            { id: "delete", label: "Delete file", primary: true },
+            { id: "cancel", label: "Cancel" },
+          ]}
+          onChoose={(id) => {
+            setAsking(null);
+            if (id !== "delete") return;
+            fnDelete(project, file).then(
+              async () => {
+                onChanged();
+                const rest = (await fnFiles(project)).filter((f) => f.name !== file);
+                if (rest.length) onOpen(rest[0].name);
+                else onClose();
+              },
+              (e) => setError(String(e.message ?? e)),
+            );
+          }}
+        />
+      )}
+      {asking !== null && typeof asking === "object" && (
+        <Confirm
+          message={`fn/${file}.fn has changes that are not saved.`}
+          choices={[
+            { id: "save", label: "Save", primary: true },
+            { id: "discard", label: "Discard" },
+            { id: "cancel", label: "Cancel" },
+          ]}
+          onChoose={(id) => {
+            const next = asking;
+            setAsking(null);
+            if (id === "cancel") return;
+            const go = () => onOpen((next as { switchTo: string }).switchTo);
+            if (id === "save") void save().then(go);
+            else go();
+          }}
+        />
+      )}
+      {asking === "close" && (
+        <Confirm
+          message={`fn/${file}.fn has changes that are not saved.`}
+          choices={[
+            { id: "save", label: "Save", primary: true },
+            { id: "discard", label: "Discard" },
+            { id: "cancel", label: "Cancel" },
+          ]}
+          onChoose={(id) => {
+            setAsking(null);
+            if (id === "cancel") return;
+            if (id === "save") void save().then(onClose);
+            else onClose();
+          }}
+        />
+      )}
+    </section>
+  );
+}
+
+/** A call of one of the file's functions on the Python backend, with the text as it is. */
+function TestCall({ project, text, focus }: { project: string; text: string; focus?: string }) {
+  const names = useMemo(() => functionNames(text), [text]);
+  const [name, setName] = useState(focus ?? "");
+  const [args, setArgs] = useState("[]");
+  const [outcome, setOutcome] = useState<{ ok: boolean; text: string } | null>(null);
+  const touched = useRef(false);
+  const chosen = names.includes(name) ? name : (names[0] ?? "");
+
+  // the arguments follow the function chosen, until the developer types their own
+  useEffect(() => {
+    if (!touched.current) setArgs(argsTemplate(text, chosen));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chosen]);
+
+  const run = async () => {
+    const parsed = parseArgs(args);
+    if ("error" in parsed) return setOutcome({ ok: false, text: parsed.error });
+    try {
+      const answer = await fnCall(project, chosen, parsed.args, text);
+      setOutcome(
+        answer.error !== undefined
+          ? { ok: false, text: answer.error }
+          : { ok: true, text: JSON.stringify(answer.result ?? null, null, 2) },
+      );
+    } catch (e) {
+      setOutcome({ ok: false, text: String(e instanceof Error ? e.message : e) });
+    }
+  };
+
+  if (names.length === 0) return null;
+  return (
+    <div className="fn-call">
+      <strong>Test call</strong>
+      <span className="muted"> (Python, the text as it is)</span>
+      <div className="fn-call-row">
+        <select
+          aria-label="Function to call"
+          value={chosen}
+          onChange={(e) => {
+            touched.current = false;
+            setName(e.target.value);
+            setArgs(argsTemplate(text, e.target.value));
+          }}
+        >
+          {names.map((n) => (
+            <option key={n}>{n}</option>
+          ))}
+        </select>
+        <input
+          aria-label="Arguments"
+          value={args}
+          spellCheck={false}
+          onChange={(e) => {
+            touched.current = true;
+            setArgs(e.target.value);
+          }}
+          onKeyDown={(e) => e.key === "Enter" && void run()}
+        />
+        <button onClick={() => void run()}>Run</button>
+      </div>
+      {outcome && <pre className={outcome.ok ? "fn-result" : "fn-result failed"}>{outcome.text}</pre>}
+    </div>
+  );
+}
