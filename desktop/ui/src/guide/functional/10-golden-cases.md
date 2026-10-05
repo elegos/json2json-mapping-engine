@@ -88,7 +88,7 @@ what you keep here is what protects the mapping.
 
 ## What each rule gives
 
-The button **Expected Output file**, beside the schema buttons of the Rules view, adds an **Output** column
+The button **Example input file**, beside the schema buttons of the Rules view, adds an **Output** column
 to the grid: what each rule gave when the mapping ran on an input, right next to the rule. Choose:
 
 - **a golden case**: the column also compares with the case's expected output. A cell that gave

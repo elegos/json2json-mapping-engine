@@ -47,7 +47,7 @@ const fail = (m) => {
 // the remembered file: green light, values, no comparison
 await page.waitForSelector('.ag-cell[col-id="output"].output-cell');
 if (!(await button.getAttribute("class")).includes("ok")) fail("light is not green for the file");
-if ((await button.textContent()).trim() !== "Expected Output file") fail("button label changed");
+if ((await button.textContent()).trim() !== "Example input file") fail("button label changed");
 if (!(await button.getAttribute("title")).includes("free-input.json")) fail("the tooltip does not name the file");
 const first = await page.locator('.ag-row[row-index="0"] .ag-cell[col-id="output"]').textContent();
 if (first.trim() !== "A1") fail(`first rule gave ${first}`);
