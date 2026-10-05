@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
 /// Minimum Python minor version (`requires-python` in pyproject.toml).
-const MIN_MINOR: u32 = 12;
+const MIN_MINOR: u32 = 14;
 
 pub struct Found {
     pub python: PathBuf,

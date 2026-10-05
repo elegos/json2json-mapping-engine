@@ -5,7 +5,7 @@ Tauri shell (`src-tauri/`, Rust) + React / AG Grid UI (`ui/`, TypeScript). It ed
 (docs/ARCHITECTURE.md, §Desktop tool).
 
 Needs: Rust, Node, `cargo install tauri-cli --version '^2'`, the WebKitGTK 4.1 dev
-packages (Fedora: `webkit2gtk4.1-devel`), and a Python >= 3.12 with the engine's
+packages (Fedora: `webkit2gtk4.1-devel`), and a Python >= 3.14 with the engine's
 dependencies (`uv sync` at the repository root).
 
 ```sh

@@ -2,7 +2,7 @@
 name = "json2json-mapping-engine"
 version = "0.1.0"
 description = "Compiled JSON-to-JSON mapping engine — Python DSL subset compiled to native target code (initially PL/SQL)."
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.14"
 readme = "README.md"
 dependencies = [
     "typer>=0.12",
@@ -32,7 +32,7 @@ dev = [
 
 [tool.ruff]
 line-length = 100
-target-version = "py312"
+target-version = "py314"
 extend-exclude = [
     "generated/stubs",
     "generated/dataclasses",
@@ -47,7 +47,7 @@ ignore = ["E501"]
 [tool.basedpyright]
 include = ["cli", "compiler", "transpiler", "runtime", "tests"]
 exclude = ["**/*.map.py", "**/fixtures/golden_*"]
-pythonVersion = "3.12"
+pythonVersion = "3.14"
 typeCheckingMode = "standard"
 reportMissingImports = true
 

@@ -9,10 +9,10 @@ jobs:
     name: Offline tests
     runs-on: docker
     container:
-      image: python:3.12-slim
+      image: python:3.14-slim
     steps:
       # JavaScript actions (actions/checkout) run inside the job container,
-      # and python:3.12-slim ships neither node nor git.
+      # and python:3.14-slim ships neither node nor git.
       - name: Install node and git
         run: |
           apt-get update
@@ -48,7 +48,7 @@ jobs:
     name: Integration tests
     runs-on: docker-dind
     container:
-      image: python:3.12-slim
+      image: python:3.14-slim
     steps:
       - name: Install node, git and docker CLI
         run: |

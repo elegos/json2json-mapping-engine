@@ -14,7 +14,7 @@ Legend: ✅ done · 🚧 partial · ⬜ not started
 
 ## ✅ M0 — Repo scaffolding
 
-uv-managed Python 3.12 project, ruff + basedpyright, `pytest`. Typed
+uv-managed Python 3.14 project, ruff + basedpyright, `pytest`. Typed
 `mapper.toml` loader (`cli/config.py`) with required-key validation per
 target. CI runs ruff/basedpyright/`pytest tests/track1` on every push.
 
@@ -404,7 +404,7 @@ Sliced; each slice is usable on its own:
             `transpiler.model` loader (`transpiler/serialize.py` writes it back); `write`
             applies `apply_decay` per rule id and refuses a tree the loader rejects. YAML
             comments and hand-edited key order are not preserved.
-      - [x] Python resolution order (engine `.venv` in a checkout → bundled → `python3.12`
+      - [x] Python resolution order (engine `.venv` in a checkout → bundled → `python3.14`
             → `python3` → `python`); a candidate must import the engine. Banner + disabled
             actions when none is found.
       - [x] Tauri shell (`desktop/src-tauri`), React + AG Grid UI (`desktop/ui`), fixture
@@ -917,7 +917,7 @@ build in:
 - [ ] Error isolation and `required` semantics (§Runtime error semantics) implemented
       identically.
 - [ ] **Target interpreter.** The Python that *runs the generated module* is the host
-      project's, not the engine's own (which the tool pins to 3.12 to compile). So the target
+      project's, not the engine's own (which the tool runs on 3.14 to compile). So the target
       declares it in `[target.python]` (a version, and whether it is free-threaded, e.g.
       `python = "3.14t"`), and the backend emits code for that interpreter: syntax and library
       features it has, and `@parallel` handled accordingly. The generated module must not import the
