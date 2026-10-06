@@ -10,6 +10,7 @@ import shutil
 from dataclasses import replace
 from pathlib import Path
 
+from cli.build_dir import build_root, generated_dir, relocated
 from compiler.schema_files import Kind, schema_path
 from transpiler.model import (
     _IDENT,
@@ -40,15 +41,23 @@ def _schemas(project: Path, name: str) -> list[Path]:
     return [schema_path(project / "schemas", name, kind) for kind in KINDS]
 
 
+def _build(project: Path) -> Path:
+    return build_root() if relocated() else project / "build"
+
+
+def _generated(project: Path) -> Path:
+    return generated_dir() if relocated() else project / "generated"
+
+
 def derived(project: Path, name: str) -> list[Path]:
     """What the build and `mapper stubs` made from the mapping, as it is now on disk. The
     compiled `.sql` packages are not here: the next build drops those of a mapping that is gone."""
     candidates = [
-        project / "build/transpiled" / f"{name}.map.py",
-        project / "build/transpiled/stages" / name,
-        project / "build/cache" / f"{name}.fn.yaml.unit.json",
-        project / "generated/stubs" / f"{name}.pyi",
-        project / "generated/dataclasses" / f"{name}.py",
+        _build(project) / "transpiled" / f"{name}.map.py",
+        _build(project) / "transpiled/stages" / name,
+        _build(project) / "cache" / f"{name}.fn.yaml.unit.json",
+        _generated(project) / "stubs" / f"{name}.pyi",
+        _generated(project) / "dataclasses" / f"{name}.py",
     ]
     return [p for p in candidates if p.exists()]
 

@@ -82,9 +82,18 @@ def _run(
             text=text,
             check=False,
             input=stdin,
-            # nobody is at a terminal: a remote that asks must fail at once, not wait for typing
+            # nobody is at a terminal: a remote that asks must fail at once, not wait for typing.
+            # An empty GIT_ASKPASS also shuts the desktop's own helper (core.askPass, SSH_ASKPASS:
+            # ksshaskpass, ...), which would pop a window of its own; the tool asks for the login
+            # itself (`_askpass`, which overrides this)
             # messages in English whatever the language of the machine: they are looked at
-            env={**os.environ, "GIT_TERMINAL_PROMPT": "0", "LC_ALL": "C", **(env or {})},
+            env={
+                **os.environ,
+                "GIT_TERMINAL_PROMPT": "0",
+                "GIT_ASKPASS": "",
+                "LC_ALL": "C",
+                **(env or {}),
+            },
         )
     except FileNotFoundError as exc:
         raise GitError("git is not installed") from exc

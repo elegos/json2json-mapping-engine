@@ -704,6 +704,17 @@ Sliced; each slice is usable on its own:
         - **Presence**, advisory: one file per user, `.j2jme/presence/<mapping>.<user>.json` (never
           conflicts: one writer each), shows who is editing which mapping.
         - It is eventual consistency, not real-time editing.
+        - **Done (first part): the build outside the synced folder.** `cli/build_dir.py`
+          (`$J2JME_BUILD_DIR` moves `transpiled/`, `cache/`, `compiled/` and the IDE stubs;
+          `.vscode/` and `pyrightconfig.json` are not written then), `cli/synced.py` (detection by
+          path; `mapper build|check|stubs|publish|transpile|compile|test` and the commit's check refuse
+          in a synced folder unless the build is moved or `J2JME_ALLOW_SYNCED=1`), worker op
+          `synced_status`, per-request `build_dir` / `allow_synced`, the per-user choice in
+          `build-dirs.json` (`publish_dirs.rs`), the dialog at open and before each build, and
+          *Build folder…*. Tests: `test_synced.py`, `test_manifest.py`. **Not verified**: the dialog in
+          the running tool; a real OneDrive/SharePoint folder (Windows reparse points are not read,
+          only the path). **Not done**: the base per user, the 3-way merge on change, conflict copies,
+          presence.
       - [x] **Publish (both modes).** `mapper publish [--to DIR]` and a button: build (nothing
         is published if it fails), the artifacts written to the publish directory.
         Default: the current `build/compiled`; `[publish] dir` in `mapper.toml` overrides it,

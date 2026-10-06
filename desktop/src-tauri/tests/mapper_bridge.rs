@@ -47,18 +47,18 @@ fn read_write_build_round_trip() {
     let project = fixture("roundtrip");
     let file = "mappings/functional/orders.fn.yaml";
 
-    let read = python::run_mapper(&found, &project, &["fn", "read", file], None).unwrap();
+    let read = python::run_mapper(&found, &project, &["fn", "read", file], None, &[]).unwrap();
     assert_eq!(read.code, 0, "{}", read.stderr);
     let mut tree = read.json["file"].clone();
     assert_eq!(tree["id"], "orders");
 
     tree["rules"][0]["validation"]["validated"] = true.into();
     let body = serde_json::json!({ "file": tree }).to_string();
-    let write = python::run_mapper(&found, &project, &["fn", "write", file], Some(&body)).unwrap();
+    let write = python::run_mapper(&found, &project, &["fn", "write", file], Some(&body), &[]).unwrap();
     assert_eq!(write.code, 0, "{}", write.stdout);
     assert_eq!(write.json["ok"], true);
 
-    let build = python::run_mapper(&found, &project, &["build", "--json"], None).unwrap();
+    let build = python::run_mapper(&found, &project, &["build", "--json"], None, &[]).unwrap();
     assert_eq!(build.code, 0, "{}", build.stdout);
     assert_eq!(build.json["ok"], true);
     let _ = std::fs::remove_dir_all(&project);
@@ -72,7 +72,7 @@ fn worker_answers_edits_on_one_process() {
     };
     let project = fixture("worker");
     let file = "mappings/functional/orders.fn.yaml";
-    let read = python::run_mapper(&found, &project, &["fn", "read", file], None).unwrap();
+    let read = python::run_mapper(&found, &project, &["fn", "read", file], None, &[]).unwrap();
     let tree = read.json["file"].clone();
 
     let mut worker = python::Worker::start(&found).unwrap();

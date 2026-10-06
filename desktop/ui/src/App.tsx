@@ -56,6 +56,9 @@ import {
   inputFileSet,
   publishDirGet,
   publishDirSet,
+  buildDirGet,
+  buildDirSet,
+  syncedStatus,
   inputRun,
   chooseJsonFile,
   type GoldenResult,
@@ -423,10 +426,55 @@ export function App() {
     [ask, askWithOption],
   );
 
+  /** A project in a synced folder (OneDrive, SharePoint, ...) must not get its build written there:
+   * the user picks a local folder, per user and project (the app's config). Declining is allowed:
+   * nothing is built, and this asks again at the next open. `force`: ask even if already chosen. */
+  const syncedGate = useCallback(
+    async (dir: string, force = false) => {
+      let found;
+      try {
+        found = await syncedStatus(dir);
+      } catch {
+        return;
+      }
+      if (!found.synced) {
+        if (force) setStatus("This project is not in a synced folder: it builds in its own build/");
+        return;
+      }
+      if (!force && (await buildDirGet(dir))) return;
+      const git = found.git
+        ? `\n\nA git repository in a synced folder is not supported: the sync can corrupt .git ` +
+          `(${found.git}). Keep the repository outside it.`
+        : "";
+      const id = await ask(
+        `This project is in a ${found.synced} folder. Nothing generated is written there (the sync ` +
+          "would upload the build, and everybody would overwrite everybody's). Choose a folder on " +
+          "this machine to build in? Without one, build, check and publish stop, and this asks again " +
+          `the next time.${git}`,
+        [
+          { id: "choose", label: "Choose a folder…", primary: true },
+          { id: "ordinary", label: "This is not a synced folder" },
+          { id: "later", label: "Not now" },
+        ],
+      );
+      if (id === "choose") {
+        const folder = await chooseProject(dir, "Local folder to build in");
+        if (folder) {
+          await buildDirSet(dir, folder);
+          setStatus(`The build of this project goes to ${folder}`);
+        }
+      } else if (id === "ordinary") {
+        await buildDirSet(dir, "-");
+      }
+    },
+    [ask],
+  );
+
   const openDir = useCallback(async (dir: string, remember = true) => {
     try {
       const gate = await engineGate(dir, !remember);
       if (!gate.open) return;
+      if (remember) await syncedGate(dir);
       setOlderAccepted(gate.older);
       void vcsEnsureDriver(dir).catch(() => undefined); // best effort, and nobody's business
       const found = await listFnFiles(dir);
@@ -462,7 +510,7 @@ export function App() {
     } catch (e) {
       setStatus(String(e));
     }
-  }, [forgetHistory, engineGate]);
+  }, [forgetHistory, engineGate, syncedGate]);
 
   const askValues = useCallback(
     (title: string, fields: PromptField[], confirm: string, validate: (v: Record<string, string>) => string | null) =>
@@ -795,6 +843,7 @@ export function App() {
       if (!(await guardRef.current("Save before continuing?", "Continue without saving"))) return;
       setBusy(true);
       try {
+        await syncedGate(project); // a synced folder with no build folder chosen: ask again
         setReport(await runMapper(project, command, olderAccepted));
       } catch (e) {
         setStatus(String(e));
@@ -802,7 +851,7 @@ export function App() {
         setBusy(false);
       }
     },
-    [project, olderAccepted],
+    [project, olderAccepted, syncedGate],
   );
 
   // typing outside an editor goes to the filter: its text is what the user means to enter
@@ -1759,6 +1808,15 @@ export function App() {
               onClick={() => void choosePublishDir()}
             >
               Publish folder…
+            </button>
+          )}
+          {developerMode && (
+            <button
+              disabled={!canBuild || busy}
+              title="For a project in a synced folder: the folder on this machine the build goes to"
+              onClick={() => project && void syncedGate(project, true).catch((e) => setStatus(String(e)))}
+            >
+              Build folder…
             </button>
           )}
           {developerMode && (

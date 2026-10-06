@@ -290,6 +290,23 @@ export const publishDirGet = (project: string) =>
 export const publishDirSet = (project: string, path: string | null) =>
   invoke<void>("publish_dir_set", { project, path });
 
+/** What this user chose for a project in a synced folder (kept in the app's config): a local folder
+ * to build in, `"-"` for "not a synced folder", or null for no choice yet. */
+export const buildDirGet = (project: string) => invoke<string | null>("build_dir_get", { project });
+
+export const buildDirSet = (project: string, path: string | null) =>
+  invoke<void>("build_dir_set", { project, path });
+
+export interface SyncedStatus {
+  /** The sync provider the folder is under (OneDrive, SharePoint, Dropbox, ...), by its path. */
+  synced: string | null;
+  /** A git repository inside a synced folder: not supported (the sync corrupts `.git`). */
+  git: string | null;
+}
+
+export const syncedStatus = (project: string) =>
+  configRequest<SyncedStatus>({ op: "synced_status", project });
+
 /** Makes the output the mapping gives now the expected result of the case. */
 export const goldenRecord = (project: string, mapping: string, name: string) =>
   reviewRequest<{ output: unknown; errors: string[] }>({ op: "golden_record", project, mapping, name });

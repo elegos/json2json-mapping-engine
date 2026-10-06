@@ -33,13 +33,11 @@ import json
 from collections.abc import Mapping
 from pathlib import Path
 
+from cli.build_dir import build_root, generated_dir, relocated
 from compiler.function_registry import FunctionInfo, all_functions
 from compiler.schema_files import SCHEMAS_DIR
 from compiler.schema_generator import generate_input_schemas, generate_output_schemas
 
-STUBS_OUT_DIR = Path("generated/stubs")
-DATACLASSES_OUT_DIR = Path("generated/dataclasses")
-MAPPING_STUB_PATH = Path("build/python/stubs/__mapping__.pyi")
 VSCODE_SETTINGS_PATH = Path(".vscode/settings.json")
 PYRIGHTCONFIG_PATH = Path("pyrightconfig.json")
 
@@ -82,13 +80,16 @@ def function_stubs(functions: Mapping[str, FunctionInfo]) -> str:
 
 
 def generate_stubs() -> dict[str, int]:
-    written_in = generate_input_schemas(SCHEMAS_DIR, STUBS_OUT_DIR)
-    written_out = generate_output_schemas(SCHEMAS_DIR, DATACLASSES_OUT_DIR)
-    MAPPING_STUB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    MAPPING_STUB_PATH.write_text(
-        _MAPPING_STUB_TEXT + "\n" + function_stubs(all_functions(Path(".")))
-    )
-    _write_ide_config()
+    """With the build folder moved (a synced project), the stubs go there and the IDE config is
+    not written: the project's `.vscode/` and `pyrightconfig.json` would carry a path of this
+    machine to everybody."""
+    written_in = generate_input_schemas(SCHEMAS_DIR, generated_dir() / "stubs")
+    written_out = generate_output_schemas(SCHEMAS_DIR, generated_dir() / "dataclasses")
+    mapping_stub = build_root() / "python/stubs/__mapping__.pyi"
+    mapping_stub.parent.mkdir(parents=True, exist_ok=True)
+    mapping_stub.write_text(_MAPPING_STUB_TEXT + "\n" + function_stubs(all_functions(Path("."))))
+    if not relocated():
+        _write_ide_config()
     return {"input_stubs": len(written_in), "output_dataclasses": len(written_out)}
 
 

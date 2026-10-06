@@ -13,9 +13,8 @@ from typing import Annotated, Any
 
 import typer
 
-from cli import engine_version
+from cli import engine_version, synced
 from cli.build import (
-    BUILD_COMPILED_DIR,
     BuildError,
     assemble,
     backend_for,
@@ -26,6 +25,7 @@ from cli.build import (
     transpile_functional,
     write_package,
 )
+from cli.build_dir import compiled_dir
 from cli.config import MapperConfigError, load_config
 from cli.manifest import artifacts_ignored, build_manifest, compare, read_manifest
 from cli.stubs import generate_stubs
@@ -133,6 +133,9 @@ def stubs() -> None:
     except MapperConfigError as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
+    if why := synced.refusal(Path.cwd()):
+        typer.echo(f"error: {why}", err=True)
+        raise typer.Exit(code=1)
     result = generate_stubs()
     typer.echo(
         f"generated {result['input_stubs']} input stub(s), "
@@ -159,13 +162,18 @@ def _options(
     _allow_older_engine = allow_older_engine
 
 
-def _load_config_or_exit():
+def _load_config_or_exit(writes: bool = True):
+    """The project's config, after the engine-version gate; with `writes`, also the synced-folder
+    gate (a build writes under the project)."""
     try:
         config = load_config()
         found = engine_version.status(Path.cwd())
     except MapperConfigError as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
+    if writes and (why := synced.refusal(Path.cwd())):
+        typer.echo(f"error: {why}", err=True)
+        raise typer.Exit(code=1)
     if found.status == "older":
         message = (
             f"mapper.toml is at engine {found.project}, newer than this tool ({found.tool}): "
@@ -366,13 +374,13 @@ def publish(
             raise typer.Exit(code=1)
     generate_stubs()
     _compile_and_package(config, None)
-    manifest = read_manifest(BUILD_COMPILED_DIR)
-    dest = publish_dir(config, to, BUILD_COMPILED_DIR)
+    manifest = read_manifest(compiled_dir())
+    dest = publish_dir(config, to, compiled_dir())
     if manifest is None:
-        typer.echo(f"error: no manifest in {BUILD_COMPILED_DIR} after the build", err=True)
+        typer.echo(f"error: no manifest in {compiled_dir()} after the build", err=True)
         raise typer.Exit(code=1)
-    if dest.resolve() == BUILD_COMPILED_DIR.resolve():
-        typer.echo(f"published: {BUILD_COMPILED_DIR} (the build folder, nothing to copy)")
+    if dest.resolve() == compiled_dir().resolve():
+        typer.echo(f"published: {compiled_dir()} (the build folder, nothing to copy)")
         return
     try:
         written = write_set(compiled_files(config), manifest, dest)
@@ -401,7 +409,7 @@ def verify(
     from cli.publish import publish_dir, verify_folder
 
     if folder is None:
-        folder = publish_dir(_load_config_or_exit(), None, BUILD_COMPILED_DIR)
+        folder = publish_dir(_load_config_or_exit(writes=False), None, compiled_dir())
     problems, count = verify_folder(folder)
     if problems:
         for line in problems:
@@ -496,18 +504,16 @@ def _artifact_state(config) -> tuple[list[str] | None, int]:
     except Exception as exc:
         typer.echo(f"error compiling: {exc}", err=True)
         raise typer.Exit(code=1) from exc
-    if artifacts_ignored(BUILD_COMPILED_DIR):
+    if artifacts_ignored(compiled_dir()):
         return None, len(mappings)
     suffix = backend_for(config).artifact_suffix
-    on_disk = {p.name: p for p in BUILD_COMPILED_DIR.glob(f"*{suffix}")}
-    problems = [f"missing: {BUILD_COMPILED_DIR / n}" for n in fresh if n not in on_disk]
+    on_disk = {p.name: p for p in compiled_dir().glob(f"*{suffix}")}
+    problems = [f"missing: {compiled_dir() / n}" for n in fresh if n not in on_disk]
     problems += [f"stale: {p} (no longer produced)" for n, p in on_disk.items() if n not in fresh]
     problems += [
         f"out of sync: {p}" for n, p in on_disk.items() if n in fresh and p.read_text() != fresh[n]
     ]
-    problems += compare(
-        read_manifest(BUILD_COMPILED_DIR), build_manifest(config.project.target, fresh)
-    )
+    problems += compare(read_manifest(compiled_dir()), build_manifest(config.project.target, fresh))
     return problems, len(mappings)
 
 
@@ -520,14 +526,14 @@ def check(json_output: bool = JSON_OPTION) -> None:
     committed output still matches what current sources produce)."""
     problems, count = _artifact_state(_load_config_or_exit())
     if problems is None:  # built in CI, not committed: nothing to compare
-        typer.echo(f"OK — {count} mapping(s) build ({BUILD_COMPILED_DIR} is git-ignored)")
+        typer.echo(f"OK — {count} mapping(s) build ({compiled_dir()} is git-ignored)")
         return
     if problems:
         for line in problems:
             typer.echo(line)
         typer.echo("run `mapper build`")
         raise typer.Exit(code=1)
-    typer.echo(f"OK — {BUILD_COMPILED_DIR} is in sync ({count} mapping(s))")
+    typer.echo(f"OK — {compiled_dir()} is in sync ({count} mapping(s))")
 
 
 fn_app = typer.Typer(

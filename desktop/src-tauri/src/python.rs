@@ -125,9 +125,11 @@ pub fn run_mapper(
     project: &Path,
     args: &[&str],
     stdin: Option<&str>,
+    env: &[(&str, &str)],
 ) -> Result<MapperOutput, String> {
     let mut command = Command::new(&found.python);
     prepare(&mut command, &found.engine);
+    command.envs(env.iter().copied()); // a project in a synced folder: where it builds
     let mut child = command
         .current_dir(project)
         .args(["-m", "cli.main"])

@@ -28,6 +28,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from cli.build_dir import cache_dir, compiled_dir, transpiled_dir
 from cli.config import MapperConfig
 from cli.manifest import MANIFEST_NAME, build_manifest, manifest_text
 from compiler.backends.base import Backend, CodeGenError, CompiledUnit
@@ -44,9 +45,6 @@ from transpiler.transpile import TranspileOptions, transpile_file
 
 MAPPINGS_DIR = Path("mappings")
 FUNCTIONAL_DIR = Path("mappings/functional")
-BUILD_TRANSPILED_DIR = Path("build/transpiled")
-BUILD_CACHE_DIR = Path("build/cache")
-BUILD_COMPILED_DIR = Path("build/compiled")
 
 
 class BuildError(Exception):
@@ -161,7 +159,7 @@ def transpile_options(config: MapperConfig) -> TranspileOptions:
 
 
 def stages_dir(path: Path) -> Path:
-    return BUILD_TRANSPILED_DIR / "stages" / source_stem(path)
+    return transpiled_dir() / "stages" / source_stem(path)
 
 
 def transpile_functional(
@@ -205,8 +203,8 @@ def transpile_functional(
     except FnYamlError as exc:
         raise BuildError(f"{path}: {exc}") from exc
     if write and last == len(STAGES):
-        BUILD_TRANSPILED_DIR.mkdir(parents=True, exist_ok=True)
-        (BUILD_TRANSPILED_DIR / f"{stem}.map.py").write_text(text)
+        transpiled_dir().mkdir(parents=True, exist_ok=True)
+        (transpiled_dir() / f"{stem}.map.py").write_text(text)
     return text
 
 
@@ -294,7 +292,7 @@ def compile_mapping(path: Path, config: MapperConfig, force: bool = False) -> Co
         config.raw,
         _schema_bytes(source_stem(path), schema_refs(path)) + _lookup_bytes(path, source),
     )
-    cache_file = BUILD_CACHE_DIR / f"{path.name}.unit.json"
+    cache_file = cache_dir() / f"{path.name}.unit.json"
 
     if not force and cache_file.is_file():
         try:
@@ -322,15 +320,15 @@ def write_package(units: list[CompiledUnit], config: MapperConfig) -> list[Path]
     """Write the artifact files under `build/compiled/` with their `manifest.json`, removing the
     files of the target that are no longer produced (a renamed or deleted mapping)."""
     files = assemble(units, config)
-    BUILD_COMPILED_DIR.mkdir(parents=True, exist_ok=True)
-    for stale in BUILD_COMPILED_DIR.glob(f"*{backend_for(config).artifact_suffix}"):
+    compiled_dir().mkdir(parents=True, exist_ok=True)
+    for stale in compiled_dir().glob(f"*{backend_for(config).artifact_suffix}"):
         if stale.name not in files:
             stale.unlink()
     for name, text in files.items():
-        (BUILD_COMPILED_DIR / name).write_text(text)
+        (compiled_dir() / name).write_text(text)
     manifest = build_manifest(config.project.target, files)
-    (BUILD_COMPILED_DIR / MANIFEST_NAME).write_text(manifest_text(manifest))
-    return [BUILD_COMPILED_DIR / name for name in files]
+    (compiled_dir() / MANIFEST_NAME).write_text(manifest_text(manifest))
+    return [compiled_dir() / name for name in files]
 
 
 def compiled_files(config: MapperConfig) -> dict[str, str]:
@@ -338,9 +336,9 @@ def compiled_files(config: MapperConfig) -> dict[str, str]:
     integration tests deploy). Raises `BuildError` when there are none."""
     backend = backend_for(config)
     suffix = backend.artifact_suffix
-    on_disk = {p.name: p for p in BUILD_COMPILED_DIR.glob(f"*{suffix}")}
+    on_disk = {p.name: p for p in compiled_dir().glob(f"*{suffix}")}
     if not on_disk:
-        raise BuildError(f"no {suffix} files in {BUILD_COMPILED_DIR} (run `mapper build`)")
+        raise BuildError(f"no {suffix} files in {compiled_dir()} (run `mapper build`)")
     order = backend.deploy_order(list(on_disk))
     return {name: on_disk[name].read_text() for name in order}
 

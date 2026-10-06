@@ -65,10 +65,24 @@ fn list_fn_files(project: String) -> Result<Vec<String>, String> {
     Ok(files)
 }
 
-fn run_mapper(project: &str, args: &[&str], stdin: Option<&str>) -> Result<MapperOutput, String> {
+fn run_mapper(
+    project: &str,
+    args: &[&str],
+    stdin: Option<&str>,
+    env: &[(&str, &str)],
+) -> Result<MapperOutput, String> {
     let found = python::resolve()?;
-    python::run_mapper(&found, &PathBuf::from(project), args, stdin)
+    python::run_mapper(&found, &PathBuf::from(project), args, stdin, env)
 }
+
+/// What this user chose for `project` in a synced folder: a local folder to build in, or `-`
+/// ("not a synced folder": the project builds where it is).
+fn build_choice(app: &tauri::AppHandle, project: &str) -> Option<String> {
+    use tauri::Manager;
+    publish_dirs::get(app.path().app_config_dir().ok()?, publish_dirs::BUILD, project)
+}
+
+const NOT_SYNCED: &str = "-";
 
 /// `mapper <command> --json` (build, check, transpile, compile, publish).
 ///
@@ -97,20 +111,26 @@ fn mapper_command(
             .path()
             .app_config_dir()
             .ok()
-            .and_then(|dir| publish_dirs::get(dir, &project));
+            .and_then(|dir| publish_dirs::get(dir, publish_dirs::PUBLISH, &project));
         if let Some(dir) = chosen {
             args.extend(["--to".into(), dir]);
         }
     }
     let args: Vec<&str> = args.iter().map(String::as_str).collect();
-    run_mapper(&project, &args, None)
+    let choice = build_choice(&app, &project);
+    let env: Vec<(&str, &str)> = match choice.as_deref() {
+        Some(NOT_SYNCED) => vec![("J2JME_ALLOW_SYNCED", "1")],
+        Some(dir) => vec![("J2JME_BUILD_DIR", dir)],
+        None => vec![],
+    };
+    run_mapper(&project, &args, None, &env)
 }
 
 /// The folder this user publishes `project` to (kept in the app's configuration, not the project).
 #[tauri::command]
 fn publish_dir_get(app: tauri::AppHandle, project: String) -> Option<String> {
     use tauri::Manager;
-    publish_dirs::get(app.path().app_config_dir().ok()?, &project)
+    publish_dirs::get(app.path().app_config_dir().ok()?, publish_dirs::PUBLISH, &project)
 }
 
 #[tauri::command]
@@ -120,17 +140,40 @@ fn publish_dir_set(
     path: Option<String>,
 ) -> Result<(), String> {
     use tauri::Manager;
-    publish_dirs::set(app.path().app_config_dir().map_err(|e| e.to_string())?, &project, path)
+    publish_dirs::set(
+        app.path().app_config_dir().map_err(|e| e.to_string())?,
+        publish_dirs::PUBLISH,
+        &project,
+        path,
+    )
+}
+
+/// The folder this user builds `project` in, when it is in a synced folder (nothing generated is
+/// written there). Kept in the app's configuration, not the project.
+#[tauri::command]
+fn build_dir_get(app: tauri::AppHandle, project: String) -> Option<String> {
+    build_choice(&app, &project)
+}
+
+#[tauri::command]
+fn build_dir_set(
+    app: tauri::AppHandle,
+    project: String,
+    path: Option<String>,
+) -> Result<(), String> {
+    use tauri::Manager;
+    let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    publish_dirs::set(dir, publish_dirs::BUILD, &project, path)
 }
 
 #[tauri::command]
 fn read_fn(project: String, file: String) -> Result<MapperOutput, String> {
-    run_mapper(&project, &["fn", "read", &file], None)
+    run_mapper(&project, &["fn", "read", &file], None, &[])
 }
 
 #[tauri::command]
 fn write_fn(project: String, file: String, tree: String) -> Result<MapperOutput, String> {
-    run_mapper(&project, &["fn", "write", &file], Some(&tree))
+    run_mapper(&project, &["fn", "write", &file], Some(&tree), &[])
 }
 
 /// The edit worker, started on first use (or by `warm_worker`) and restarted if it dies.
@@ -186,8 +229,32 @@ fn tour_project_cleanup(path: String) -> Result<(), String> {
 
 /// One JSON request to `mapper serve`; returns the JSON answer line.
 #[tauri::command]
-fn edit_request(state: tauri::State<EditWorker>, request: String) -> Result<String, String> {
-    ask_worker(&state, &request)
+fn edit_request(
+    app: tauri::AppHandle,
+    state: tauri::State<EditWorker>,
+    request: String,
+) -> Result<String, String> {
+    ask_worker(&state, &with_build_dir(&app, request))
+}
+
+/// The worker serves every project, so a project built elsewhere says so in each request.
+fn with_build_dir(app: &tauri::AppHandle, request: String) -> String {
+    let Ok(mut value) = serde_json::from_str::<serde_json::Value>(&request) else {
+        return request;
+    };
+    let choice = value
+        .get("project")
+        .and_then(|p| p.as_str())
+        .and_then(|p| build_choice(app, p));
+    let (Some(choice), Some(map)) = (choice, value.as_object_mut()) else {
+        return request;
+    };
+    if choice == NOT_SYNCED {
+        map.insert("allow_synced".into(), serde_json::Value::Bool(true));
+    } else {
+        map.insert("build_dir".into(), serde_json::Value::String(choice));
+    }
+    value.to_string()
 }
 
 /// `J2JME v<version in Cargo.toml> (<short commit id>)`.
@@ -237,6 +304,8 @@ fn main() {
             mapper_command,
             publish_dir_get,
             publish_dir_set,
+            build_dir_get,
+            build_dir_set,
             read_fn,
             write_fn,
             edit_request,

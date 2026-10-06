@@ -348,7 +348,9 @@ class _BasicAuthGit(BaseHTTPRequestHandler):
         pass
 
 
-def test_the_login_the_user_typed_reaches_git_and_is_not_kept(tmp_path: Path, backend: str) -> None:
+def test_the_login_the_user_typed_reaches_git_and_is_not_kept(
+    tmp_path: Path, backend: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
     if backend != "git":
         pytest.skip(
             "gitoxide refuses a password over plain http; its path is the same code over https"
@@ -382,8 +384,16 @@ def test_the_login_the_user_typed_reaches_git_and_is_not_kept(tmp_path: Path, ba
         git(seed, "commit", "-qam", "next")
         git(seed, "push", "-q", "origin", "HEAD:main")
 
+        # the desktop's own askpass (ksshaskpass, ...) must not open a window of its own
+        window = tmp_path / "window-opened"
+        popup = tmp_path / "popup.sh"
+        popup.write_text(f"#!/bin/sh\ntouch {window}\n")
+        popup.chmod(0o755)
+        monkeypatch.setenv("GIT_ASKPASS", str(popup))
+        git(clone, "config", "core.askPass", str(popup))
         with pytest.raises(gitops.GitError) as asked:
             gitops.pull(clone)  # no login: git cannot ask anybody, and says so
+        assert not window.exists()
         assert asked.value.auth, str(asked.value)
         wrong = {"username": "alice", "password": "nope"}
         with pytest.raises(gitops.GitError) as refused:

@@ -34,10 +34,14 @@ section (see `packaging/release.py`).
 - Every release also carries `j2jme-cli-linux-x86_64.tar.gz` (a portable `mapper`, no desktop) and
   `install-mapper.sh`, which installs the version a project's `mapper.toml` names (for CI jobs);
   `docs/CI.md` describes it.
+- Projects in a synced folder (OneDrive, SharePoint, Dropbox, ...): the tool recognises them by
+  their path and asks for a folder on the machine to build in (per user and project, *Build folder…*
+  to change it); nothing generated is written in the synced folder. `mapper` stops there unless
+  `J2JME_BUILD_DIR` points elsewhere (or `J2JME_ALLOW_SYNCED=1` for a folder that only looks synced).
 
 ### Not verified
 
-- The panel and its dialogs in the running tool; the gitoxide fallback over SSH remotes, on
+- The panel and its dialogs in the running tool (also the synced-folder dialog); the gitoxide fallback over SSH remotes, on
   Windows, with LFS and with submodules; the packaged builds with the new dependency.
 
 ## [0.1.0] - 2026-10-05

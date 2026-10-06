@@ -19,7 +19,7 @@ import contextlib
 from pathlib import Path
 from typing import Any
 
-from cli import artifacts_mode, gitops
+from cli import artifacts_mode, gitops, synced
 from cli.config import MapperConfigError
 from transpiler.merge import MergeError, load_raw, merge3, merge_fn_texts, merge_texts
 
@@ -171,6 +171,8 @@ def _problems(project: Path) -> list[str]:
     from transpiler.model import FnYamlError, load_functional_file
 
     problems: list[str] = []
+    if why := synced.refusal(project):  # the check builds, and a build writes under the project
+        return [why]
     with contextlib.chdir(project):
         config = load_config()
         functions = all_functions(Path.cwd())
@@ -201,6 +203,8 @@ def _build(project: Path) -> None:
     from cli.build import compile_mapping, discover_mappings, write_package
     from cli.config import load_config
 
+    if why := synced.refusal(project):
+        raise VcsError(why)
     with contextlib.chdir(project):
         config = load_config()
         units = [compile_mapping(p, config).unit for p in discover_mappings(config)]

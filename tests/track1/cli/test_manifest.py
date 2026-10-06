@@ -115,3 +115,32 @@ def test_with_the_artifacts_ignored_check_only_builds(project: Path) -> None:
 def test_version_prints_the_engines() -> None:
     result = runner.invoke(app, ["version"])
     assert result.output.strip() == ENGINE_VERSION
+
+
+def test_the_build_goes_where_the_user_asked(
+    project: Path, tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A project in a synced folder builds elsewhere (`$J2JME_BUILD_DIR`): nothing generated is
+    written in the project, and `mapper check` reads the same place."""
+    elsewhere = tmp_path_factory.mktemp("local-build")
+    monkeypatch.setenv("J2JME_BUILD_DIR", str(elsewhere))
+    assert runner.invoke(app, ["build"]).exit_code == 0
+    assert [
+        p.name for p in project.iterdir() if p.name not in ("mappings", "schemas", "mapper.toml")
+    ] == []
+    assert (elsewhere / "compiled" / "map_ping.sql").is_file()
+    assert (elsewhere / "compiled" / "manifest.json").is_file()
+    assert (elsewhere / "cache").is_dir()
+    assert runner.invoke(app, ["check"]).exit_code == 0
+
+
+def test_the_stubs_of_a_moved_build_stay_out_of_the_project(
+    project: Path, tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    elsewhere = tmp_path_factory.mktemp("local-build")
+    monkeypatch.setenv("J2JME_BUILD_DIR", str(elsewhere))
+    assert runner.invoke(app, ["stubs"]).exit_code == 0
+    assert (elsewhere / "generated" / "stubs" / "order_event.pyi").is_file()
+    assert (elsewhere / "python" / "stubs" / "__mapping__.pyi").is_file()
+    assert not (project / "generated").exists()
+    assert not (project / "pyrightconfig.json").exists()  # a path of this machine, for everybody

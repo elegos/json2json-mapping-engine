@@ -1461,7 +1461,14 @@ build/
 **Location.** `build/` is inside the project by default. In a folder synced by OneDrive or
 SharePoint (which cannot exclude a folder from the sync) the tool does not write generated
 files there: it asks the user for another folder, saved per user in the app's config and not
-per project (§Version control, shared-folder mode). `build/` has to be configurable for this.
+per project (§Version control, shared-folder mode). The folder reaches the engine as
+`$J2JME_BUILD_DIR` (`cli/build_dir.py`: `transpiled/`, `cache/`, `compiled/` and `generated/`, the
+IDE stubs, go under it; `.vscode/` and `pyrightconfig.json` are then not written, they would carry a
+path of this machine to everybody). It is never a key of `mapper.toml`: a path differs on each
+machine. The CLI itself refuses to build, check or publish in a folder it recognises as synced
+(`cli/synced.py`, by the names on the way: OneDrive, SharePoint, Dropbox, Google Drive, iCloud, Box,
+and the folders `$OneDrive*` name) unless `$J2JME_BUILD_DIR` is set, or `$J2JME_ALLOW_SYNCED=1`
+says it is an ordinary folder (a name can mislead).
 
 At each build invocation:
 1. Hash the `.fn.yaml` **together with the full contents of `mapper.toml`**. If it
@@ -2410,7 +2417,8 @@ a merge driver would need), LFS, submodules.
 #### Shared-folder mode (OneDrive / SharePoint)
 
 A git repository inside a synced folder is **not supported** (the sync corrupts `.git`); the tool
-detects such a path and warns. The sync itself does not merge: for files it does not know it makes
+detects such a path and warns (in the dialog at open; detection is by the
+path, so it can be wrong either way: the user can say a folder is not a synced one). The sync itself does not merge: for files it does not know it makes
 conflict copies (`file-PC.yaml`) or the last writer wins. So the tool does the merge:
 
 - **Base per user.** The app's config keeps, per user, the hash and a snapshot of the last version
@@ -2422,7 +2430,11 @@ conflict copies (`file-PC.yaml`) or the last writer wins. So the tool does the m
   administrator's policy), so the app handles it: `build/` goes to another local folder, asked at
   the first use and saved per user. Choosing one is optional: if the user declines, the build
   stops, nothing is written and nothing is remembered; the tool asks again at the next attempt, and
-  generation and deploy are left to CI/CD. The authored files only (`mapper.toml`, `*.fn.yaml`,
+  generation and deploy are left to CI/CD. In the tool: `build_dir_get` / `build_dir_set` keep the
+  choice in the app's config (`build-dirs.json`; `-` is "not a synced folder"), `Build folder…`
+  changes it, and the Rust side puts it in every call of `mapper` (`J2JME_BUILD_DIR`,
+  `J2JME_ALLOW_SYNCED`) and in every request to the worker (`build_dir`, `allow_synced`: one
+  worker serves every project). The authored files only (`mapper.toml`, `*.fn.yaml`,
   schemas, `fn/`, `tests/golden`) are synced. `.venv` is not needed: the tool brings its own Python.
 - **Presence**, advisory: one file per user, `.j2jme/presence/<mapping>.<user>.json` (one writer
   each, so it never conflicts), shows who is editing which mapping. There are no locks.
