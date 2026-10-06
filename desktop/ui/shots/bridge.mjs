@@ -1,7 +1,7 @@
 // A stand-in for the Tauri shell, for taking the guide's screenshots in a browser: the same
 // commands the Rust side has (src-tauri/src/main.rs), answered by the real `mapper` CLI and
 // `mapper serve`. Not part of the app; used by shots/run.mjs only.
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { cpSync, existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -72,6 +72,8 @@ export function setInitial(dir) {
 export function makeCopy(name) {
   const dir = name ? join(mkdtempSync(join(tmpdir(), "j2jme-shots-")), name) : mkdtempSync(join(tmpdir(), "j2jme-tour-shots-"));
   cpSync(fixture, dir, { recursive: true });
+  // a project outside git gets the "put it under git?" question at open, which covers the shot
+  execFileSync("git", ["init", "-q", dir]);
   copies.push(dir);
   return dir;
 }
