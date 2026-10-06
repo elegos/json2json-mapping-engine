@@ -8,7 +8,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The text of a release is the section of its version below; if there is none, the `Unreleased`
 section (see `packaging/release.py`).
 
-## [0.1.0] - 2026-10-05
+## [0.1.0] - 2026-10-06
 
 First release. Work in progress: the engine and the desktop tool are usable, but not complete.
 
