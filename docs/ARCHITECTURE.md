@@ -907,7 +907,9 @@ self-describing, not silent:
 
 **The Python target** (`compiler/backends/python/`) raises `MappingError`, as below, from `map_<id>`,
 and its `map_<id>_safe` gives `(output, rule errors)`; see the Python backend in the implementation plan
-for the run-time rules it keeps.
+for the run-time rules it keeps. The generated modules need **Python 3.10 or later** (the program that
+calls them chooses its interpreter: nothing in `mapper.toml` does, and the runtime refuses an older one
+when it is imported); `3.14t`, the free-threaded build, is what makes `parallel = "thread"` faster.
 
 **Other targets.** The PL/SQL strategy above (reserved code + JSON payload) is specific
 to that backend. A Python target would instead raise a dedicated `MappingError`

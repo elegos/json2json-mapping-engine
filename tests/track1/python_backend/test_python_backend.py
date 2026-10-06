@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import ast
+import importlib
 import importlib.util
 import json
 import sys
@@ -11,7 +13,7 @@ from typing import Any
 import pytest
 
 from compiler.backends.integration import IntegrationContext, discover_cases
-from compiler.backends.python.backend import PythonBackend
+from compiler.backends.python.backend import MIN_PYTHON, PythonBackend
 from compiler.pipeline import compile_unit
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -502,14 +504,39 @@ def test_max_parallel_is_one_or_more_and_one_turns_parallelism_off() -> None:
     assert "MAX_PARALLEL = 1\n" in one.assemble([])["j2jme_runtime.py"]
 
 
-def test_the_build_says_a_parallel_rule_is_not_faster_with_the_global_lock() -> None:
-    gil = PythonBackend({"python": "3.14", "parallel": "thread"})
-    unit = compile_unit(_PARALLEL, "m", gil)
-    (warning,) = gil.unit_warnings(unit)
-    assert "line" in warning and "3.14t" in warning
-    for options in ({"python": "3.14t"}, {"python": "3.12", "parallel": "none"}):
-        free = PythonBackend({"parallel": "thread", **options})
-        assert free.unit_warnings(compile_unit(_PARALLEL, "m", free)) == []
+def test_the_target_python_is_not_a_key_any_more() -> None:
+    assert "python" not in {o.key for o in PythonBackend.options}
+    assert "python" not in PythonBackend.defaults
+
+
+def test_what_is_generated_parses_for_the_first_supported_python(tmp_path: Path) -> None:
+    """The modules are Python 3.10+: nothing in them needs a newer syntax (the golden cases are run
+    on the old Python itself by `dev_scripts/python_floor.sh`)."""
+    backend = PythonBackend({"parallel": "process"})
+    units = [
+        compile_unit((ROOT / "mappings" / f"{name}.map.py").read_text(), name, backend)
+        for name in GOLDEN_MAPPINGS
+    ] + [
+        compile_unit(source, name, backend)
+        for name, source in (("par", _PARALLEL), ("fused", _FUSED), ("nested", _NESTED))
+    ]
+    for text in backend.assemble(units).values():
+        ast.parse(text, feature_version=MIN_PYTHON)
+
+
+def test_the_runtime_refuses_an_older_python(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    (tmp_path / "j2jme_runtime.py").write_text(PythonBackend({}).assemble([])["j2jme_runtime.py"])
+    monkeypatch.setattr(sys, "version_info", (3, 9, 0, "final", 0))
+    sys.modules.pop("j2jme_runtime", None)
+    sys.path.insert(0, str(tmp_path))
+    try:
+        with pytest.raises(ImportError, match=r"Python 3\.10 or later"):
+            importlib.import_module("j2jme_runtime")
+    finally:
+        sys.path.remove(str(tmp_path))
+        sys.modules.pop("j2jme_runtime", None)
 
 
 def test_every_golden_case_states_its_expected_output() -> None:

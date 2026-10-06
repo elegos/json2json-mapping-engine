@@ -19,6 +19,7 @@ from compiler.scope_resolver import ScopeResolution
 
 RUNTIME_FILE = "j2jme_runtime.py"
 DEFAULT_MAX_PARALLEL = 4
+MIN_PYTHON = runtime.MIN_PYTHON  # the first Python that runs what the backend generates
 
 # the Oracle date format tokens `parse_date` is written with, as `strptime` has them
 _STRPTIME = {"YYYY": "%Y", "MM": "%m", "DD": "%d", "HH24": "%H", "MI": "%M", "SS": "%S"}
@@ -77,25 +78,16 @@ class PythonBackend(Backend):
     target: ClassVar[str] = "python"
     artifact_suffix: ClassVar[str] = ".py"
     defaults: ClassVar[dict[str, Any]] = {
-        "python": "3.12",
         "parallel": "thread",
         "max_parallel": DEFAULT_MAX_PARALLEL,
     }
     options: ClassVar[tuple[Option, ...]] = (
         Option(
-            "python",
-            "string",
-            "Version of the Python that runs the generated modules (the project's, not the tool's)",
-            default="3.12",
-            pattern=r"3\.\d+t?",
-            pattern_hint="a version such as 3.12, or 3.14t for a free-threaded build",
-        ),
-        Option(
             "parallel",
             "choice",
             "How a loop whose rule is `@parallel(degree=N)` runs: `thread` maps its elements in up "
-            "to N threads (a speed-up only on a free-threaded Python, such as 3.14t; with the GIL "
-            "it is correct but not faster), `process` maps them in up to N worker processes (a "
+            "to N threads (a speed-up only when the program runs on a free-threaded Python, such as "
+            "3.14t; with the GIL it is correct but not faster), `process` maps them in up to N worker processes (a "
             "speed-up whatever the Python; the elements and what the rule gives travel between "
             "processes, so it pays off for heavy rules; the program that calls the mapping must "
             'guard its entry point with `if __name__ == "__main__":`), `none` runs it in order',
@@ -128,22 +120,6 @@ class PythonBackend(Backend):
             project_functions(Path.cwd()),
             "none" if self.max_parallel < 2 else self.config.get("parallel", "thread"),
         )
-
-    def unit_warnings(self, unit: CompiledUnit) -> list[str]:
-        if (
-            not isinstance(unit, codegen.PythonUnit)
-            or not unit.parallel
-            or self.config.get("parallel", "thread") != "thread"
-            or self.max_parallel < 2
-            or str(self.config.get("python", "3.12")).endswith("t")
-        ):
-            return []
-        rules = ", ".join(sorted(unit.parallel))
-        return [
-            f"@parallel on {rules} runs in threads, but Python {self.config.get('python', '3.12')} has the "
-            "global lock: correct, not faster. Target a free-threaded Python (for example 3.14t) "
-            'in [target.python], or set parallel = "none"'
-        ]
 
     def unit_from_json(self, data: dict[str, Any]) -> codegen.PythonUnit:
         return codegen.PythonUnit.from_json(data)

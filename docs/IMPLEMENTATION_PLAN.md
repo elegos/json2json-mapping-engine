@@ -1171,14 +1171,13 @@ reported once under its name and leaves its field out, the others go on; a bare 
 field out, `return Null` or a null value puts a null; a whole number is written as an integer
 (5, not 5.0). The four golden mappings and all their cases pass on it (track 1, no container); `mapper
 build` / `check` / `test --integration` work with `[project] target = "python"`
-(`Backend.artifact_suffix`). Option `[target.python] python` (the interpreter version) is
-declared and not used yet. Project `fn/*.fn` functions: the module carries the ones a mapping calls (their Python
+(`Backend.artifact_suffix`). The generated modules need Python 3.10 or later (see *Target interpreter*
+below). Project `fn/*.fn` functions: the module carries the ones a mapping calls (their Python
 code, or `@override(python="...")`); one with neither (a stub written out for another target) raises
 `MissingImplementation`, and the unit says which rules call it (`PythonUnit.unavailable`): the golden run
 reports those rules as not run (amber row, case NOT RUN, not recordable), not as failures. The PL/SQL
 backend now links `@override(plsql=...)` of project functions (it did not before) and stops the build
-when a project function has none. Still to do, as listed below: `@parallel`, the target interpreter handling, the conformance run against PL/SQL, and the
-points where the two could differ, once written down (rounding, null against empty string, dates).
+when a project function has none. What is left is listed below.
 
 **The rule that governs it: results are backend-independent.** The same input must give the
 same output, and the same rule errors, whichever backend compiled the mapping. Consequences to
@@ -1196,18 +1195,19 @@ build in:
       case with no expected output, which would pass whatever a backend gave. No job comparing artifacts: it would repeat this.
 - [ ] Error isolation and `required` semantics (§Runtime error semantics) implemented
       identically.
-- [ ] **Target interpreter.** The Python that *runs the generated module* is the host
-      project's, not the engine's own (which the tool runs on 3.14 to compile). So the target
-      declares it in `[target.python]` (a version, and whether it is free-threaded, e.g.
-      `python = "3.14t"`), and the backend emits code for that interpreter: syntax and library
-      features it has, and `@parallel` handled accordingly. The generated module must not import the
-      engine.
+- [x] **Target interpreter.** The Python that *runs the generated module* is the host project's, not the
+      engine's own (which the tool runs on 3.14 to compile). Decided: no `[target.python] python` key; the
+      generated code does not change with the version, so what matters is the floor: **Python 3.10 or later**
+      (`MIN_PYTHON` in `runtime.py`; the runtime and the built-ins use `X | Y` in `isinstance`, and 3.9 fails
+      there). The runtime refuses an older Python when it is imported, a test parses everything generated for
+      that version, and `dev_scripts/python_floor.sh` runs the golden cases on 3.10, 3.11 and 3.14t (the build
+      no longer says that threads do not speed up with the GIL: that depends on the program's Python, and the
+      option's help says so). The generated module must not import the engine.
 - [x] `@parallel(degree=N)` for real, unlike PL/SQL (where it only yields a SQL-callable
       wrapper): the elements of the loop are mapped by up to N threads or processes.
       Decided: `[target.python] parallel = "thread" | "process" | "none"` (default `thread`); `thread` is a real
-      speed-up on a free-threaded Python (the project's `python = "3.14t"`), and on one with the
-      GIL it still runs in threads, correct but not faster, and the build says so (a warning from
-      `Backend.unit_warnings`). The engine and the tool's worker run on 3.14; a project targets any
+      speed-up when the program runs on a free-threaded Python (3.14t), and on one with the
+      GIL it still runs in threads, correct but not faster. The engine and the tool's worker run on 3.14; a project targets any
       version. Whatever the strategy, the result equals the sequential one: results in element
       order (`pool.map`), and each call keeps its own errors, merged in element order, so "first
       failure of a rule wins" stays deterministic. Done: `_pmap` in the runtime, the loop rewrite in
