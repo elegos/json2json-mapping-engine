@@ -14,6 +14,9 @@ interface Props {
   open: boolean;
   /** A function was saved, added, removed or renamed: what ran with it is stale. */
   onSaved?: () => void;
+  /** Shared-folder mode: the text to save (merged with what arrived), "disk" (keep the file as it
+   * is on disk), or null (cancelled). */
+  reconcile?: (file: string, text: string) => Promise<string | null>;
   /** A rename rewrites the mappings on disk: ask to save the open one first (false = stop)... */
   beforeDiskChange?: () => Promise<boolean>;
   /** ...and read it again afterwards. */
@@ -23,7 +26,7 @@ interface Props {
 
 /** A panel beside the grid listing the functions a mapping can call: searchable, with the
  * signature and description of each, and an Insert button for the cell being edited. */
-export function FunctionExplorer({ project, open, onSaved, beforeDiskChange, afterDiskChange, onClose }: Props) {
+export function FunctionExplorer({ project, open, onSaved, reconcile, beforeDiskChange, afterDiskChange, onClose }: Props) {
   const [all, setAll] = useState<FunctionEntry[]>([]);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
@@ -115,6 +118,7 @@ export function FunctionExplorer({ project, open, onSaved, beforeDiskChange, aft
             focus={editing.focus}
             nonce={editing.nonce}
             control={control}
+            reconcile={reconcile}
             functions={all}
             onChanged={() => {
               void reload();

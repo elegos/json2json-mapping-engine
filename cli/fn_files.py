@@ -18,6 +18,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from cli import shared
 from cli.config import MapperConfigError, load_config
 from compiler import function_registry as registry
 from compiler.backends.python.backend import runtime_text
@@ -29,6 +30,7 @@ from compiler.function_registry import (
     project_functions,
     read_functions,
 )
+from transpiler.atomic import write_atomic
 from transpiler.model import FnYamlError
 
 FN_DIR = "fn"
@@ -85,6 +87,7 @@ def read_file(project: Path, name: str) -> str:
     path = _path(project, name)
     if not path.is_file():
         raise FnYamlError(f"no file fn/{name}{SUFFIX} in the project")
+    shared.seen(project, f"{FN_DIR}/{name}{SUFFIX}")
     return path.read_text()
 
 
@@ -163,8 +166,8 @@ def write_file(project: Path, name: str, text: str) -> None:
     except SyntaxError as exc:
         raise FnYamlError(f"not saved, line {exc.lineno}: {exc.msg}") from exc
     path = _path(project, name)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text)
+    write_atomic(path, text)
+    shared.seen(project, f"{FN_DIR}/{name}{SUFFIX}")
 
 
 def _not_overrides(name: str) -> None:

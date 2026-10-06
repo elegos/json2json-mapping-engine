@@ -13,7 +13,7 @@ from typing import Annotated, Any
 
 import typer
 
-from cli import engine_version, synced
+from cli import engine_version, shared, synced
 from cli.build import (
     BuildError,
     assemble,
@@ -550,6 +550,7 @@ def fn_read(file: str = typer.Argument(..., help=".fn.yaml file")) -> None:
     except (FnYamlError, OSError) as exc:
         typer.echo(json.dumps({"ok": False, "error": str(exc)}))
         raise typer.Exit(code=1) from exc
+    shared.seen(Path.cwd(), Path(file).as_posix())  # a no-op outside a synced folder
     typer.echo(json.dumps({"ok": True, "file": functional_to_dict(tree)}, ensure_ascii=False))
 
 
@@ -602,6 +603,7 @@ def fn_write(file: str = typer.Argument(..., help=".fn.yaml file to write")) -> 
         )
         decayed += demoted
         write_functional(path, new)
+        shared.seen(Path.cwd(), path.as_posix())  # a no-op outside a synced folder
     except (FnYamlError, OSError, ValueError, KeyError, TypeError) as exc:
         typer.echo(json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"}))
         raise typer.Exit(code=1) from exc

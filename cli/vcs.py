@@ -19,9 +19,9 @@ import contextlib
 from pathlib import Path
 from typing import Any
 
-from cli import artifacts_mode, gitops, synced
+from cli import artifacts_mode, gitops, merge_items, project_create, synced
 from cli.config import MapperConfigError
-from transpiler.merge import MergeError, load_raw, merge3, merge_fn_texts, merge_texts
+from transpiler.merge import MergeError, load_raw
 
 # what a person writes in a project; what the commit takes, besides the generated files
 AUTHORED = (
@@ -305,6 +305,22 @@ def _continue(project: Path) -> dict[str, Any]:
     raise VcsError("the rebase does not end")
 
 
+def init_repo(project: Path) -> dict[str, Any]:
+    """Put the project under git: a repository on `main`, the `.gitignore` of a new project when it
+    has none, and the merge driver. Nothing is committed (the panel does that, with the check).
+    Refused inside a repository already, and in a synced folder (the sync corrupts `.git`)."""
+    if gitops.is_repo(project):
+        raise VcsError("the project is already in a git repository")
+    if found := synced.provider(project):
+        raise VcsError(f"the project is in a {found} folder: git cannot live there")
+    gitops.init(project)
+    ignore = project / ".gitignore"
+    if not ignore.exists():
+        ignore.write_text(project_create.GITIGNORE)
+    ensure_driver(project)
+    return {"ok": True}
+
+
 def ensure_driver(project: Path) -> dict[str, bool]:
     """Have this clone merge mappings and functions at the rule level (`cli/merge_driver.py`),
     without the user knowing: done when a project is opened, and before every pull."""
@@ -361,35 +377,7 @@ def conflicts(project: Path) -> list[dict[str, Any]]:
             out.append({"file": rel, "kind": "generated", "items": []})
             continue
         base, remote, mine = _sides(project, rel)
-        kind, items = "text", []
-        try:
-            if rel.endswith(".fn.yaml"):
-                kind = "rules"
-                result = merge3(
-                    load_raw(base, "base") if base.strip() else None,
-                    load_raw(remote, "remote"),
-                    load_raw(mine, "mine"),
-                )
-                found = result.conflicts
-            elif rel.endswith(".fn"):
-                kind = "functions"
-                _, found = merge_fn_texts(base, remote, mine)
-            else:
-                found = []
-                kind = "text"
-        except MergeError:
-            kind, found = "text", []
-        for c in found:
-            items.append(
-                {
-                    "path": c.path,
-                    "base": c.base,
-                    "mine": c.theirs,
-                    "remote": c.ours,
-                    "mine_missing": c.theirs_missing,
-                    "remote_missing": c.ours_missing,
-                }
-            )
+        kind, items = merge_items.items(rel, base, remote, mine)
         out.append({"file": rel, "kind": kind, "items": items})
     return out
 
@@ -397,19 +385,10 @@ def conflicts(project: Path) -> list[dict[str, Any]]:
 def _settle(project: Path, rel: str, choices: dict[str, str]) -> str:
     """The merged text of a conflicted file with `choices` (path -> `mine` | `remote`)."""
     base, remote, mine = _sides(project, rel)
-    merge_choices: Any = {p: ("theirs" if c == "mine" else "ours") for p, c in choices.items()}
     try:
-        if rel.endswith(".fn.yaml"):
-            text, left = merge_texts(base, remote, mine, merge_choices)
-        elif rel.endswith(".fn"):
-            text, left = merge_fn_texts(base, remote, mine, merge_choices)
-        else:
-            raise VcsError(f"{rel} is not a file the tool can settle: edit it, or abort")
-    except MergeError as exc:
-        raise VcsError(f"{rel}: {exc}") from exc
-    if left:
-        raise VcsError(f"{rel}: still to choose: {', '.join(c.path for c in left)}")
-    return text
+        return merge_items.settle(rel, base, remote, mine, choices)
+    except merge_items.Unsettled as exc:
+        raise VcsError(str(exc)) from exc
 
 
 def resolve(project: Path, file: str, choices: dict[str, str] | None = None) -> dict[str, Any]:

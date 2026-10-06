@@ -108,3 +108,38 @@ def test_a_moved_build_or_a_declared_ordinary_folder_goes_ahead(
     monkeypatch.setenv("J2JME_ALLOW_SYNCED", "1")
     assert runner.invoke(app, ["build"]).exit_code == 0
     assert (onedrive_project / "build" / "compiled" / "map_ping.sql").is_file()
+
+
+def test_removing_the_git_of_a_synced_project_keeps_the_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for var in ("OneDrive", "OneDriveCommercial", "OneDriveConsumer"):
+        monkeypatch.delenv(var, raising=False)
+    repo = tmp_path / "SharePoint" / "repo"
+    (repo / ".git" / "objects").mkdir(parents=True)
+    pack = repo / ".git" / "objects" / "pack.idx"
+    pack.write_text("x")
+    pack.chmod(0o444)  # git writes its packs read-only
+    (repo / ".git").chmod(0o755)
+    (repo / "mapper.toml").write_text("keep")
+    assert synced.remove_git(repo) == {"removed": str(repo.resolve() / ".git")}
+    assert not (repo / ".git").exists() and (repo / "mapper.toml").read_text() == "keep"
+    assert synced.status(repo) == {"synced": "SharePoint", "git": None}
+
+
+def test_only_a_git_in_a_synced_folder_can_be_removed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for var in ("OneDrive", "OneDriveCommercial", "OneDriveConsumer"):
+        monkeypatch.delenv(var, raising=False)
+    plain = tmp_path / "work" / "repo"
+    (plain / ".git").mkdir(parents=True)
+    with pytest.raises(ValueError, match="no git repository in a synced folder"):
+        synced.remove_git(plain)
+    assert (plain / ".git").is_dir()
+    above = tmp_path / "repo"  # the repository is above the synced folder: not the sync's
+    (above / ".git").mkdir(parents=True)
+    (above / "Dropbox" / "p").mkdir(parents=True)
+    assert synced.status(above / "Dropbox" / "p")["git"] is None
+    with pytest.raises(ValueError):
+        synced.remove_git(above / "Dropbox" / "p")

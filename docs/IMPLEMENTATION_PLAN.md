@@ -713,8 +713,18 @@ Sliced; each slice is usable on its own:
           `build-dirs.json` (`publish_dirs.rs`), the dialog at open and before each build, and
           *Build folder…*. Tests: `test_synced.py`, `test_manifest.py`. **Not verified**: the dialog in
           the running tool; a real OneDrive/SharePoint folder (Windows reparse points are not read,
-          only the path). **Not done**: the base per user, the 3-way merge on change, conflict copies,
-          presence.
+          only the path).
+        - **Done (second part): the merge.** `cli/shared.py`, `cli/merge_items.py` (shared with the
+          git panel), `transpiler/atomic.py` (every save of a mapping or a function file is a
+          temporary file and a rename), the base per user (`$J2JME_BASE_DIR`, `bases/` of the app
+          config, recorded at read and save), `shared_*` ops, the save-time merge in the grid and in
+          the function editor, the dialog `SharedConflict.tsx`, the check at window focus, conflict
+          copies merged or deleted. At open: a git repository in a synced folder asks to delete `.git`
+          (files kept, history lost) or the project is not opened; a project with no git outside a
+          synced folder is offered `git init` (`vcs_init`, not binding). Tests: `test_shared.py`,
+          `test_synced.py`, `test_vcs.py` (init, both backends). **Not verified**: all the dialogs in
+          the running tool; a real sync client (timing of the copies, partial uploads). **Not done**:
+          presence; a filesystem watcher (the check is at save and at focus, by choice).
       - [x] **Publish (both modes).** `mapper publish [--to DIR]` and a button: build (nothing
         is published if it fails), the artifacts written to the publish directory.
         Default: the current `build/compiled`; `[publish] dir` in `mapper.toml` overrides it,

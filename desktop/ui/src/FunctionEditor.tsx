@@ -34,6 +34,9 @@ interface Props {
   functions: FunctionEntry[];
   /** A file was saved, created or deleted: the explorer's list is stale. */
   onChanged: () => void;
+  /** Shared-folder mode: the text to save once merged with what arrived in the folder, "disk" to
+   * keep the file as it is there, null if the user cancelled. Absent: save as is. */
+  reconcile?: (file: string, text: string) => Promise<string | null>;
   onOpen: (file: string) => void;
   onClose: () => void;
 }
@@ -51,7 +54,7 @@ type Asking = null | "new-file" | "delete" | { switchTo: string } | "close";
  * highlighting and the function names to complete, the issues the registry and the backends
  * find (as the text is typed), and a test call on the Python backend with the text as it is.
  */
-export function FunctionEditor({ project, file, nonce, control, focus, functions, onChanged, onOpen, onClose }: Props) {
+export function FunctionEditor({ project, file, nonce, control, focus, functions, onChanged, reconcile, onOpen, onClose }: Props) {
   const [files, setFiles] = useState<FnFile[]>([]);
   const [saved, setSaved] = useState<string | null>(null);
   const [text, setText] = useState("");
@@ -174,8 +177,18 @@ export function FunctionEditor({ project, file, nonce, control, focus, functions
 
   const save = async () => {
     try {
-      await fnWrite(project, file, text);
-      setSaved(text);
+      const answer = reconcile ? await reconcile(file, text) : text;
+      if (answer === null) return false;
+      if (answer === "disk") {
+        const body = await fnRead(project, file); // the version in the shared folder wins
+        setSaved(body);
+        setText(body);
+        setError("");
+        return true;
+      }
+      await fnWrite(project, file, answer);
+      if (answer !== text) setText(answer);
+      setSaved(answer);
       setError("");
       onChanged();
       void loadFiles();

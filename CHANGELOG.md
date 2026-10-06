@@ -38,6 +38,15 @@ section (see `packaging/release.py`).
   their path and asks for a folder on the machine to build in (per user and project, *Build folder…*
   to change it); nothing generated is written in the synced folder. `mapper` stops there unless
   `J2JME_BUILD_DIR` points elsewhere (or `J2JME_ALLOW_SYNCED=1` for a folder that only looks synced).
+- Teamwork through a synced folder: when the file in the folder changed since you saw it, a save
+  merges your edit with it rule by rule (function by function in `fn/*.fn`) and asks only about what
+  both changed; the window reads the open mapping again when it comes back to the front, and the
+  conflict copies the sync makes (`name-PC.fn.yaml`) are offered for merge. Files are saved whole
+  (temporary file and rename).
+- A git repository inside a synced folder is refused: the tool explains why (the sync corrupts
+  `.git`) and offers to delete `.git` (the files stay, the history goes); if you decline, the project
+  is not opened. A project outside any repository is offered `git init` (optional).
+- Git no longer opens the desktop's password window (`ksshaskpass`, ...) behind the tool's back.
 
 ### Not verified
 

@@ -5,7 +5,7 @@ so that per-edit operations (Target / Source normalisation) cost a message, not 
 Python start-up. Requests: `{"id", "op", ...}`; answers `{"id", "ok", ...}`.
 
 Ops: `ping`; `complete` (`tree`, `project`, `stem`, `path`, `column`, `text`, `cursor`: what can be typed there, see `transpiler/complete.py`); `check` (`tree`, `project`, `stem`); `retarget` (`tree`, `path`, `value`); `set_source` (`tree`, `path`,
-`value`); `add_rule` (`tree`, `parent`, `index`, `kind`); `delete_rule` (`tree`, `path`); `proposal` (`tree`, `path`: the auto code, the override), `take_over` / `accept_proposal` / `keep_override` (`tree`, `path`), `set_override` (`tree`, `path`, `code`), see `transpiler/review.py`; `check` also answers `review` (overrides whose auto code moved); `schemas_status` (`tree`, `project`, `stem`: the input and output schema of a mapping, `ok` / `missing` / `invalid`), `schema_import` (`project`, `stem`, `kind`, `source`: copy a schema into the project as the mapping's own); `mapping_create` (`project`, `name`, `golden`?, `golden_to`?), `mapping_golden` (`project`, `name`: the cases already in `tests/golden/<name>/`), `mapping_removal` / `mapping_delete` (`project`, `name`, `golden`?: what deleting takes, then does it; with `golden` the golden cases too), `mapping_rename` (`project`, `name`, `new`, `file_id`?), see `cli/mappings.py`; `golden_cases` (`project`, `mapping`), `golden_import` (`project`, `mapping`, `name`, `input`, `expected`?, `errors`?: copy the files in under the standard names), `golden_rename` (`name`, `new`), `golden_delete` (`name`), `golden_read` (`name`: the text of each file of a case), `golden_write` (`name`, `role` input / expected / errors, `text`: checked, `null` removes the file), `golden_create` (`name`, `text`?: a case with only an input), see `cli/golden.py`; `golden_run` (`mapping`, `names`?: run the cases on the Python backend, pass / fail, output, rule errors, diff), `input_run` (`mapping`, `input`: the same on any JSON file, nothing written), `golden_record` (`name`: take the output now as the expected one), see `cli/golden_run.py`; `scaffold` (`tree`, `project`, `stem`, `apply`: the empty rules the output schema adds, see `transpiler/scaffold.py`; with `apply` also the new `tree`); `config_read` (`project`), `config_check` (`values`), `config_write` (`project`, `values`): `mapper.toml`, see `cli/project_config.py`; `vcs_ensure_driver` (`project`: have the clone merge mappings and functions at the rule level; quiet) / `vcs_state` / `vcs_summary` / `vcs_commit` (`notes`, `wip`: check, build and one commit of the sources and the generated files) / `vcs_pull` (rebase) / `vcs_push` (both take `credentials`: `username`, `password`, for a remote that asks; the answer to a failure that credentials could cure has `auth_required`) / `vcs_conflicts` / `vcs_resolve` (`file`, `choices`: path -> `mine` | `remote`) / `vcs_abort` (`project`: git mode, see `cli/vcs.py`); `artifacts_state` (`project`: `committed` / `ignored` / `unknown` and the tracked files of `build/compiled`), `artifacts_ignore` / `artifacts_track` (`project`: stop or resume committing them, see `cli/artifacts_mode.py`; the git index change is staged, not committed); `synced_status` (`project`: `synced` the sync provider or null, `git` a repository in a synced folder, see `cli/synced.py`); `engine_status` (`project`: `status` current / upgrade / older / unversioned, the project's engine version and the tool's), `engine_upgrade` (`project`: write the tool's version into `mapper.toml`, forward only; answers the status from before), see `cli/engine_version.py`; `functions` (`project`?: the built-in and project functions, see `cli/functions.py`); `project_backends` (the backends and their options, as `config_read`'s `schema`), `project_create` (`project`, `target`, `options`?: a new `mapper.toml` and the project's folders), see `cli/project_create.py`; `fn_files` (`project`), `fn_read` / `fn_write` / `fn_create` / `fn_delete` (`project`, `file`, `text`?: the project's `fn/*.fn`; a write that does not parse is refused), `fn_check` (`project`, `file`, `text`: issues), `fn_rename_plan` / `fn_rename` (`project`, `name`, `new`: where a project function is used, and the rename of its `def` and its calls in the other functions and the mappings), `fn_add` (`project`, `file`, `name`: a stub function at the end of a file), `fn_override` (`project`, `name`: copy a built-in into `fn/builtin_overrides.fn`), `fn_call` (`project`, `name`, `args`, `text`?: a test call on Python), see `cli/fn_files.py`; `lookups_shared` (`project`: the project-wide lookups and the mappings that read each), `lookup_save` (`project`, `label`, `entries`, `type`?, `description`?, `create`?: answers the mappings whose rules went back to review), `lookup_delete` (`project`, `label`: refused while a mapping reads it), `lookup_share` (`project`, `stem`, `label`: move a mapping's lookup into the project), `lookup_unshare` (`project`, `label`: give each mapping that reads it a copy), see `transpiler/shared_lookups.py`. `tree` is the file as `mapper fn read` prints it; the answer carries the new
+`value`); `add_rule` (`tree`, `parent`, `index`, `kind`); `delete_rule` (`tree`, `path`); `proposal` (`tree`, `path`: the auto code, the override), `take_over` / `accept_proposal` / `keep_override` (`tree`, `path`), `set_override` (`tree`, `path`, `code`), see `transpiler/review.py`; `check` also answers `review` (overrides whose auto code moved); `schemas_status` (`tree`, `project`, `stem`: the input and output schema of a mapping, `ok` / `missing` / `invalid`), `schema_import` (`project`, `stem`, `kind`, `source`: copy a schema into the project as the mapping's own); `mapping_create` (`project`, `name`, `golden`?, `golden_to`?), `mapping_golden` (`project`, `name`: the cases already in `tests/golden/<name>/`), `mapping_removal` / `mapping_delete` (`project`, `name`, `golden`?: what deleting takes, then does it; with `golden` the golden cases too), `mapping_rename` (`project`, `name`, `new`, `file_id`?), see `cli/mappings.py`; `golden_cases` (`project`, `mapping`), `golden_import` (`project`, `mapping`, `name`, `input`, `expected`?, `errors`?: copy the files in under the standard names), `golden_rename` (`name`, `new`), `golden_delete` (`name`), `golden_read` (`name`: the text of each file of a case), `golden_write` (`name`, `role` input / expected / errors, `text`: checked, `null` removes the file), `golden_create` (`name`, `text`?: a case with only an input), see `cli/golden.py`; `golden_run` (`mapping`, `names`?: run the cases on the Python backend, pass / fail, output, rule errors, diff), `input_run` (`mapping`, `input`: the same on any JSON file, nothing written), `golden_record` (`name`: take the output now as the expected one), see `cli/golden_run.py`; `scaffold` (`tree`, `project`, `stem`, `apply`: the empty rules the output schema adds, see `transpiler/scaffold.py`; with `apply` also the new `tree`); `config_read` (`project`), `config_check` (`values`), `config_write` (`project`, `values`): `mapper.toml`, see `cli/project_config.py`; `vcs_ensure_driver` (`project`: have the clone merge mappings and functions at the rule level; quiet) / `vcs_state` / `vcs_summary` / `vcs_commit` (`notes`, `wip`: check, build and one commit of the sources and the generated files) / `vcs_pull` (rebase) / `vcs_push` (both take `credentials`: `username`, `password`, for a remote that asks; the answer to a failure that credentials could cure has `auth_required`) / `vcs_conflicts` / `vcs_resolve` (`file`, `choices`: path -> `mine` | `remote`) / `vcs_init` (`project`: put the project under git: `main`, a `.gitignore`, the merge driver; nothing committed) / `vcs_abort` (`project`: git mode, see `cli/vcs.py`); `artifacts_state` (`project`: `committed` / `ignored` / `unknown` and the tracked files of `build/compiled`), `artifacts_ignore` / `artifacts_track` (`project`: stop or resume committing them, see `cli/artifacts_mode.py`; the git index change is staged, not committed); `shared_seen` (`project`, `file`: the file on disk is the version this user has seen) / `shared_prepare` (`project`, `file`, `text` or `tree`: before a save in a synced folder, `same` / `merged` with the `text` and `tree` to save / `conflict` with `items`) / `shared_settle` (the same, plus `choices`) / `shared_scan` (`project`: `changed` files and conflict `copies`) / `shared_copy_merge` / `shared_copy_settle` / `shared_copy_discard` (`project`, `copy`), see `cli/shared.py`; `synced_remove_git` (`project`: delete the `.git` of a repository in a synced folder, the files stay), `synced_status` (`project`: `synced` the sync provider or null, `git` a repository in a synced folder, see `cli/synced.py`); `engine_status` (`project`: `status` current / upgrade / older / unversioned, the project's engine version and the tool's), `engine_upgrade` (`project`: write the tool's version into `mapper.toml`, forward only; answers the status from before), see `cli/engine_version.py`; `functions` (`project`?: the built-in and project functions, see `cli/functions.py`); `project_backends` (the backends and their options, as `config_read`'s `schema`), `project_create` (`project`, `target`, `options`?: a new `mapper.toml` and the project's folders), see `cli/project_create.py`; `fn_files` (`project`), `fn_read` / `fn_write` / `fn_create` / `fn_delete` (`project`, `file`, `text`?: the project's `fn/*.fn`; a write that does not parse is refused), `fn_check` (`project`, `file`, `text`: issues), `fn_rename_plan` / `fn_rename` (`project`, `name`, `new`: where a project function is used, and the rename of its `def` and its calls in the other functions and the mappings), `fn_add` (`project`, `file`, `name`: a stub function at the end of a file), `fn_override` (`project`, `name`: copy a built-in into `fn/builtin_overrides.fn`), `fn_call` (`project`, `name`, `args`, `text`?: a test call on Python), see `cli/fn_files.py`; `lookups_shared` (`project`: the project-wide lookups and the mappings that read each), `lookup_save` (`project`, `label`, `entries`, `type`?, `description`?, `create`?: answers the mappings whose rules went back to review), `lookup_delete` (`project`, `label`: refused while a mapping reads it), `lookup_share` (`project`, `stem`, `label`: move a mapping's lookup into the project), `lookup_unshare` (`project`, `label`: give each mapping that reads it a copy), see `transpiler/shared_lookups.py`. `tree` is the file as `mapper fn read` prints it; the answer carries the new
 `tree`, or `error`.
 """
 
@@ -16,6 +16,8 @@ import os
 import sys
 from pathlib import Path
 from typing import Any, TextIO
+
+import yaml
 
 from cli import (
     artifacts_mode,
@@ -31,6 +33,7 @@ from cli import (
     synced,
     vcs,
 )
+from cli import shared as shared_folder
 from cli.build_dir import BUILD_ENV
 from cli.config import MapperConfigError
 from compiler.function_registry import all_functions
@@ -40,8 +43,9 @@ from transpiler import shared_lookups as shared
 from transpiler.check import check_functional, schemas_for
 from transpiler.complete import complete
 from transpiler.edit import add_rule, delete_rule, retarget, set_source
-from transpiler.model import FnYamlError, functional_from_dict, functional_to_dict
+from transpiler.model import FnYamlError, functional_from_dict, functional_to_dict, parse_functional
 from transpiler.scaffold import scaffold_rules
+from transpiler.serialize import functional_to_yaml
 
 _REVIEW_OPS = {
     "proposal": None,
@@ -94,11 +98,52 @@ _FN_OPS: dict[str, Any] = {
 }
 
 
+def _text_of(request: dict[str, Any], rel: str) -> str:
+    """What the tool is saving: the file's text, or (a mapping) its Rule Tree as JSON."""
+    if rel.endswith(".fn.yaml") and "tree" in request:
+        return functional_to_yaml(functional_from_dict(request["tree"]))
+    return request["text"]
+
+
+def _with_tree(rel: str, answer: dict[str, Any]) -> dict[str, Any]:
+    """A merged mapping also comes as the Rule Tree the grid shows."""
+    if answer.get("text") is not None and rel.endswith(".fn.yaml"):
+        raw = yaml.safe_load(answer["text"]) or {}
+        stem = rel.rsplit("/", 1)[-1].removesuffix(".fn.yaml")
+        answer = {**answer, "tree": functional_to_dict(parse_functional(raw, default_id=stem))}
+    return answer
+
+
+_SHARED_OPS: dict[str, Any] = {
+    "shared_seen": lambda r: shared_folder.seen(Path(r["project"]), r["file"]) or {},
+    "shared_prepare": lambda r: _with_tree(
+        r["file"], shared_folder.prepare(Path(r["project"]), r["file"], _text_of(r, r["file"]))
+    ),
+    "shared_settle": lambda r: _with_tree(
+        r["file"],
+        shared_folder.settle(Path(r["project"]), r["file"], _text_of(r, r["file"]), r["choices"]),
+    ),
+    "shared_scan": lambda r: shared_folder.scan(Path(r["project"])),
+    "shared_copy_merge": lambda r: _with_tree(
+        shared_folder.original_of(Path(r["project"]), r["copy"]) or "",
+        shared_folder.merge_copy(Path(r["project"]), r["copy"]),
+    ),
+    "shared_copy_settle": lambda r: _with_tree(
+        shared_folder.original_of(Path(r["project"]), r["copy"]) or "",
+        shared_folder.settle_copy(Path(r["project"]), r["copy"], r["choices"]),
+    ),
+    "shared_copy_discard": lambda r: (
+        shared_folder.discard_copy(Path(r["project"]), r["copy"]) or {}
+    ),
+}
+
+
 def handle(request: dict[str, Any]) -> dict[str, Any]:
     """One request. `build_dir` and `allow_synced` (the tool adds them for a project in a synced
     folder, from this user's choice) apply to this request only: the worker serves every project."""
     moved = {
         BUILD_ENV: request.get("build_dir"),
+        shared_folder.BASE_ENV: request.get("base_dir"),
         synced.ALLOW_ENV: "1" if request.get("allow_synced") else None,
     }
     moved = {name: str(value) for name, value in moved.items() if value}
@@ -332,6 +377,8 @@ def _handle(request: dict[str, Any]) -> dict[str, Any]:
         return {"ok": True, "files": vcs.conflicts(Path(request["project"]))}
     if op == "vcs_resolve":
         return vcs.resolve(Path(request["project"]), request["file"], request.get("choices"))
+    if op == "vcs_init":
+        return vcs.init_repo(Path(request["project"]))
     if op == "vcs_abort":
         return vcs.abort(Path(request["project"]))
     if op == "artifacts_state":
@@ -340,6 +387,10 @@ def _handle(request: dict[str, Any]) -> dict[str, Any]:
         act = artifacts_mode.ignore if op == "artifacts_ignore" else artifacts_mode.track
         before = act(Path(request["project"]))
         return {"ok": True, "before": before.to_json()}
+    if op in _SHARED_OPS:
+        return {"ok": True, **_SHARED_OPS[op](request)}
+    if op == "synced_remove_git":
+        return {"ok": True, **synced.remove_git(Path(request["project"]))}
     if op == "synced_status":
         return {"ok": True, **synced.status(Path(request["project"]))}
     if op == "engine_status":

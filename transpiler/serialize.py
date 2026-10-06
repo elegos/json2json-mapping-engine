@@ -14,6 +14,7 @@ from typing import Any
 
 import yaml
 
+from transpiler.atomic import write_atomic
 from transpiler.model import (
     FieldRule,
     FunctionalFile,
@@ -181,4 +182,4 @@ def write_functional(path: Path, file: FunctionalFile) -> None:
     """Write `file` to `path`, after checking that what is written loads again."""
     text = functional_to_yaml(file)
     parse_functional(yaml.safe_load(text), default_id=file.id, path=path)
-    path.write_text(text)
+    write_atomic(path, text)

@@ -2,6 +2,7 @@ import type { ColDef, ICellRendererParams, ValueSetterParams } from "ag-grid-com
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AgGridReact } from "ag-grid-react";
 import { type Choice, Confirm } from "./Confirm";
+import { SharedConflict } from "./SharedConflict";
 import { VersionControl } from "./VersionControl";
 import { CompletingCellEditor, type GridContext } from "./CompletingCellEditor";
 import { Lookups } from "./Lookups";
@@ -41,6 +42,8 @@ import {
   artifactsTrack,
   engineStatus,
   vcsEnsureDriver,
+  vcsInit,
+  vcsState,
   engineUpgrade,
   configWrite,
   chooseProject,
@@ -59,6 +62,15 @@ import {
   buildDirGet,
   buildDirSet,
   syncedStatus,
+  syncedRemoveGit,
+  sharedPrepare,
+  sharedSettle,
+  sharedScan,
+  sharedCopyMerge,
+  sharedCopySettle,
+  sharedCopyDiscard,
+  type SharedAnswer,
+  type VcsConflictItem,
   inputRun,
   chooseJsonFile,
   type GoldenResult,
@@ -216,6 +228,16 @@ export function App() {
     choices: Choice[];
     option?: string;
     resolve: (id: string, checked: boolean) => void;
+  } | null>(null);
+  // shared-folder mode: this project is in a synced folder (set by `syncedGate`), and the merge
+  // dialog waiting for the user's choices
+  const [sharedMode, setSharedMode] = useState(false);
+  const [conflict, setConflict] = useState<{
+    file: string;
+    other: string;
+    kind: "rules" | "functions" | "text";
+    items: VcsConflictItem[];
+    resolve: (answer: { choices: Record<string, "mine" | "remote"> } | { whole: "mine" | "remote" } | null) => void;
   } | null>(null);
   const [prompt, setPrompt] = useState<{
     title: string;
@@ -426,31 +448,49 @@ export function App() {
     [ask, askWithOption],
   );
 
-  /** A project in a synced folder (OneDrive, SharePoint, ...) must not get its build written there:
-   * the user picks a local folder, per user and project (the app's config). Declining is allowed:
-   * nothing is built, and this asks again at the next open. `force`: ask even if already chosen. */
+  /** A project in a synced folder (OneDrive, SharePoint, ...). Two things, in this order:
+   * a git repository there is not supported (the sync corrupts `.git`): the user deletes the `.git`
+   * (the files stay, the history goes) or the project is not opened. Then nothing generated is
+   * written in the folder: the user picks a local folder, per user and project (the app's config);
+   * declining is allowed, nothing is built and this asks again. `force`: ask for the folder even
+   * if chosen. Returns false when the project must not be opened. */
   const syncedGate = useCallback(
-    async (dir: string, force = false) => {
+    async (dir: string, force = false): Promise<boolean> => {
       let found;
       try {
         found = await syncedStatus(dir);
       } catch {
-        return;
+        return true;
       }
+      setSharedMode(Boolean(found.synced));
       if (!found.synced) {
         if (force) setStatus("This project is not in a synced folder: it builds in its own build/");
-        return;
+        return true;
       }
-      if (!force && (await buildDirGet(dir))) return;
-      const git = found.git
-        ? `\n\nA git repository in a synced folder is not supported: the sync can corrupt .git ` +
-          `(${found.git}). Keep the repository outside it.`
-        : "";
+      if (found.git) {
+        const id = await ask(
+          `This project is a git repository in a ${found.synced} folder (${found.git}). The sync ` +
+            "uploads and downloads the files of .git one by one and at different times, which corrupts " +
+            "the repository: history that cannot be read, branches that disappear, commits that " +
+            "cannot be pulled. It cannot be used that way.\n\n" +
+            "Delete the .git folder? Your files stay exactly as they are now, so the current state " +
+            "is not lost; the history (commits, branches) is. Keep the repository outside the " +
+            "synced folder if you need it.\n\nIf you do not delete it, the project is not opened.",
+          [
+            { id: "delete", label: "Delete .git (lose the history)" },
+            { id: "cancel", label: "Do not open the project", primary: true },
+          ],
+        );
+        if (id !== "delete") return false;
+        await syncedRemoveGit(dir);
+        setStatus("The .git folder was deleted: the project is no longer a git repository");
+      }
+      if (!force && (await buildDirGet(dir))) return true;
       const id = await ask(
         `This project is in a ${found.synced} folder. Nothing generated is written there (the sync ` +
           "would upload the build, and everybody would overwrite everybody's). Choose a folder on " +
           "this machine to build in? Without one, build, check and publish stop, and this asks again " +
-          `the next time.${git}`,
+          "the next time.",
         [
           { id: "choose", label: "Choose a folder…", primary: true },
           { id: "ordinary", label: "This is not a synced folder" },
@@ -466,16 +506,63 @@ export function App() {
       } else if (id === "ordinary") {
         await buildDirSet(dir, "-");
       }
+      return true;
+    },
+    [ask],
+  );
+
+  /** A project outside a synced folder and outside any git repository: offer to put it under git.
+   * Not binding: "Not now" asks again next time, "Never for this project" is remembered here. */
+  const gitOffer = useCallback(
+    async (dir: string) => {
+      let refused: string[] = [];
+      try {
+        refused = JSON.parse(localStorage.getItem("noGitOffer") ?? "[]");
+      } catch {
+        /* nothing remembered */
+      }
+      if (refused.includes(dir)) return;
+      let state;
+      let synced;
+      try {
+        [state, synced] = await Promise.all([vcsState(dir), syncedStatus(dir)]);
+      } catch {
+        return;
+      }
+      if (!state.git || state.repo || synced.synced) return;
+      const id = await ask(
+        "This project is not under version control. Put it under git? That creates a repository here " +
+          "(branch main, a .gitignore, and the tool's rule-level merge for mappings and functions) " +
+          "and commits nothing; the Version control panel does that, after checking the project. " +
+          "It is optional: the project works the same without.",
+        [
+          { id: "init", label: "Put it under git", primary: true },
+          { id: "later", label: "Not now" },
+          { id: "never", label: "Never for this project" },
+        ],
+      );
+      if (id === "init") {
+        await vcsInit(dir);
+        setStatus("The project is under git: commit from Version control…");
+      } else if (id === "never") {
+        try {
+          localStorage.setItem("noGitOffer", JSON.stringify([...refused, dir]));
+        } catch {
+          /* asked again next time */
+        }
+      }
     },
     [ask],
   );
 
   const openDir = useCallback(async (dir: string, remember = true) => {
     try {
+      // first: a git repository kept in sync is not opened, and nothing may be written to it before
+      if (remember && !(await syncedGate(dir))) return;
       const gate = await engineGate(dir, !remember);
       if (!gate.open) return;
-      if (remember) await syncedGate(dir);
       setOlderAccepted(gate.older);
+      if (remember) await gitOffer(dir).catch((e) => setStatus(String(e instanceof Error ? e.message : e)));
       void vcsEnsureDriver(dir).catch(() => undefined); // best effort, and nobody's business
       const found = await listFnFiles(dir);
       setProject(dir);
@@ -510,7 +597,7 @@ export function App() {
     } catch (e) {
       setStatus(String(e));
     }
-  }, [forgetHistory, engineGate, syncedGate]);
+  }, [forgetHistory, engineGate, syncedGate, gitOffer]);
 
   const askValues = useCallback(
     (title: string, fields: PromptField[], confirm: string, validate: (v: Record<string, string>) => string | null) =>
@@ -759,13 +846,58 @@ export function App() {
     });
   }, []);
 
+  /** Shared-folder mode: before saving `mine` as `file`, the merge with what arrived in the folder
+   * since this user saw it. The text or tree to save, "disk" (keep the one on disk: drop mine), or
+   * null (the user cancelled). Outside a synced folder the answer is `mine` as it is. */
+  const reconcile = useCallback(
+    async (
+      file: string,
+      mine: { text: string } | { tree: FunctionalFile },
+    ): Promise<{ text: string } | { tree: FunctionalFile } | "disk" | null> => {
+      if (!project) return mine;
+      const pick = (a: SharedAnswer) =>
+        "tree" in mine ? { tree: a.tree as FunctionalFile } : { text: a.text as string };
+      const prep = await sharedPrepare(project, file, mine);
+      if (prep.state === "same") return mine;
+      if (prep.state === "merged") {
+        setStatus("Merged with the changes that arrived from the shared folder");
+        return pick(prep);
+      }
+      const decision = await new Promise<
+        { choices: Record<string, "mine" | "remote"> } | { whole: "mine" | "remote" } | null
+      >((resolve) =>
+        setConflict({
+          file,
+          other: "the shared folder",
+          kind: prep.kind ?? "text",
+          items: prep.items ?? [],
+          resolve,
+        }),
+      );
+      if (!decision) return null;
+      if ("whole" in decision) return decision.whole === "mine" ? mine : "disk";
+      return pick(await sharedSettle(project, file, mine, decision.choices));
+    },
+    [project],
+  );
+
   const save = useCallback(async (): Promise<boolean> => {
     if (!project) return true;
     setBusy(true);
     try {
       let decayed: string[] = [];
       if (current && tree && fnDirty) {
-        decayed = await writeFn(project, current, tree);
+        const answer = await reconcile(current, { tree });
+        if (answer === null) {
+          setStatus("not saved");
+          return false;
+        }
+        if (answer === "disk") {
+          await load(current, true);
+          setStatus("Your changes were dropped: the version in the shared folder was kept");
+          return true;
+        }
+        decayed = await writeFn(project, current, "tree" in answer ? answer.tree : tree);
         await load(current, true);
       }
       if (config && configDirty) {
@@ -786,8 +918,86 @@ export function App() {
     } finally {
       setBusy(false);
     }
-  }, [project, current, tree, load, config, fnDirty, configDirty]);
+  }, [project, current, tree, load, config, fnDirty, configDirty, reconcile]);
   saveRef.current = save;
+
+  // Shared-folder mode: when the window comes back, look at what the sync brought. The open
+  // mapping is read again if it changed and holds no unsaved edits (with edits, the merge happens
+  // at save); a conflict copy is offered for merge into its original, once per session.
+  const copiesDeclined = useRef(new Set<string>());
+  const scanning = useRef(false);
+  const fnDirtyRef = useRef(false);
+  fnDirtyRef.current = fnDirty;
+  useEffect(() => {
+    if (!project || !sharedMode) return;
+    const onFocus = async () => {
+      if (scanning.current) return;
+      scanning.current = true;
+      try {
+        const found = await sharedScan(project);
+        if (current && found.changed.includes(current)) {
+          if (fnDirtyRef.current) {
+            setStatus("Changed in the shared folder: it is merged with your edits when you save");
+          } else {
+            await load(current, true);
+            setStatus("Read again: it changed in the shared folder");
+          }
+        }
+        for (const c of found.copies) {
+          if (copiesDeclined.current.has(c.copy)) continue;
+          if (fnDirtyRef.current && c.original === current) continue; // after the save
+          const name = (p: string) => p.replace(/^.*\//, "");
+          const id = await ask(
+            `The sync made a conflict copy: ${name(c.copy)}, of ${name(c.original)}. Merge it into ` +
+              "the original? The copy is removed afterwards.",
+            [
+              { id: "merge", label: "Merge it", primary: true },
+              { id: "discard", label: "Delete the copy" },
+              { id: "later", label: "Not now" },
+            ],
+          );
+          if (id === "later") {
+            copiesDeclined.current.add(c.copy);
+            continue;
+          }
+          if (id === "discard") {
+            await sharedCopyDiscard(project, c.copy);
+          } else {
+            let answer = await sharedCopyMerge(project, c.copy);
+            if (answer.state === "conflict") {
+              const decision = await new Promise<
+                { choices: Record<string, "mine" | "remote"> } | { whole: "mine" | "remote" } | null
+              >((resolve) =>
+                setConflict({
+                  file: name(c.original),
+                  other: "the copy",
+                  kind: answer.kind ?? "text",
+                  items: answer.items ?? [],
+                  resolve,
+                }),
+              );
+              if (!decision || "whole" in decision) {
+                copiesDeclined.current.add(c.copy);
+                continue;
+              }
+              answer = await sharedCopySettle(project, c.copy, decision.choices);
+            } else {
+              answer = await sharedCopySettle(project, c.copy, {});
+            }
+            setStatus(`Merged ${name(c.copy)} into ${name(c.original)}`);
+            if (current === c.original) await load(current, true);
+          }
+          await reloadFiles(null);
+        }
+      } catch (e) {
+        setStatus(String(e instanceof Error ? e.message : e));
+      } finally {
+        scanning.current = false;
+      }
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [project, sharedMode, current, load, ask, reloadFiles]);
 
   /** Clearing / setting "Project wide" on a lookup: the files change, so the mapping is saved
    * first and read again. */
@@ -843,7 +1053,7 @@ export function App() {
       if (!(await guardRef.current("Save before continuing?", "Continue without saving"))) return;
       setBusy(true);
       try {
-        await syncedGate(project); // a synced folder with no build folder chosen: ask again
+        if (!(await syncedGate(project))) return; // no build folder chosen: ask again
         setReport(await runMapper(project, command, olderAccepted));
       } catch (e) {
         setStatus(String(e));
@@ -1346,7 +1556,7 @@ export function App() {
   const runGolden = useCallback(
     async (names: string[] | null): Promise<GoldenResult[] | null> => {
       if (!project || !current) return null;
-      if (dirtyRef.current) {
+      if (fnDirtyRef.current) {
         const choice = await ask("The mapping has changes not saved, and the cases run on the saved file.", [
           { id: "save", label: "Save and run", primary: true },
           { id: "cancel", label: "Cancel" },
@@ -2093,6 +2303,10 @@ export function App() {
           project={project}
           open={explorer}
           onSaved={() => setFunctionsRev((v) => v + 1)}
+          reconcile={async (file, text) => {
+            const answer = await reconcile(`fn/${file}.fn`, { text });
+            return answer === null || answer === "disk" ? answer : "text" in answer ? answer.text : text;
+          }}
           beforeDiskChange={() =>
             guardRef.current(
               "Renaming a function changes files the open mapping is read from, and it is read again afterwards. Save it first?",
@@ -2183,6 +2397,26 @@ export function App() {
           }}
           onTour={(book) => void startTour(book)}
         />}
+      {conflict && (
+        <SharedConflict
+          file={conflict.file}
+          other={conflict.other}
+          kind={conflict.kind}
+          items={conflict.items}
+          onSettle={(choices) => {
+            conflict.resolve({ choices });
+            setConflict(null);
+          }}
+          onWhole={(keep) => {
+            conflict.resolve({ whole: keep });
+            setConflict(null);
+          }}
+          onCancel={() => {
+            conflict.resolve(null);
+            setConflict(null);
+          }}
+        />
+      )}
       {question && (
         <Confirm
           message={question.message}

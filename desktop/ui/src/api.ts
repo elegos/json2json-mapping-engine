@@ -304,6 +304,56 @@ export interface SyncedStatus {
   git: string | null;
 }
 
+/** Shared-folder mode: a file changed on disk since this user saw it. `same`: save as is; `merged`:
+ * both edits fit (`text`, and for a mapping the `tree`); `conflict`: what both changed (`items`), or
+ * a `text` file the tool cannot merge. */
+export interface SharedAnswer {
+  state: "same" | "merged" | "conflict";
+  kind?: "rules" | "functions" | "text";
+  items?: VcsConflictItem[];
+  text?: string;
+  tree?: FunctionalFile;
+  original?: string;
+}
+
+/** `mine`: the text of a function file, or the Rule Tree of a mapping. */
+type Mine = { text: string } | { tree: FunctionalFile };
+
+export const sharedPrepare = (project: string, file: string, mine: Mine) =>
+  vcsRequest<SharedAnswer>({ op: "shared_prepare", project, file, ...mine });
+
+export const sharedSettle = (
+  project: string,
+  file: string,
+  mine: Mine,
+  choices: Record<string, "mine" | "remote">,
+) => vcsRequest<SharedAnswer>({ op: "shared_settle", project, file, choices, ...mine });
+
+export interface SharedScan {
+  /** Files whose version on disk is no longer the one this user saw. */
+  changed: string[];
+  /** Conflict copies the sync made (`file-PC.fn.yaml`) and the file each is a copy of. */
+  copies: { copy: string; original: string }[];
+}
+
+export const sharedScan = (project: string) => vcsRequest<SharedScan>({ op: "shared_scan", project });
+
+export const sharedCopyMerge = (project: string, copy: string) =>
+  vcsRequest<SharedAnswer>({ op: "shared_copy_merge", project, copy });
+
+export const sharedCopySettle = (
+  project: string,
+  copy: string,
+  choices: Record<string, "mine" | "remote">,
+) => vcsRequest<SharedAnswer>({ op: "shared_copy_settle", project, copy, choices });
+
+export const sharedCopyDiscard = (project: string, copy: string) =>
+  vcsRequest<object>({ op: "shared_copy_discard", project, copy });
+
+/** Deletes the `.git` of a repository in a synced folder: the files stay, the history goes. */
+export const syncedRemoveGit = (project: string) =>
+  configRequest<{ removed: string }>({ op: "synced_remove_git", project });
+
 export const syncedStatus = (project: string) =>
   configRequest<SyncedStatus>({ op: "synced_status", project });
 
@@ -520,6 +570,10 @@ export interface Credentials {
 
 /** Quietly makes this clone merge mappings and functions at the rule level (a git merge driver):
  * nothing for the user to do or know. Does nothing outside a git repository. */
+/** Puts the project under git (a repository on `main`, a `.gitignore`, the merge driver); nothing is
+ * committed. */
+export const vcsInit = (project: string) => vcsRequest<{ ok: boolean }>({ op: "vcs_init", project });
+
 export const vcsEnsureDriver = (project: string) =>
   vcsRequest<{ ok: boolean; installed: boolean; changed: boolean }>({
     op: "vcs_ensure_driver",

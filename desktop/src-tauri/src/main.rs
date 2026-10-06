@@ -84,6 +84,35 @@ fn build_choice(app: &tauri::AppHandle, project: &str) -> Option<String> {
 
 const NOT_SYNCED: &str = "-";
 
+/// The folder of this user's base for `project` (the last version of each mapping and function
+/// file the tool has seen, for the merge in a synced folder): in the app's configuration, one folder
+/// per project, never in the project.
+fn base_dir_of(app: &tauri::AppHandle, project: &str) -> Option<String> {
+    use tauri::Manager;
+    let dir = app.path().app_config_dir().ok()?;
+    let id = project
+        .bytes()
+        .fold(0xcbf29ce484222325u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x100000001b3));
+    Some(dir.join("bases").join(format!("{id:016x}")).display().to_string())
+}
+
+/// What `mapper` needs to know about a project in a synced folder (empty for any other: the user
+/// has made no choice for it): where it builds, and where this user's base is.
+fn synced_env(app: &tauri::AppHandle, project: &str) -> Vec<(&'static str, String)> {
+    let Some(choice) = build_choice(app, project) else {
+        return vec![];
+    };
+    let mut env = vec![if choice == NOT_SYNCED {
+        ("J2JME_ALLOW_SYNCED", "1".to_string())
+    } else {
+        ("J2JME_BUILD_DIR", choice)
+    }];
+    if let Some(base) = base_dir_of(app, project) {
+        env.push(("J2JME_BASE_DIR", base));
+    }
+    env
+}
+
 /// `mapper <command> --json` (build, check, transpile, compile, publish).
 ///
 /// `allow_older`: the user accepted to work on a project whose `mapper.toml` names a newer engine
@@ -117,12 +146,8 @@ fn mapper_command(
         }
     }
     let args: Vec<&str> = args.iter().map(String::as_str).collect();
-    let choice = build_choice(&app, &project);
-    let env: Vec<(&str, &str)> = match choice.as_deref() {
-        Some(NOT_SYNCED) => vec![("J2JME_ALLOW_SYNCED", "1")],
-        Some(dir) => vec![("J2JME_BUILD_DIR", dir)],
-        None => vec![],
-    };
+    let env = synced_env(&app, &project);
+    let env: Vec<(&str, &str)> = env.iter().map(|(k, v)| (*k, v.as_str())).collect();
     run_mapper(&project, &args, None, &env)
 }
 
@@ -167,13 +192,22 @@ fn build_dir_set(
 }
 
 #[tauri::command]
-fn read_fn(project: String, file: String) -> Result<MapperOutput, String> {
-    run_mapper(&project, &["fn", "read", &file], None, &[])
+fn read_fn(app: tauri::AppHandle, project: String, file: String) -> Result<MapperOutput, String> {
+    let env = synced_env(&app, &project);
+    let env: Vec<(&str, &str)> = env.iter().map(|(k, v)| (*k, v.as_str())).collect();
+    run_mapper(&project, &["fn", "read", &file], None, &env)
 }
 
 #[tauri::command]
-fn write_fn(project: String, file: String, tree: String) -> Result<MapperOutput, String> {
-    run_mapper(&project, &["fn", "write", &file], Some(&tree), &[])
+fn write_fn(
+    app: tauri::AppHandle,
+    project: String,
+    file: String,
+    tree: String,
+) -> Result<MapperOutput, String> {
+    let env = synced_env(&app, &project);
+    let env: Vec<(&str, &str)> = env.iter().map(|(k, v)| (*k, v.as_str())).collect();
+    run_mapper(&project, &["fn", "write", &file], Some(&tree), &env)
 }
 
 /// The edit worker, started on first use (or by `warm_worker`) and restarted if it dies.
@@ -253,6 +287,9 @@ fn with_build_dir(app: &tauri::AppHandle, request: String) -> String {
         map.insert("allow_synced".into(), serde_json::Value::Bool(true));
     } else {
         map.insert("build_dir".into(), serde_json::Value::String(choice));
+    }
+    if let Some(base) = value.get("project").and_then(|p| p.as_str()).and_then(|p| base_dir_of(app, p)) {
+        value["base_dir"] = serde_json::Value::String(base);
     }
     value.to_string()
 }

@@ -9,6 +9,9 @@ user can always say a folder is, or is not, a synced one (the desktop tool keeps
 from __future__ import annotations
 
 import os
+import shutil
+import stat
+from collections.abc import Callable
 from pathlib import Path
 
 from cli.build_dir import BUILD_ENV
@@ -68,7 +71,32 @@ def status(project: Path) -> dict[str, object]:
     """`synced`: the provider or None; `git`: a repository in a synced folder (not supported)."""
     found = provider(project)
     repo = git_inside(project) if found else None
+    if (
+        repo is not None and provider(repo) is None
+    ):  # a repository above the synced folder: not its sync
+        repo = None
     return {"synced": found, "git": str(repo) if repo else None}
+
+
+def remove_git(project: Path) -> dict[str, object]:
+    """Delete the `.git` of a repository in a synced folder: the files stay as they are (the current
+    state is kept), the history goes. Refused for anything but a `.git` that `status` reports, so
+    no other repository can be emptied by mistake."""
+    repo = git_inside(project)
+    if repo is None or provider(repo) is None:
+        raise ValueError("there is no git repository in a synced folder here")
+    target = repo / ".git"
+    if target.is_dir() and not target.is_symlink():
+        shutil.rmtree(target, onexc=_writable)
+    else:  # a file naming the real repository (a worktree, a submodule)
+        target.unlink()
+    return {"removed": str(target)}
+
+
+def _writable(function: Callable[..., object], path: str, _error: BaseException) -> None:
+    """Git's packfiles are read-only, which stops a delete on Windows: allow it, and retry."""
+    os.chmod(path, stat.S_IWRITE)
+    function(path)
 
 
 ALLOW_ENV = "J2JME_ALLOW_SYNCED"

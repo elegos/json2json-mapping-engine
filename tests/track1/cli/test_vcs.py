@@ -459,3 +459,36 @@ def test_the_worker_ops(pair: tuple[Path, Path]) -> None:
     handle({"op": "vcs_push", "project": str(a)})
     assert handle({"op": "vcs_pull", "project": str(b)})["ok"] is False
     assert handle({"op": "vcs_abort", "project": str(b)}) == {"ok": True}
+
+
+# --- putting a project under git ---------------------------------------------------------------
+
+
+def test_init_puts_a_project_under_git(tmp_path: Path) -> None:
+    project = tmp_path / "plain" / "proj"
+    shutil.copytree(FIXTURE, project, ignore=shutil.ignore_patterns("build", ".git"))
+    assert vcs.state(project) == {"git": True, "repo": False}
+    assert vcs.init_repo(project) == {"ok": True}
+    info = vcs.state(project)
+    assert info["repo"] and info["branch"] == "main" and info["upstream"] is None
+    assert (project / ".gitignore").is_file()
+    assert "j2jme" in (project / ".gitattributes").read_text()  # the merge driver is set up
+    assert vcs.commit(project, "first")["committed"]  # and the panel can commit at once
+    with pytest.raises(vcs.VcsError, match="already in a git repository"):
+        vcs.init_repo(project)
+
+
+def test_init_keeps_a_gitignore_the_project_has(tmp_path: Path) -> None:
+    project = tmp_path / "plain" / "proj"
+    shutil.copytree(FIXTURE, project, ignore=shutil.ignore_patterns("build", ".git"))
+    (project / ".gitignore").write_text("mine\n")
+    vcs.init_repo(project)
+    assert (project / ".gitignore").read_text() == "mine\n"
+
+
+def test_init_is_refused_in_a_synced_folder(tmp_path: Path) -> None:
+    project = tmp_path / "OneDrive" / "proj"
+    shutil.copytree(FIXTURE, project, ignore=shutil.ignore_patterns("build", ".git"))
+    with pytest.raises(vcs.VcsError, match="OneDrive folder"):
+        vcs.init_repo(project)
+    assert not (project / ".git").exists()

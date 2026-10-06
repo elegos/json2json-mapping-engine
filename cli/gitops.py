@@ -168,6 +168,14 @@ def is_repo(project: Path) -> bool:
     return _run(project, "rev-parse", "--is-inside-work-tree", check=False).returncode == 0
 
 
+def init(project: Path) -> None:
+    """A new repository in `project` on the branch `main`, with no commit."""
+    if _require() == "gix":
+        _helper("init", project)
+        return
+    _run(project, "init", "-q", "-b", "main")
+
+
 def _prefix(project: Path) -> str:
     return _run(project, "rev-parse", "--show-prefix").stdout.strip()
 

@@ -2416,16 +2416,31 @@ a merge driver would need), LFS, submodules.
 
 #### Shared-folder mode (OneDrive / SharePoint)
 
-A git repository inside a synced folder is **not supported** (the sync corrupts `.git`); the tool
-detects such a path and warns (in the dialog at open; detection is by the
-path, so it can be wrong either way: the user can say a folder is not a synced one). The sync itself does not merge: for files it does not know it makes
+A git repository inside a synced folder is **not supported** (the sync corrupts `.git`). The tool
+makes it a deliberate choice, at open and before anything is written: it explains the corruption
+and asks whether to delete the `.git` folder (the files stay as they are, so the current state is
+kept; the history goes). If the user refuses, **the project is not opened**. Detection is by the
+path, so it can be wrong either way: the user can say a folder is not a synced one. The reverse is
+offered, not imposed: a project outside a synced folder and outside any git repository gets an
+offer to put it under git (`vcs_init`: a repository on `main`, the `.gitignore` of a new project,
+the merge driver, nothing committed; "Not now" asks again, "Never for this project" is remembered).
+The sync itself does not merge: for files it does not know it makes
 conflict copies (`file-PC.yaml`) or the last writer wins. So the tool does the merge:
 
 - **Base per user.** The app's config keeps, per user, the hash and a snapshot of the last version
   of each mapping and each `fn/*.fn` file it has seen. When the file changes on disk (a watcher), or at save if the disk
   differs from the base, the tool merges three ways with the merge engine; true conflicts go to the
   merge editor. Conflict copies are recognised by their name and offered for merge. Saves are
-  atomic (temporary file + rename).
+  atomic (temporary file + rename). In the code (`cli/shared.py`, worker ops `shared_*`): the
+  base is a copy of each file in `$J2JME_BASE_DIR` (the app's config, `bases/<project>`), recorded
+  whenever the tool reads or saves the file; before a save the tool asks `shared_prepare`: the disk
+  is what was seen (save as is), or a clean three-way merge (that text is saved, and the grid shows
+  it), or a conflict listed by item (`cli/merge_items.py`, the git panel's own logic) that a
+  dialog settles. No watcher: the check happens at save and when the window gets the focus (the
+  open mapping is read again if it has no unsaved edits; conflict copies are offered for merge into
+  their original, recognised by `-PC`, ` (1)`, ` (... conflicted copy ...)` after the name when the
+  original sits next to them: a mapping really named `a-b` beside an `a` would be offered too, and
+  the user can decline).
 - **Nothing generated in the synced folder.** OneDrive has no ignore file (the only exclusion is an
   administrator's policy), so the app handles it: `build/` goes to another local folder, asked at
   the first use and saved per user. Choosing one is optional: if the user declines, the build

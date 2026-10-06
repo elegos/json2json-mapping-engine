@@ -1333,6 +1333,15 @@ fn needs_credentials(message: &str) -> bool {
     .any(|k| m.contains(k))
 }
 
+/// `git init -b main`: a new repository in `project`, on a branch called `main` (what the tool's
+/// own projects and the remotes it meets use), with no commit yet.
+fn init(project: &Path) -> R<Value> {
+    gix::init(project).map_err(|e| e.to_string())?;
+    std::fs::write(project.join(".git").join("HEAD"), "ref: refs/heads/main\n")
+        .map_err(|e| e.to_string())?;
+    Ok(json!({}))
+}
+
 /// One request `{op, project, ...}` -> `{ok, ...}` or `{ok: false, error, auth?}`.
 pub fn run(request: &Value) -> Value {
     let result = (|| -> R<Value> {
@@ -1370,6 +1379,7 @@ pub fn run(request: &Value) -> Value {
                 request.get("subsection").and_then(Value::as_str),
             ),
             "config_set" => config_set(project, text(request, "key")?, text(request, "value")?),
+            "init" => init(project),
             "is_repo" => Ok(json!(Ctx::open(project).is_ok())),
             "rebasing" => Ok(json!({"rebasing": Ctx::open(project)?.rebasing()})),
             other => Err(format!("unknown op: {other}")),
