@@ -14,6 +14,7 @@ import pytest
 
 from compiler.backends.integration import IntegrationContext, discover_cases
 from compiler.backends.python.backend import MIN_PYTHON, PythonBackend
+from compiler.backends.python.codegen import PythonUnit
 from compiler.pipeline import compile_unit
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -489,7 +490,7 @@ def test_the_workers_in_all_never_pass_the_maximum(tmp_path: Path) -> None:
     import time
 
     _run_fused(tmp_path / "f", "thread", [{"n": 1}])
-    runtime = sys.modules["j2jme_runtime"]
+    runtime: Any = sys.modules["j2jme_runtime"]
     runtime._budget = runtime._Budget(4)
     lock = threading.Lock()
     busy = peak = 0
@@ -528,7 +529,9 @@ def test_max_parallel_is_one_or_more_and_one_turns_parallelism_off() -> None:
     for bad in (0, -3):
         assert check_options(PythonBackend.options, {"max_parallel": bad})
     one = PythonBackend({"max_parallel": 1})
-    assert "_pmap" not in compile_unit(_NESTED, "m", one).source
+    unit = compile_unit(_NESTED, "m", one)
+    assert isinstance(unit, PythonUnit)
+    assert "_pmap" not in unit.source
     assert "MAX_PARALLEL = 1\n" in one.assemble([])["j2jme_runtime.py"]
 
 
