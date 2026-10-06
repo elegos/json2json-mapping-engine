@@ -151,6 +151,10 @@ export type SchemaKind = "input" | "output";
 export const schemasStatus = (tree: FunctionalFile, project: string, stem: string) =>
   reviewRequest<SchemasStatus>({ op: "schemas_status", tree, project, stem });
 
+/** The schema files in the project's `schemas/`, from the project root. */
+export const schemasList = (project: string) =>
+  reviewRequest<{ files: string[] }>({ op: "schemas_list", project }).then((r) => r.files);
+
 export async function chooseSchemaFile(kind: SchemaKind, defaultPath?: string): Promise<string | null> {
   const file = await open({
     title: `Load the ${kind} JSON Schema`,

@@ -132,3 +132,29 @@ def test_loading_a_schema_answers_the_tree_with_the_rules_sent_back(tmp_path: Pa
     rules = answer["tree"]["rules"]
     assert [r["validation"]["needs_review"] for r in rules] == [False, True, False]
     assert (project / "schemas/t_input.schema.json").read_text() == json.dumps(gone)
+
+
+def test_a_schema_of_the_project_is_listed_and_loaded_by_its_path_from_the_root(
+    tmp_path: Path,
+) -> None:
+    project = tmp_path / "p"
+    (project / "schemas").mkdir(parents=True)
+    (project / "schemas/a_input.schema.json").write_text(json.dumps(IN))
+    (project / "schemas/b_input.schema.json").write_text(json.dumps(IN))
+    (project / "schemas/notes.txt").write_text("not a schema")
+    requests = [
+        {"id": 1, "op": "schemas_list", "project": str(project)},
+        {
+            "id": 2,
+            "op": "schema_import",
+            "project": str(project),
+            "stem": "c",
+            "kind": "input",
+            "source": "schemas/a_input.schema.json",
+        },
+    ]
+    out = io.StringIO()
+    serve(io.StringIO("".join(json.dumps(r) + "\n" for r in requests)), out)
+    listed, loaded = [json.loads(line) for line in out.getvalue().splitlines()]
+    assert listed["files"] == ["schemas/a_input.schema.json", "schemas/b_input.schema.json"]
+    assert loaded["ok"] and (project / "schemas/c_input.schema.json").read_text() == json.dumps(IN)

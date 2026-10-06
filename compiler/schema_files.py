@@ -38,6 +38,13 @@ def schema_stems(schemas_dir: Path, kind: Kind) -> list[str]:
     return sorted(p.name.removesuffix(ending) for p in schemas_dir.glob(f"*{ending}"))
 
 
+def list_schemas(project: Path) -> list[str]:
+    """The schema files in the project's `schemas/` (`<name>_input.schema.json`, ...), from the
+    project root, sorted: what the tool offers to load in place of a file from outside."""
+    found = (project / SCHEMAS_DIR).glob("*.schema.json")
+    return sorted(str(p.relative_to(project)) for p in found if p.is_file())
+
+
 # Any JSON object is a valid schema to the meta-schema (unknown keywords are ignored), so a
 # document that is data and not a schema would pass: it must also say something a schema says.
 _SCHEMA_KEYWORDS = frozenset(
