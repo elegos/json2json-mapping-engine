@@ -1203,8 +1203,8 @@ build in:
       features it has, and `@parallel` handled accordingly. The generated module must not import the
       engine.
 - [x] `@parallel(degree=N)` for real, unlike PL/SQL (where it only yields a SQL-callable
-      wrapper): the elements of the loop are mapped by up to N threads.
-      Decided: `[target.python] parallel = "thread" | "none"` (default `thread`); `thread` is a real
+      wrapper): the elements of the loop are mapped by up to N threads or processes.
+      Decided: `[target.python] parallel = "thread" | "process" | "none"` (default `thread`); `thread` is a real
       speed-up on a free-threaded Python (the project's `python = "3.14t"`), and on one with the
       GIL it still runs in threads, correct but not faster, and the build says so (a warning from
       `Backend.unit_warnings`). The engine and the tool's worker run on 3.14; a project targets any
@@ -1212,9 +1212,10 @@ build in:
       order (`pool.map`), and each call keeps its own errors, merged in element order, so "first
       failure of a rule wins" stays deterministic. Done: `_pmap` in the runtime, the loop rewrite in
       `codegen.py` (a loop that only appends one `@parallel` rule's value, with its filters),
-      tests (also run on 3.14t). Still open: `process` (`ProcessPoolExecutor`: the generated
-      modules are loaded by path, so the functions would have to be importable by the workers); a
-      loop that does more than append one `@parallel` rule's value (fused loops) stays sequential.
+      tests (also run on 3.14t). `process` done: a `ProcessPoolExecutor` per degree, kept between loops
+      (`atexit` closes it); a worker loads the module by its file (`_call_in_worker`), so nothing has to be
+      importable by name; if the rule's module has no file, or an element cannot be pickled, or the pool
+      breaks, the loop runs in threads with the same result. Still open: a loop that does more than append one `@parallel` rule's value (fused loops) stays sequential.
 - [x] The desktop preview (Extra mile in M6): the input chosen with a file dialog (it starts in the folder of the
       last input, else the project's), the run's report beside the selector (*No errors*, or the rules that
       failed with their cause) and *Download mapped JSON* (a save dialog, the input's folder and name `.mapped.json`

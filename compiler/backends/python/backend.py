@@ -85,9 +85,12 @@ class PythonBackend(Backend):
             "choice",
             "How a loop whose rule is `@parallel(degree=N)` runs: `thread` maps its elements in up "
             "to N threads (a speed-up only on a free-threaded Python, such as 3.14t; with the GIL "
-            "it is correct but not faster), `none` runs it in order",
+            "it is correct but not faster), `process` maps them in up to N worker processes (a "
+            "speed-up whatever the Python; the elements and what the rule gives travel between "
+            "processes, so it pays off for heavy rules; the program that calls the mapping must "
+            'guard its entry point with `if __name__ == "__main__":`), `none` runs it in order',
             default="thread",
-            choices=("thread", "none"),
+            choices=("thread", "process", "none"),
         ),
     )
     has_integration: ClassVar[bool] = True
@@ -100,7 +103,7 @@ class PythonBackend(Backend):
             tree,
             mapping_id,
             project_functions(Path.cwd()),
-            self.config.get("parallel", "thread") == "thread",
+            self.config.get("parallel", "thread"),
         )
 
     def unit_warnings(self, unit: CompiledUnit) -> list[str]:

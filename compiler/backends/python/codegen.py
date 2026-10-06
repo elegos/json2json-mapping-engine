@@ -72,11 +72,14 @@ def _is_dataclass(node: ast.ClassDef) -> bool:
 
 
 class _Rewriter(ast.NodeTransformer):
-    def __init__(self, rules: set[str], dataclasses: set[str], parallel: dict[str, int]):
+    def __init__(
+        self, rules: set[str], dataclasses: set[str], parallel: dict[str, int], mode: str = "thread"
+    ):
         self.rules = rules
         self.dataclasses = dataclasses
         # element functions of loops mapped by several threads (rule -> degree)
         self.parallel = parallel
+        self.mode = mode
 
     # -- declarations ------------------------------------------------------------------
     def visit_FunctionDef(self, node: ast.FunctionDef) -> ast.FunctionDef:
@@ -229,6 +232,7 @@ class _Rewriter(ast.NodeTransformer):
                 rule.func,
                 ast.Constant(value=self.parallel[rule.func.id]),
                 calls,
+                ast.Constant(value=self.mode),
             )
         )
 
@@ -339,9 +343,10 @@ def compile_module(
     tree: ast.Module,
     mapping_id: str,
     project: dict[str, FunctionInfo] | None = None,
-    threads: bool = True,
+    parallel_mode: str = "thread",
 ) -> PythonUnit:
-    """`threads`: a loop whose element rule is `@parallel` runs in threads (else in order)."""
+    """`parallel_mode`: a loop whose element rule is `@parallel` runs in `thread`s or `process`es
+    (`none`: in order)."""
     functions: list[ast.FunctionDef] = []
     body: list[ast.stmt] = []
     dataclasses: set[str] = set()
@@ -366,7 +371,9 @@ def compile_module(
         if degree is not None:
             parallel[f.name] = degree
 
-    rewriter = _Rewriter(rules, dataclasses, parallel if threads else {})
+    rewriter = _Rewriter(
+        rules, dataclasses, parallel if parallel_mode != "none" else {}, parallel_mode
+    )
     project_defs, missing = _project_definitions(tree, project or {})
     new_functions = [*project_defs, *(rewriter.visit(f) for f in functions)]
     unavailable = {

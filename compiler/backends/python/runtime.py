@@ -15,10 +15,14 @@ interpreter. The rules it keeps are the engine's, not Python's:
 
 from __future__ import annotations
 
+import atexit
 import contextvars
+import importlib.util
+import itertools
 import json
 import operator
-from concurrent.futures import ThreadPoolExecutor
+import os
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from typing import Any
 
 
@@ -66,11 +70,98 @@ def _rule(name: str, function: Any, *args: Any) -> Any:
         return OMIT
 
 
-def _pmap(target: list[Any], name: str, function: Any, degree: int, calls: list[tuple]) -> None:
+_pools: dict[tuple[int, str], ProcessPoolExecutor] = {}
+_worker_modules: dict[str, Any] = {}
+
+
+def _shutdown_pools() -> None:
+    for pool in _pools.values():
+        pool.shutdown(wait=False, cancel_futures=True)
+    _pools.clear()
+
+
+atexit.register(_shutdown_pools)
+
+
+def _process_pool(degree: int) -> ProcessPoolExecutor:
+    """The worker processes of this degree, started once and kept: a worker puts the folder of this
+    runtime on its path (the modules are loaded by path, they are not on the host's)."""
+    folder = os.path.dirname(os.path.abspath(__file__))
+    pool = _pools.get((degree, folder))
+    if pool is None:
+        pool = ProcessPoolExecutor(
+            max_workers=degree,
+            initializer=exec,
+            initargs=(f"import sys; sys.path.insert(0, {folder!r})",),
+        )
+        _pools[(degree, folder)] = pool
+    return pool
+
+
+def _call_in_worker(
+    file: str, function: str, name: str, args: tuple
+) -> tuple[Any, dict[str, str], bool]:
+    """Runs in a worker process: calls the rule `function` of the module `file` on `args`. Gives
+    what it gave (null for OMIT, which is flagged: the marker does not survive the trip), and the
+    errors of the call."""
+    module = _worker_modules.get(file)
+    if module is None:
+        spec = importlib.util.spec_from_file_location(f"_j2jme_worker_{len(_worker_modules)}", file)
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _worker_modules[file] = module
+    errors: dict[str, str] = {}
+    token = _errors.set(errors)
+    try:
+        value = _rule(name, getattr(module, function), *args)
+    finally:
+        _errors.reset(token)
+    return (None, errors, True) if value is OMIT else (value, errors, False)
+
+
+def _in_processes(
+    name: str, function: Any, degree: int, calls: list[tuple]
+) -> list[tuple[Any, dict[str, str]]] | None:
+    """The calls run in worker processes, in element order; None when they cannot (the rule is not
+    in a module that has a file, an argument or a result cannot travel, the workers died): the
+    caller then runs them itself, with the same result."""
+    file = getattr(function, "__globals__", {}).get("__file__")
+    if not file:
+        return None
+    pool = _process_pool(degree)
+    # (no `max` here: the built-ins of the language, which shadow Python's, follow this text)
+    chunk = len(calls) // (degree * 4) or 1
+    try:
+        got = list(
+            pool.map(
+                _call_in_worker,
+                itertools.repeat(file),
+                itertools.repeat(function.__name__),
+                itertools.repeat(name),
+                calls,
+                chunksize=chunk,
+            )
+        )
+    except Exception:  # noqa: BLE001 - a pickling failure or a broken pool: not the rule's error
+        _pools.clear()
+        pool.shutdown(wait=False, cancel_futures=True)
+        return None
+    return [(OMIT if omitted else value, errors) for value, errors, omitted in got]
+
+
+def _pmap(
+    target: list[Any],
+    name: str,
+    function: Any,
+    degree: int,
+    calls: list[tuple],
+    mode: str = "thread",
+) -> None:
     """What a loop does with a `@parallel` element rule: the rule is called for each element in up
-    to `degree` threads, and what it gives is appended to `target` in element order. Each call
-    keeps its own errors, merged in element order afterwards, so the first failure of a rule is
-    the first element's and the result is the sequential one's, whatever the threads' timing."""
+    to `degree` threads (or processes, `mode`), and what it gives is appended to `target` in element
+    order. Each call keeps its own errors, merged in element order afterwards, so the first failure
+    of a rule is the first element's and the result is the sequential one's, whatever the timing."""
 
     def one(args: tuple) -> tuple[Any, dict[str, str]]:
         errors: dict[str, str] = {}
@@ -80,10 +171,14 @@ def _pmap(target: list[Any], name: str, function: Any, degree: int, calls: list[
         finally:
             _errors.reset(token)
 
+    results = None
     if degree > 1 and len(calls) > 1:
-        with ThreadPoolExecutor(max_workers=degree) as pool:
-            results = list(pool.map(one, calls))
-    else:
+        if mode == "process":
+            results = _in_processes(name, function, degree, calls)
+        if results is None and mode != "none":
+            with ThreadPoolExecutor(max_workers=degree) as pool:
+                results = list(pool.map(one, calls))
+    if results is None:
         results = [one(args) for args in calls]
     outer = _errors.get()
     for value, errors in results:

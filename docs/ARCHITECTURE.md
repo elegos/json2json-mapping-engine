@@ -589,6 +589,7 @@ The backend decides the mechanism:
 | Target | Mechanism |
 |---|---|
 | PL/SQL | Scalar wrapper `map_<id>_fn(p_src CLOB) RETURN CLOB PARALLEL_ENABLE`, generated for every mapping with at least one `@parallel` rule function |
+| Python | The elements of a loop that only appends one `@parallel` rule's value are mapped by up to N threads (`[target.python] parallel = "thread"`, a speed-up on a free-threaded Python) or N worker processes (`"process"`: the workers are kept between loops and load the module by its file; the caller's entry point must be under `if __name__ == "__main__":`; when the elements cannot travel, the loop runs here with the same result). Results and errors equal the sequential run's: element order, the first failure of a rule wins |
 
 `PARALLEL_ENABLE` only applies to a function called from a SQL statement: Oracle may then
 run it in parallel-query slaves, one document per call. It cannot parallelize a PL/SQL

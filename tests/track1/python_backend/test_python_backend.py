@@ -281,6 +281,33 @@ def test_a_parallel_loop_gives_what_the_sequential_one_does(tmp_path: Path) -> N
     assert [e["rule"] for e in errors] == ["half"]  # reported once, for the first failing element
 
 
+def test_a_process_parallel_loop_gives_what_the_sequential_one_does(tmp_path: Path) -> None:
+    items = [{"n": n, "skip": n == 4} for n in (1, 2, 0, 3, 4, 0, 5, 10)]
+    unit, processed = _run(tmp_path / "x", {"parallel": "process"}, items)
+    _, plain = _run(tmp_path / "p", {"parallel": "none"}, items)
+    assert "_pmap(" in unit.source and "'process'" in unit.source
+    assert processed == plain
+    assert [e["rule"] for e in processed[1]] == ["half"]
+
+
+def test_a_process_parallel_loop_really_runs_in_other_processes(tmp_path: Path) -> None:
+    backend = PythonBackend({"parallel": "process"})
+    unit = compile_unit(_PARALLEL, "m", backend)
+    tmp_path.mkdir(exist_ok=True)
+    for name, text in backend.assemble([unit]).items():
+        (tmp_path / name).write_text(text)
+    module = _load_files(tmp_path)
+    runtime = sys.modules["j2jme_runtime"]
+    got = runtime._in_processes("line", module.line, 2, [({}, {"n": n}) for n in (1, 2, 5)])
+    assert got is not None  # it did not fall back on running them here
+    assert [value for value, _ in got] == [
+        {"N": 1, "Half": 10},
+        {"N": 2, "Half": 5},
+        {"N": 5, "Half": 2},
+    ]
+    assert runtime._pools  # the workers are kept for the next loop
+
+
 def test_the_build_says_a_parallel_rule_is_not_faster_with_the_global_lock() -> None:
     gil = PythonBackend({"python": "3.14", "parallel": "thread"})
     unit = compile_unit(_PARALLEL, "m", gil)
