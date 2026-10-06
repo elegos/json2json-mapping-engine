@@ -689,8 +689,12 @@ Sliced; each slice is usable on its own:
             executable starts under Wine and answers `ping` / `is_repo`, but `init` fails there with
             OS error 4390 (a reparse-point query that Wine does not implement; probably the symlink
             probe of gitoxide's init), which says nothing about real Windows.
-            **Not verified**: SSH remotes, a real Windows machine, LFS, submodules; the macOS package
-            (it needs `J2JME_MACOS_SDK`, which is not on this machine); the panel in the running tool.
+            The macOS dmg also builds (SDK 27.0 made with osxcross's `gen_sdk_package.sh`, which writes
+            two tarballs, `MacOSX27.0.sdk` and `MacOSX27.sdk`, differing only in the name of the folder
+            inside; `build.sh` strips it, either works): the gix/rustls cross-build with `cargo zigbuild`
+            is fine, ad-hoc signed.
+            **Not verified**: SSH remotes, a real Windows machine, LFS, submodules; any run of the
+            macOS package on a Mac; the panel in the running tool.
       - [ ] **M6.3c — Shared-folder mode (OneDrive / SharePoint).** Only when a real team needs
             it. A git repo inside a synced folder is **not supported** (it corrupts `.git`): the
             tool detects such a path and warns.
