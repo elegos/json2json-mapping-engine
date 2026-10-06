@@ -83,6 +83,50 @@ await failing.click();
 const listed = await page.locator(".run-report-list").textContent();
 if (!listed.includes("ZeroDivisionError")) fail(`the list does not give the cause: ${listed}`);
 console.log("errors:", (await failing.textContent()).trim(), "|", listed.trim());
+// a click on the error goes to its rule: selected, with its Source cell focused
+await page.click(".run-report-list button");
+await page.waitForSelector('.ag-row-selected');
+await page.waitForSelector('.ag-cell-focus[col-id="source"]');
+const where = await page.locator(".ag-row-selected").first().textContent();
+if (!where.includes("Lines[*]")) fail(`the click went to another rule: ${where}`);
+console.log("goes to:", where.slice(0, 40));
+
+// a file that is not JSON: an alert says so, with the cause
+await page.evaluate((p) => (window.__openFile = p), join(project, "..", "broken-input.json"));
+writeFileSync(join(project, "..", "broken-input.json"), '{"id": "A3", "items": [');
+await button.click();
+await page.click('.output-menu button:has-text("Choose a JSON file")');
+await page.waitForSelector(".modal");
+const alertText = await page.locator(".modal p").textContent();
+if (!alertText.includes("broken-input.json") || !alertText.includes("cannot be read")) fail(`the alert says: ${alertText}`);
+console.log("alert:", alertText.replace(/\s+/g, " ").slice(0, 120));
+await page.click('.modal button:has-text("OK")');
+await page.evaluate((p) => (window.__openFile = p), free);
+await button.click();
+await page.click('.output-menu button:has-text("Choose a JSON file")');
+await page.waitForFunction(() => document.querySelector(".run-report > button")?.textContent?.trim() === "No errors");
+
+// the refresh button: with a change not saved it asks (once, if told to remember), saves, runs again
+const edit = async (text) => {
+  const cell = page.locator('.ag-row[row-index="0"] .ag-cell[col-id="description"]');
+  await cell.click();
+  await page.keyboard.press("Control+A");
+  await page.keyboard.type(text);
+  await page.keyboard.press("Enter");
+};
+await edit("Changed once");
+await page.click('button[aria-label="Run again"]');
+await page.waitForSelector(".modal");
+await page.click(".modal-option input");
+await page.click('.modal button:has-text("Save and run")');
+await page.waitForFunction(() => !document.querySelector(".modal"));
+await edit("Changed twice");
+await page.click('button[aria-label="Run again"]');
+await page.waitForTimeout(800);
+if (await page.locator(".modal").count()) fail("asked again after Remember this decision");
+const saved2 = readFileSync(join(project, "mappings/functional/orders.fn.yaml"), "utf8");
+if (!saved2.includes("Changed twice")) fail("the refresh did not save the change");
+console.log("refresh: saved without asking the second time");
 
 // no output: the column stays, with its placeholder
 await button.click();

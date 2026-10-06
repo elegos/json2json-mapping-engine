@@ -19,6 +19,8 @@ import { dirName, inputDialogDir, mappedFilePath, outputCell, type OutputSource 
 
 /** The folder the last input of a run was taken from (a convenience of this machine). */
 const LAST_INPUT_DIR = "lastInputDir";
+/** "1" when the user chose to always save the mapping before running it again on its input. */
+const SAVE_BEFORE_RUN = "saveBeforeRun";
 const localStorageGet = (key: string): string | null => {
   try {
     return localStorage.getItem(key);
@@ -592,7 +594,6 @@ export function App() {
       forgetHistory();
       setConfig(null);
       setConfigSchema(null);
-      setView("rules");
       setCollapsed(new Set());
       // the tutorial project is a throwaway copy: it never joins the recent projects
       if (remember) {
@@ -1334,7 +1335,6 @@ export function App() {
       setTree(null);
       setReport(null);
       setStatus("");
-      setView("rules");
     }
     setTourCopy(null);
     beforeTour.current = null;
@@ -1509,6 +1509,10 @@ export function App() {
   const [outputResult, setOutputResult] = useState<GoldenResult | null>(null);
   const [outputFileMissing, setOutputFileMissing] = useState(false);
   const [rememberedFile, setRememberedFile] = useState<string | null>(null);
+  // the input the user just chose: if it cannot be read they are told in an alert, not in the status line
+  const alertForInput = useRef<string | null>(null);
+  // bumped to run the mapping again on the same input
+  const [runRev, setRunRev] = useState(0);
   useEffect(() => {
     // the file used last time on this mapping (kept outside the project)
     setOutputSource(null);
@@ -1550,23 +1554,72 @@ export function App() {
         if (stale) return;
         setOutputResult(null);
         if (outputSource.kind === "file") setOutputFileMissing(true);
-        setStatus(String(e instanceof Error ? e.message : e));
+        const message = String(e instanceof Error ? e.message : e);
+        setStatus(message);
+        if (outputSource.kind === "file" && alertForInput.current === outputKey) {
+          alertForInput.current = null;
+          void ask(`The file ${outputSource.path} cannot be read as an input:\n\n${message}`, [
+            { id: "ok", label: "OK", primary: true },
+          ]);
+        }
       },
     );
     return () => {
       stale = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project, current, saved, outputKey, functionsRev]);
+  }, [project, current, saved, outputKey, functionsRev, runRev]);
   const pickOutputFile = useCallback(async () => {
     const lastDir = localStorageGet(LAST_INPUT_DIR);
     const file = await chooseJsonFile("Input to run the mapping on", inputDialogDir(rememberedFile, lastDir, project));
     if (!file || !project || !current) return;
     localStorageSet(LAST_INPUT_DIR, dirName(file));
     setRememberedFile(file);
+    alertForInput.current = JSON.stringify({ kind: "file", path: file });
     setOutputSource({ kind: "file", path: file });
     await inputFileSet(project, mappingName(current), file).catch(() => undefined);
   }, [project, current, rememberedFile]);
+
+  /** Runs the mapping again on the input. The run is on the saved file, so a mapping with changes
+   * is saved first; the question is asked once if the user ticks "Remember this decision". */
+  const refreshOutput = useCallback(async () => {
+    if (fnDirtyRef.current) {
+      if (localStorageGet(SAVE_BEFORE_RUN) !== "1") {
+        const { id, checked } = await askWithOption(
+          "The mapping has changes not saved, and the run uses the saved file.",
+          [
+            { id: "save", label: "Save and run", primary: true },
+            { id: "cancel", label: "Cancel" },
+          ],
+          "Remember this decision",
+        );
+        if (id !== "save") return;
+        if (checked) localStorageSet(SAVE_BEFORE_RUN, "1");
+      }
+      // a save runs the mapping again by itself
+      await saveRef.current();
+      return;
+    }
+    setRunRev((n) => n + 1);
+  }, [askWithOption]);
+
+  /** Takes the grid to a rule and selects its Source: unfolds what hides it, drops a filter that
+   * does, scrolls to it. */
+  const showRule = useCallback(
+    async (path: string) => {
+      setCollapsed((old) => new Set([...old].filter((p) => !path.startsWith(`${p}.rules[`))));
+      setFilterText("");
+      setStateFilter("all");
+      for (let i = 0; i < 4; i++) await new Promise((r) => requestAnimationFrame(r));
+      const api = grid.current?.api;
+      const node = api?.getRowNode(path);
+      if (!api || !node) return;
+      node.setSelected(true);
+      api.ensureNodeVisible(node, "middle");
+      if (node.rowIndex !== null) api.setFocusedCell(node.rowIndex, "source");
+    },
+    [],
+  );
 
   const downloadMapped = useCallback(async () => {
     if (!outputSource || !outputResult) return;
@@ -2325,7 +2378,9 @@ export function App() {
                   source={outputSource}
                   fileMissing={outputFileMissing}
                   rememberedFile={rememberedFile}
+                  onRefresh={() => void refreshOutput()}
                   onPick={(next) => {
+                    if (next?.kind === "file") alertForInput.current = JSON.stringify(next);
                     setOutputSource(next);
                     // a file is remembered for next time; "No output" forgets it
                     if (project && current && next?.kind !== "case") {
@@ -2334,7 +2389,7 @@ export function App() {
                   }}
                   onChooseFile={() => void pickOutputFile()}
                 />
-                <RunReport result={outputResult} onDownload={() => void downloadMapped()} />
+                <RunReport result={outputResult} onDownload={() => void downloadMapped()} onShowRule={(path) => void showRule(path)} />
               </SchemaStatusButtons>
             </div>
           )}

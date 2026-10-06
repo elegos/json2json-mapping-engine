@@ -98,13 +98,16 @@ to the grid: what each rule gave when the mapping ran on an input, right next to
   path, and the project is shared).
 
 The button's light is green while the case or the file is there, red when it is gone. Like the
-cases, the column is computed from the **saved** mapping: it refreshes when you save. A rule inside
+cases, the column is computed from the **saved** mapping: it refreshes when you save, or when you press
+the **↻** beside the button, which runs the mapping again on the same input (after asking to save the
+changes not saved, an answer you can ask the tool to remember). A file that cannot be read as an input
+is reported in an alert, with the reason. A rule inside
 a loop shows one value per element, as a list; a rule that left nothing in the output is blank.
 
 ### The report and the mapped JSON
 
 Next to the button, a report says how the run went: **No errors**, or the number of rules that failed
-(click it to list them, each with its cause). **Download mapped JSON** saves the whole output of the
+(click it to list them, each with its cause; a click on one goes to its rule in the grid). **Download mapped JSON** saves the whole output of the
 run in a file you choose; it proposes the input's folder and its name with `.mapped` before `.json`.
 The window to choose the input opens in the folder of the last input (or the project's folder the
 first time).

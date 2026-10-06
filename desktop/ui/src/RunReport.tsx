@@ -6,11 +6,14 @@ interface Props {
   result: GoldenResult | null;
   /** Saves the mapped JSON (the output of the run) where the user chooses. */
   onDownload: () => void;
+  /** Takes the grid to the rule at this path and selects its Source. */
+  onShowRule: (path: string) => void;
 }
 
 /** What the last run of the mapping gave: "No errors", or the number of rules that failed (a click
- * lists them with their cause), and the button that saves the mapped JSON. */
-export function RunReport({ result, onDownload }: Props) {
+ * lists them with their cause; a click on one goes to its rule), and the button that saves the
+ * mapped JSON. */
+export function RunReport({ result, onDownload, onShowRule }: Props) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -39,11 +42,26 @@ export function RunReport({ result, onDownload }: Props) {
       </button>
       {open && (
         <div className="output-menu run-report-list" role="list">
-          {report.lines.map((line) => (
-            <div key={line} role="listitem">
-              {line}
-            </div>
-          ))}
+          {report.lines.map((line, i) => {
+            const path = report.paths[i];
+            return path ? (
+              <button
+                key={line}
+                role="listitem"
+                title="Go to this rule"
+                onClick={() => {
+                  setOpen(false);
+                  onShowRule(path);
+                }}
+              >
+                {line}
+              </button>
+            ) : (
+              <div key={line} role="listitem">
+                {line}
+              </div>
+            );
+          })}
         </div>
       )}
       <button title="Save the output of this run as a JSON file" onClick={onDownload}>

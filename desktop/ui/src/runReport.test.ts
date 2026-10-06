@@ -27,7 +27,11 @@ const error = (rule: string, cause: string, unavailable: string[] = []) => ({
 
 describe("runReport", () => {
   it("says there are no errors", () => {
-    expect(runReport(result([]))).toEqual({ ok: true, label: "No errors", lines: [] });
+    expect(runReport(result([]))).toEqual({ ok: true, label: "No errors", lines: [], paths: [] });
+  });
+  it("gives the row of each rule that failed", () => {
+    const r = runReport(result([{ ...error("a", "boom"), path: "rules[0].rules[1]" }, error("b", "bad")]));
+    expect(r.paths).toEqual(["rules[0].rules[1]", null]);
   });
   it("lists the rules that failed with their cause", () => {
     const r = runReport(result([error("a", "boom"), error("b", "bad", ["f"])]));

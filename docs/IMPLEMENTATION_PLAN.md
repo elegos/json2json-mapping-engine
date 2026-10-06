@@ -1229,8 +1229,10 @@ build in:
 - [x] The desktop preview (Extra mile in M6): the input chosen with a file dialog (it starts in the folder of the
       last input, else the project's), the run's report beside the selector (*No errors*, or the rules that
       failed with their cause) and *Download mapped JSON* (a save dialog, the input's folder and name `.mapped.json`
-      proposed; Tauri command `write_text_file`). Walked through by `ui/shots/output-check.mjs`; not seen in the
-      running Tauri window.
+      proposed; Tauri command `write_text_file`, errors in English). A click on a failed rule goes to its row (Source
+      focused); an unreadable input is an alert; ↻ runs again, asking to save first (*Remember this decision*).
+      Walked through by `ui/shots/output-check.mjs` and `layout-check.mjs` (no sideways scroll); first run in the real
+      Tauri window: 2026-10-06, seven points of feedback, fixed.
 - [x] The golden runs in the tool (M6.8): *Execute all…* and the ▶ of each case run on this backend,
       with PASS / FAIL, the output diff and the per-rule errors on the grid rows (done, see M6.8).
 - [x] The Output column (M6.11): the grid shows, per rule, the value it gave on a golden case

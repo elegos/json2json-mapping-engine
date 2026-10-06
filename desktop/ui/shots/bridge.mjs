@@ -149,6 +149,7 @@ export const shim = `
     convertFileSrc: (p) => p,
     invoke: async (cmd, args) => {
       if (cmd === "plugin:dialog|save" && window.__saveTo) return window.__saveTo;
+      if (cmd === "plugin:dialog|open" && window.__openFile) return window.__openFile;
       if (cmd.startsWith("plugin:")) return 0;
       const r = await (await fetch("/__bridge/" + cmd, { method: "POST", body: JSON.stringify(args ?? {}) })).json();
       if (!r.ok) throw r.error;

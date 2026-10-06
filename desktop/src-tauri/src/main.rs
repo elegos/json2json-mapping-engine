@@ -241,7 +241,8 @@ fn input_file_get(app: tauri::AppHandle, project: String, mapping: String) -> Op
 /// Writes `text` to `path`, which the user chose in a save dialog (the mapped JSON of a run).
 #[tauri::command]
 fn write_text_file(path: String, text: String) -> Result<(), String> {
-    std::fs::write(&path, text).map_err(|e| format!("{path}: {e}"))
+    // the kind's own text, not the OS's: that one comes in the user's language
+    std::fs::write(&path, text).map_err(|e| format!("Cannot save {path}: {}", e.kind()))
 }
 
 #[tauri::command]

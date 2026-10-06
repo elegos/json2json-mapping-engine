@@ -11,11 +11,13 @@ interface Props {
   rememberedFile: string | null;
   onPick: (source: OutputSource | null) => void;
   onChooseFile: () => void;
+  /** Runs the mapping again on the input (the file may have changed, and so the mapping). */
+  onRefresh: () => void;
 }
 
 /** Which input the grid's Output column is computed from: none, a golden case (compared with its
  * expected output) or any JSON file (just shown). The light is green when the input is there. */
-export function OutputInputButton({ cases, source, fileMissing, rememberedFile, onPick, onChooseFile }: Props) {
+export function OutputInputButton({ cases, source, fileMissing, rememberedFile, onPick, onChooseFile, onRefresh }: Props) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -49,10 +51,26 @@ export function OutputInputButton({ cases, source, fileMissing, rememberedFile, 
 
   return (
     <div className="output-input" ref={box}>
-      <button className={`schema-button ${light}`} title={title} onClick={() => setOpen(!open)} aria-haspopup="menu">
-        <span className={`light ${light}`} />
-        {label}
-      </button>
+      <div className="split">
+        <button
+          className={`schema-button split-main ${light}`}
+          title={title}
+          onClick={() => setOpen(!open)}
+          aria-haspopup="menu"
+        >
+          <span className={`light ${light}`} />
+          {label}
+        </button>
+        <button
+          className="split-caret refresh"
+          title="Run the mapping again on this input (the changes not saved are saved first)"
+          aria-label="Run again"
+          disabled={!source}
+          onClick={onRefresh}
+        >
+          ↻
+        </button>
+      </div>
       {open && (
         <div className="output-menu" role="menu">
           <button role="menuitem" onClick={() => choose(null)}>
