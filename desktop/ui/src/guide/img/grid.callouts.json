@@ -53,17 +53,25 @@
  },
  {
   "n": 6,
+  "x": 14.5,
+  "y": 9.2,
+  "w": 4.9,
+  "h": 3.2,
+  "text": "Add a field, an object or a loop; Delete removes the selected rule."
+ },
+ {
+  "n": 7,
   "x": 67.2,
   "y": 9.2,
   "w": 30.1,
   "h": 3.2,
-  "text": "The schemas of the mapping; green means it is found and readable."
+  "text": "The schemas of the mapping; green means it is found and readable. A click opens the menu to load one."
  },
  {
-  "n": 7,
-  "x": 88.2,
+  "n": 8,
+  "x": 78.4,
   "y": 0.9,
-  "w": 8.5,
+  "w": 18.2,
   "h": 3,
   "text": "Save writes the file; Check reports what is missing or wrong."
  }
