@@ -55,6 +55,7 @@ jobs:
             auth=(); [ -z "$MACOS_SDK_TOKEN" ] || auth=(-H "Authorization: token $MACOS_SDK_TOKEN")
             curl -fsSL "${auth[@]}" -o "$RUNNER_TEMP/macos-sdk.tar.xz" "$MACOS_SDK_URL"
             echo "J2JME_MACOS_SDK=$RUNNER_TEMP/macos-sdk.tar.xz" >> "$GITHUB_ENV"
+            echo "macOS SDK downloaded ($(du -h "$RUNNER_TEMP/macos-sdk.tar.xz" | cut -f1), sha256 $(sha256sum "$RUNNER_TEMP/macos-sdk.tar.xz" | cut -c1-16)…): the macOS package is built"
             echo "J2JME_TARGETS=linux windows macos" >> "$GITHUB_ENV"
           else
             echo "no MACOS_SDK_URL: no macOS package"
