@@ -31,7 +31,7 @@ jobs:
       MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
       MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
     steps:
-      - name: Install node, git, curl and docker CLI (with buildx: the legacy builder is deprecated)
+      - name: Install node, git, curl and docker CLI (with buildx, the legacy builder is deprecated)
         run: |
           apt-get update
           apt-get install -y --no-install-recommends nodejs git curl ca-certificates docker-cli docker-buildx
