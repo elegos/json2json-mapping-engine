@@ -18,10 +18,10 @@ from __future__ import annotations
 import atexit
 import contextvars
 import importlib.util
-import itertools
 import json
 import operator
 import os
+import threading
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from typing import Any
 
@@ -70,7 +70,45 @@ def _rule(name: str, function: Any, *args: Any) -> Any:
         return OMIT
 
 
-_pools: dict[tuple[int, str], ProcessPoolExecutor] = {}
+# The most workers (threads or processes) that loops may have running at once, in all, however
+# they nest: `[target.python] max_parallel`, written here when the runtime is assembled.
+MAX_PARALLEL = 4
+
+
+def _fewer(a: int, b: int) -> int:
+    """The smaller of two numbers (`min` is the language's built-in once the runtime is assembled)."""
+    return a if a < b else b
+
+
+class _Budget:
+    """The workers that are free. A loop that goes parallel takes what it can of the workers it
+    wants (at least two, else it runs in order) and gives them back when it is done; it never waits
+    for one, so loops inside loops cannot lock each other."""
+
+    def __init__(self, total: int):
+        self._free = total
+        self._lock = threading.Lock()
+
+    def take(self, wanted: int) -> int:
+        with self._lock:
+            granted = wanted if wanted < self._free else self._free
+            if granted < 2:
+                return 0
+            self._free -= granted
+            return granted
+
+    def give(self, count: int) -> None:
+        with self._lock:
+            self._free += count
+
+    def disable(self) -> None:
+        """In a worker process: the loops it runs go in order (the budget is the main process's)."""
+        with self._lock:
+            self._free = 0
+
+
+_budget = _Budget(MAX_PARALLEL)
+_pools: dict[str, ProcessPoolExecutor] = {}
 _worker_modules: dict[str, Any] = {}
 
 
@@ -83,18 +121,22 @@ def _shutdown_pools() -> None:
 atexit.register(_shutdown_pools)
 
 
-def _process_pool(degree: int) -> ProcessPoolExecutor:
-    """The worker processes of this degree, started once and kept: a worker puts the folder of this
-    runtime on its path (the modules are loaded by path, they are not on the host's)."""
+def _process_pool() -> ProcessPoolExecutor:
+    """The worker processes, as many as the budget allows in all, started once and kept: a worker
+    puts the folder of this runtime on its path (the modules are loaded by path, they are not on
+    the host's) and runs the loops it meets in order."""
     folder = os.path.dirname(os.path.abspath(__file__))
-    pool = _pools.get((degree, folder))
+    pool = _pools.get(folder)
     if pool is None:
         pool = ProcessPoolExecutor(
-            max_workers=degree,
+            max_workers=MAX_PARALLEL,
             initializer=exec,
-            initargs=(f"import sys; sys.path.insert(0, {folder!r})",),
+            initargs=(
+                f"import sys; sys.path.insert(0, {folder!r}); "
+                "import j2jme_runtime; j2jme_runtime._budget.disable()",
+            ),
         )
-        _pools[(degree, folder)] = pool
+        _pools[folder] = pool
     return pool
 
 
@@ -155,40 +197,48 @@ def _element_in_worker(
     return acc, errors, failure
 
 
+def _chunk_in_worker(task: Any, file: str, function: str, extra: tuple, chunk: list[tuple]) -> list:
+    """Runs in a worker process: `task` for each of the `chunk` of calls."""
+    return [task(file, function, *extra, args) for args in chunk]
+
+
 def _processes(
-    task: Any, function: Any, extra: tuple, degree: int, calls: list[tuple]
+    task: Any, function: Any, extra: tuple, workers: int, calls: list[tuple]
 ) -> list | None:
     """`task(file, function name, *extra, args)` for each of `calls` in the worker processes, in
-    order; None when they cannot (the function is not in a module that has a file, an argument or a
-    result cannot travel, the workers died): the caller then runs them itself, with the same result."""
+    order, with at most `workers` of them busy for this loop; None when they cannot (the function is
+    not in a module that has a file, an argument or a result cannot travel, the workers died): the
+    caller then runs them itself, with the same result."""
     file = getattr(function, "__globals__", {}).get("__file__")
     if not file:
         return None
-    pool = _process_pool(degree)
+    pool = _process_pool()
     # (no `max` here: the built-ins of the language, which shadow Python's, follow this text)
-    chunk = len(calls) // (degree * 4) or 1
+    size = len(calls) // (workers * 4) or 1
+    parts = [calls[i : i + size] for i in range(0, len(calls), size)]
     try:
-        return list(
-            pool.map(
-                task,
-                itertools.repeat(file),
-                itertools.repeat(function.__name__),
-                *[itertools.repeat(e) for e in extra],
-                calls,
-                chunksize=chunk,
-            )
-        )
+        futures: list[Any] = []
+        got: list = []
+        for at in range(len(parts)):
+            while len(futures) < len(parts) and len(futures) - at < workers:
+                futures.append(
+                    pool.submit(
+                        _chunk_in_worker, task, file, function.__name__, extra, parts[len(futures)]
+                    )
+                )
+            got.extend(futures[at].result())
+        return got
     except Exception:  # noqa: BLE001 - a pickling failure or a broken pool: not the rule's error
-        _pools.clear()
+        _pools.pop(os.path.dirname(os.path.abspath(__file__)), None)
         pool.shutdown(wait=False, cancel_futures=True)
         return None
 
 
 def _in_processes(
-    name: str, function: Any, degree: int, calls: list[tuple]
+    name: str, function: Any, workers: int, calls: list[tuple]
 ) -> list[tuple[Any, dict[str, str]]] | None:
     """The calls of the rule `name` in worker processes (see `_processes`)."""
-    got = _processes(_call_in_worker, function, (name,), degree, calls)
+    got = _processes(_call_in_worker, function, (name,), workers, calls)
     if got is None:
         return None
     return [(OMIT if omitted else value, errors) for value, errors, omitted in got]
@@ -214,12 +264,16 @@ def _pmap_fused(
     order: the result is the sequential run's. An exception outside a rule stops the loop at its
     element, as it does there."""
     results = None
-    if degree > 1 and len(elements) > 1:
-        if mode == "process":
-            results = _processes(_element_in_worker, function, (), degree, elements)
-        if results is None and mode != "none":
-            with ThreadPoolExecutor(max_workers=degree) as pool:
-                results = list(pool.map(lambda args: _element(function, args), elements))
+    workers = _budget.take(_fewer(degree, len(elements))) if mode != "none" else 0
+    if workers:
+        try:
+            if mode == "process":
+                results = _processes(_element_in_worker, function, (), workers, elements)
+            if results is None:
+                with ThreadPoolExecutor(max_workers=workers) as pool:
+                    results = list(pool.map(lambda args: _element(function, args), elements))
+        finally:
+            _budget.give(workers)
     if results is None:
         results = [_element(function, args) for args in elements]
     outer = _errors.get()
@@ -255,12 +309,16 @@ def _pmap(
             _errors.reset(token)
 
     results = None
-    if degree > 1 and len(calls) > 1:
-        if mode == "process":
-            results = _in_processes(name, function, degree, calls)
-        if results is None and mode != "none":
-            with ThreadPoolExecutor(max_workers=degree) as pool:
-                results = list(pool.map(one, calls))
+    workers = _budget.take(_fewer(degree, len(calls))) if mode != "none" else 0
+    if workers:
+        try:
+            if mode == "process":
+                results = _in_processes(name, function, workers, calls)
+            if results is None:
+                with ThreadPoolExecutor(max_workers=workers) as pool:
+                    results = list(pool.map(one, calls))
+        finally:
+            _budget.give(workers)
     if results is None:
         results = [one(args) for args in calls]
     outer = _errors.get()

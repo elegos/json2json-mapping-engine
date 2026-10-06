@@ -18,6 +18,7 @@ from compiler.function_registry import project_functions
 from compiler.scope_resolver import ScopeResolution
 
 RUNTIME_FILE = "j2jme_runtime.py"
+DEFAULT_MAX_PARALLEL = 4
 
 # the Oracle date format tokens `parse_date` is written with, as `strptime` has them
 _STRPTIME = {"YYYY": "%Y", "MM": "%m", "DD": "%d", "HH24": "%H", "MI": "%M", "SS": "%S"}
@@ -33,10 +34,15 @@ def parse_date(s, fmt):
 '''
 
 
-def runtime_text() -> str:
+def runtime_text(max_parallel: int = DEFAULT_MAX_PARALLEL) -> str:
     """The support module: the run-time rules, then the built-in functions (their reference
-    implementations, `compiler/builtins.py`), with `parse_date` given the format dialect."""
-    core = Path(runtime.__file__).read_text()
+    implementations, `compiler/builtins.py`), with `parse_date` given the format dialect and the
+    most workers loops may use in all (`max_parallel`)."""
+    core = (
+        Path(runtime.__file__)
+        .read_text()
+        .replace("MAX_PARALLEL = 4\n", f"MAX_PARALLEL = {int(max_parallel)}\n", 1)
+    )
     builtins_source = (Path(runtime.__file__).parents[2] / "builtins.py").read_text()
     tree = ast.parse(builtins_source)
     kept = [
@@ -70,7 +76,11 @@ def runtime_text() -> str:
 class PythonBackend(Backend):
     target: ClassVar[str] = "python"
     artifact_suffix: ClassVar[str] = ".py"
-    defaults: ClassVar[dict[str, Any]] = {"python": "3.12", "parallel": "thread"}
+    defaults: ClassVar[dict[str, Any]] = {
+        "python": "3.12",
+        "parallel": "thread",
+        "max_parallel": DEFAULT_MAX_PARALLEL,
+    }
     options: ClassVar[tuple[Option, ...]] = (
         Option(
             "python",
@@ -92,8 +102,21 @@ class PythonBackend(Backend):
             default="thread",
             choices=("thread", "process", "none"),
         ),
+        Option(
+            "max_parallel",
+            "int",
+            "The most workers (threads or processes) the loops of a mapping may use at once, in all, "
+            "however they nest: a loop takes what is free of the degree it declares, and a loop "
+            "inside a worker process runs in order. 1 turns `@parallel` off; it must be 1 or more",
+            default=DEFAULT_MAX_PARALLEL,
+            minimum=1,
+        ),
     )
     has_integration: ClassVar[bool] = True
+
+    @property
+    def max_parallel(self) -> int:
+        return int(self.config.get("max_parallel", DEFAULT_MAX_PARALLEL))
 
     def compile_module(
         self, tree: ast.Module, mapping_id: str, scope_resolution: ScopeResolution | None = None
@@ -103,7 +126,7 @@ class PythonBackend(Backend):
             tree,
             mapping_id,
             project_functions(Path.cwd()),
-            self.config.get("parallel", "thread"),
+            "none" if self.max_parallel < 2 else self.config.get("parallel", "thread"),
         )
 
     def unit_warnings(self, unit: CompiledUnit) -> list[str]:
@@ -111,6 +134,7 @@ class PythonBackend(Backend):
             not isinstance(unit, codegen.PythonUnit)
             or not unit.parallel
             or self.config.get("parallel", "thread") != "thread"
+            or self.max_parallel < 2
             or str(self.config.get("python", "3.12")).endswith("t")
         ):
             return []
@@ -126,7 +150,7 @@ class PythonBackend(Backend):
 
     def assemble(self, units: list[CompiledUnit]) -> dict[str, str]:
         ids: set[str] = set()
-        files: dict[str, str] = {RUNTIME_FILE: runtime_text()}
+        files: dict[str, str] = {RUNTIME_FILE: runtime_text(self.max_parallel)}
         for unit in units:
             if not isinstance(unit, codegen.PythonUnit):
                 raise CodeGenError("the python backend can only assemble PythonUnit objects")

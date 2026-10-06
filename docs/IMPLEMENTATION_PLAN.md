@@ -1219,7 +1219,12 @@ build in:
       least one `@parallel` rule becomes a function of its own run per element (`_pmap_fused`, `_fuse_N` in the generated
       module); what it appends comes back as (array, value) pairs and the errors in the order the body met them, merged in
       element order, so the outcome is the sequential one's, errors order included; an exception outside a rule stops
-      the loop at its element. Still sequential: a loop with a nested loop, a local variable or a name of another loop in its body.
+      the loop at its element. Still sequential: a top-level loop with a nested loop, a local variable or a name of another loop in its body (nested loops
+      live in the rule functions, where an inner `@parallel` loop is already mapped). **Nested loops and the total:**
+      `[target.python] max_parallel` (int, default 4, minimum 1 — 0 or negative is refused, 1 turns `@parallel` off) is the most
+      workers at once in all: `_Budget` in the runtime, a loop takes what is free of its degree (two at least, else it runs
+      in order) and gives it back, never waiting (no lock between nested loops); the process pool is one, of that size, and a
+      worker process runs its loops in order.
 - [x] The desktop preview (Extra mile in M6): the input chosen with a file dialog (it starts in the folder of the
       last input, else the project's), the run's report beside the selector (*No errors*, or the rules that
       failed with their cause) and *Download mapped JSON* (a save dialog, the input's folder and name `.mapped.json`

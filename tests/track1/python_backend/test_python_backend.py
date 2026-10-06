@@ -387,6 +387,121 @@ def test_an_exception_outside_a_rule_stops_a_fused_loop_at_its_element(tmp_path:
     assert target == [0, 1, 2, 3]
 
 
+_NESTED = """\
+from __mapping__ import *
+
+@dataclass
+class Doc:
+    orders: list
+
+@dataclass
+class Sub:
+    V: int
+
+@dataclass
+class Order:
+    Id: int
+    Subs: list[Sub]
+
+
+def tenth(n: int) -> int:
+    return 10 // n
+
+
+@parallel(degree=2)
+def sub(root: Doc, src1: Any, src: Any) -> Sub:
+    return Sub(V=tenth(src.n))
+
+
+@parallel(degree=3)
+def order(root: Doc, src: Any) -> Order:
+    order_sub_list = []
+    for order_sub_src in src.subs:
+        order_sub_list.append(sub(root, src, order_sub_src))
+    return Order(Id=src.id, Subs=order_sub_list)
+
+
+for src in root.orders:
+    out.Orders.append(order(root, src))
+"""
+
+
+def _run_nested(tmp_path: Path, options: dict[str, Any], doc: dict[str, Any]) -> tuple[Any, Any]:
+    backend = PythonBackend(options)
+    unit = compile_unit(_NESTED, "m", backend)
+    tmp_path.mkdir()
+    for name, text in backend.assemble([unit]).items():
+        (tmp_path / name).write_text(text)
+    return unit, _load_files(tmp_path).map_m_safe(doc)
+
+
+@pytest.mark.parametrize(
+    "options", [{"parallel": "thread"}, {"parallel": "process"}, {"max_parallel": 2}]
+)
+def test_nested_parallel_loops_give_what_the_sequential_run_does(
+    tmp_path: Path, options: dict[str, Any]
+) -> None:
+    doc = {
+        "orders": [
+            {"id": i, "subs": [{"n": n} for n in (1, 2, 0, 5, 0)[: i % 5 + 1]]} for i in range(7)
+        ]
+    }
+    unit, got = _run_nested(tmp_path / "n", options, doc)
+    _, plain = _run_nested(tmp_path / "p", {"parallel": "none"}, doc)
+    assert unit.source.count("_pmap(") == 2
+    assert got == plain
+    assert [e["rule"] for e in got[1]] == ["tenth"]
+
+
+def test_the_workers_in_all_never_pass_the_maximum(tmp_path: Path) -> None:
+    """Loops inside loops take what is free of the total, and give it back."""
+    import threading
+    import time
+
+    _run_fused(tmp_path / "f", "thread", [{"n": 1}])
+    runtime = sys.modules["j2jme_runtime"]
+    runtime._budget = runtime._Budget(4)
+    lock = threading.Lock()
+    busy = peak = 0
+
+    def work(acc: list, root: Any, element: int) -> None:
+        nonlocal busy, peak
+        with lock:
+            busy += 1
+            peak = busy if busy > peak else peak
+        time.sleep(0.02)
+        with lock:
+            busy -= 1
+
+    def outer(acc: list, root: Any, element: int) -> None:  # an element whose body has a loop
+        runtime._pmap_fused([[]], "work", work, 3, [(None, n) for n in range(6)], "thread")
+
+    runtime._pmap_fused([[]], "outer", outer, 3, [(None, n) for n in range(5)], "thread")
+    assert 2 <= peak <= 4
+    assert runtime._budget.take(4) == 4  # all of it was given back
+
+
+def test_the_budget_gives_two_workers_or_none() -> None:
+    from compiler.backends.python import runtime
+
+    budget = runtime._Budget(3)
+    assert budget.take(5) == 3 and budget.take(2) == 0
+    budget.give(3)
+    assert budget.take(2) == 2 and budget.take(2) == 0  # one is left: not enough to go parallel
+    assert runtime._Budget(1).take(4) == 0  # a maximum of 1 is no parallelism
+
+
+def test_max_parallel_is_one_or_more_and_one_turns_parallelism_off() -> None:
+    from compiler.backends.base import check_options
+
+    assert check_options(PythonBackend.options, {"max_parallel": 4}) == []
+    for bad in (0, -3):
+        assert check_options(PythonBackend.options, {"max_parallel": bad})
+    one = PythonBackend({"max_parallel": 1})
+    assert "_pmap" not in compile_unit(_NESTED, "m", one).source
+    assert "MAX_PARALLEL = 1\n" in one.assemble([])["j2jme_runtime.py"]
+
+
 def test_the_build_says_a_parallel_rule_is_not_faster_with_the_global_lock() -> None:
     gil = PythonBackend({"python": "3.14", "parallel": "thread"})
     unit = compile_unit(_PARALLEL, "m", gil)
