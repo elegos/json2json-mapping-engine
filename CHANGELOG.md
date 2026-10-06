@@ -43,6 +43,8 @@ section (see `packaging/release.py`).
   both changed; the window reads the open mapping again when it comes back to the front, and the
   conflict copies the sync makes (`name-PC.fn.yaml`) are offered for merge. Files are saved whole
   (temporary file and rename).
+- Presence in a synced folder: the footer says who else has a mapping open ("bob is editing
+  orders"), advisory, nothing is locked.
 - A git repository inside a synced folder is refused: the tool explains why (the sync corrupts
   `.git`) and offers to delete `.git` (the files stay, the history goes); if you decline, the project
   is not opened. A project outside any repository is offered `git init` (optional).

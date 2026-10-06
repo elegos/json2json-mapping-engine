@@ -407,3 +407,6 @@ span.result-badge { cursor: default; }
 .vcs-hint { color: GrayText; font-size: 12px; }
 .vcs-login { border: 1px solid #8886; border-radius: 6px; padding: 8px 12px; margin: 0 0 12px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
 .vcs-login label { display: flex; flex-direction: column; gap: 2px; }
+
+.presence { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; opacity: 0.85; }
+.presence .same { color: #b26a00; font-weight: 600; opacity: 1; }

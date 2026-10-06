@@ -64,6 +64,8 @@ import {
   syncedStatus,
   syncedRemoveGit,
   sharedPrepare,
+  presenceAnnounce,
+  type Editing,
   sharedSettle,
   sharedScan,
   sharedCopyMerge,
@@ -924,6 +926,36 @@ export function App() {
   // Shared-folder mode: when the window comes back, look at what the sync brought. The open
   // mapping is read again if it changed and holds no unsaved edits (with edits, the merge happens
   // at save); a conflict copy is offered for merge into its original, once per session.
+  // Presence: this tool says which mapping it has open every 30 s (a file of its own in the project,
+  // `.j2jme/presence/`) and learns who else is editing. Advisory, nothing is locked.
+  const [editing, setEditing] = useState<Editing[]>([]);
+  const openMapping = current ? mappingName(current) : null;
+  useEffect(() => {
+    if (!project || !sharedMode) {
+      setEditing([]);
+      return;
+    }
+    let live = true;
+    const beat = () =>
+      presenceAnnounce(project, openMapping).then(
+        (list) => live && setEditing(list),
+        () => undefined, // nobody's business if the folder cannot be written
+      );
+    void beat();
+    const timer = window.setInterval(() => void beat(), 30_000);
+    window.addEventListener("focus", beat);
+    return () => {
+      live = false;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", beat);
+    };
+  }, [project, sharedMode, openMapping]);
+  // leaving the project (or the tool) takes this tool's file away; a crash leaves it to expire
+  useEffect(() => {
+    if (!project || !sharedMode) return;
+    return () => void presenceAnnounce(project, null).catch(() => undefined);
+  }, [project, sharedMode]);
+
   const copiesDeclined = useRef(new Set<string>());
   const scanning = useRef(false);
   const fnDirtyRef = useRef(false);
@@ -2458,6 +2490,16 @@ export function App() {
       )}
       <footer>
         <div className="status">{status}</div>
+        {editing.length > 0 && (
+          <div className="presence" title="Advisory: nothing is locked. Edits are merged when saved.">
+            {editing.map((e) => (
+              <span key={`${e.user}:${e.mapping}`} className={e.mapping === openMapping ? "same" : ""}>
+                {e.user.replace(/@.*$/, "")} is editing {e.mapping}
+                {e.mapping === openMapping ? " (this mapping)" : ""}
+              </span>
+            ))}
+          </div>
+        )}
         {(diagnostics.get("") ?? [])
           .filter((d) => view !== "paths" || !d.message.startsWith("paths:"))
           .map((d, i) => (

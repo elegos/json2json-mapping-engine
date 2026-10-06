@@ -350,6 +350,22 @@ export const sharedCopySettle = (
 export const sharedCopyDiscard = (project: string, copy: string) =>
   vcsRequest<object>({ op: "shared_copy_discard", project, copy });
 
+/** Presence (shared-folder mode): somebody else's tool has this mapping open. */
+export interface Editing {
+  mapping: string;
+  /** `user@machine` */
+  user: string;
+  /** Seconds since its tool last said so. */
+  age: number;
+}
+
+/** This tool edits `mapping` now (null: none); answers who else is editing anything. */
+export const presenceAnnounce = async (project: string, mapping: string | null) =>
+  (await vcsRequest<{ editing: Editing[] }>({ op: "presence_announce", project, mapping })).editing;
+
+export const presenceList = async (project: string) =>
+  (await vcsRequest<{ editing: Editing[] }>({ op: "presence_list", project })).editing;
+
 /** Deletes the `.git` of a repository in a synced folder: the files stay, the history goes. */
 export const syncedRemoveGit = (project: string) =>
   configRequest<{ removed: string }>({ op: "synced_remove_git", project });

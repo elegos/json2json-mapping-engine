@@ -724,7 +724,11 @@ Sliced; each slice is usable on its own:
           synced folder is offered `git init` (`vcs_init`, not binding). Tests: `test_shared.py`,
           `test_synced.py`, `test_vcs.py` (init, both backends). **Not verified**: all the dialogs in
           the running tool; a real sync client (timing of the copies, partial uploads). **Not done**:
-          presence; a filesystem watcher (the check is at save and at focus, by choice).
+          a filesystem watcher (the check is at save and at focus, by choice).
+        - **Done (third part): presence.** `cli/presence.py`, ops `presence_announce` /
+          `presence_list`, a beat every 30 s from the tool while a mapping is open, the footer line.
+          Tests: `test_presence.py`. **Not verified**: the footer in the running tool; with a real
+          sync client (the delay before a colleague's file shows up). M6.3c is complete.
       - [x] **Publish (both modes).** `mapper publish [--to DIR]` and a button: build (nothing
         is published if it fails), the artifacts written to the publish directory.
         Default: the current `build/compiled`; `[publish] dir` in `mapper.toml` overrides it,

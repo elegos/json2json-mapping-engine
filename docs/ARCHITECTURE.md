@@ -2451,8 +2451,14 @@ conflict copies (`file-PC.yaml`) or the last writer wins. So the tool does the m
   `J2JME_ALLOW_SYNCED`) and in every request to the worker (`build_dir`, `allow_synced`: one
   worker serves every project). The authored files only (`mapper.toml`, `*.fn.yaml`,
   schemas, `fn/`, `tests/golden`) are synced. `.venv` is not needed: the tool brings its own Python.
-- **Presence**, advisory: one file per user, `.j2jme/presence/<mapping>.<user>.json` (one writer
-  each, so it never conflicts), shows who is editing which mapping. There are no locks.
+- **Presence**, advisory: one file per user and machine, `.j2jme/presence/<mapping>.<user>@<host>.json`
+  (one writer each, so it never conflicts), shows who is editing which mapping. There are no locks.
+  `cli/presence.py`, ops `presence_announce` / `presence_list`: the tool rewrites its file every
+  30 s while a mapping is open (one mapping at a time; the file goes when the mapping is closed or
+  the project left), and reads the others'; a file older than two minutes is a tool that closed or
+  crashed, and one that cannot be read is skipped. The footer says "bob is editing orders", marked
+  when it is the open mapping. The folder is the project's own `.j2jme/`, in the synced folder
+  (git is not there, nothing to ignore).
 - It is eventual consistency, not real-time editing. Handing the published artifacts over from the
   folder to wherever they are deployed is the developer's business; the tool only writes them to
   the publish directory (`mapper publish`).
