@@ -15,6 +15,7 @@ import { nameProblem } from "./mappings";
 import { PromptDialog, type PromptField } from "./PromptDialog";
 import { OutputInputButton } from "./OutputInput";
 import { outputCell, type OutputSource } from "./ruleOutput";
+import { AddMenu } from "./AddMenu";
 import { SchemaStatusButtons } from "./SchemaStatus";
 import {
   type ConfigIssue,
@@ -86,6 +87,7 @@ import {
   mappingRename,
   type SchemaKind,
   scaffoldRules,
+  schemasList,
   schemasStatus,
   type SchemasStatus,
   initialProject,
@@ -1458,6 +1460,15 @@ export function App() {
     };
   }, [project, current, python, schemaRefs, schemaTick]);
 
+  // the schema files can change outside the tool while the mapping is open: when the window is
+  // back in focus the status and the check are read again (nothing is moved to review by itself)
+  useEffect(() => {
+    if (!project || !current) return;
+    const again = () => setSchemaTick((n) => n + 1);
+    window.addEventListener("focus", again);
+    return () => window.removeEventListener("focus", again);
+  }, [project, current]);
+
   const loadCases = useCallback(async () => {
     if (!project || !current) {
       setCases([]);
@@ -1678,16 +1689,62 @@ export function App() {
     [project, current, ask, loadCases],
   );
 
+  /** Offers the empty rules the output schema describes and the mapping lacks (it adds only the
+   * missing ones). After a load nothing to add is silent; asked for, it says so. */
+  const offerScaffold = useCallback(
+    async (from: FunctionalFile, asked: boolean) => {
+      if (!project || !current) return;
+      const stem = mappingName(current);
+      const found = await scaffoldRules(from, project, stem, false);
+      const left =
+        found.skipped.length > 0
+          ? ` ${found.skipped.length} cannot be laid out (${found.skipped.slice(0, 3).join("; ")}${found.skipped.length > 3 ? "; …" : ""}).`
+          : "";
+      if (found.added === 0) {
+        if (asked) setStatus(`Every property the output schema describes already has a rule.${left}`);
+        return;
+      }
+      const choice = await ask(
+        `Create ${found.added} empty rule${found.added === 1 ? "" : "s"} from the output schema? ` +
+          `They are ignored until a Source is defined.${left}`,
+        [
+          { id: "create", label: "Create the rules", primary: true },
+          { id: "no", label: "Not now" },
+        ],
+      );
+      if (choice !== "create") return;
+      const made = await scaffoldRules(from, project, stem, true);
+      if (made.tree) {
+        remember(from, "scaffold");
+        setTree(made.tree);
+      }
+    },
+    [project, current, remember, ask],
+  );
+
   /** Loads (or replaces) the input / output schema: the file is copied into the project under the
    * mapping's name, so the mapping reads the copy; a `schemas:` override in the file would hide
    * it, so it is dropped (the file is then unsaved, as for any edit). */
   const pickSchema = useCallback(
-    async (kind: SchemaKind) => {
+    async (kind: SchemaKind, own?: string) => {
       const open = treeRef.current;
       if (!open || !project || !current) return;
       try {
-        const source = await chooseSchemaFile(kind, project);
+        // `own`: one of the project's schemas, by its path from the root; else a file is picked
+        const source = own ?? (await chooseSchemaFile(kind, project));
         if (!source) return;
+        const there = schemas?.[kind];
+        if (there?.state === "ok") {
+          const choice = await ask(
+            `Replace the ${kind} schema (${there.path}) with ${own ?? source}? ` +
+              "The validated rules it no longer fits go back to review.",
+            [
+              { id: "replace", label: "Replace it", primary: true },
+              { id: "no", label: "Cancel" },
+            ],
+          );
+          if (choice !== "replace") return;
+        }
         const stem = mappingName(current);
         const loaded = await importSchema(project, stem, kind, source, open);
         const moved = loaded.moved?.length ?? 0;
@@ -1704,35 +1761,12 @@ export function App() {
             : "",
         );
         // a new output schema: offer the rules it describes, empty, for the user to fill in
-        if (kind === "output") {
-          const found = await scaffoldRules(next, project, stem, false);
-          if (found.added > 0) {
-            const left =
-              found.skipped.length > 0
-                ? ` ${found.skipped.length} cannot be laid out (${found.skipped.slice(0, 3).join("; ")}${found.skipped.length > 3 ? "; …" : ""}).`
-                : "";
-            const choice = await ask(
-              `Create ${found.added} empty rule${found.added === 1 ? "" : "s"} from the output schema? ` +
-                `They are ignored until a Source is defined.${left}`,
-              [
-                { id: "create", label: "Create the rules", primary: true },
-                { id: "no", label: "Not now" },
-              ],
-            );
-            if (choice === "create") {
-              const made = await scaffoldRules(next, project, stem, true);
-              if (made.tree) {
-                remember(next, "scaffold");
-                setTree(made.tree);
-              }
-            }
-          }
-        }
+        if (kind === "output") await offerScaffold(next, false);
       } catch (e) {
         setStatus(String(e instanceof Error ? e.message : e));
       }
     },
-    [project, current, remember, ask],
+    [project, current, remember, ask, schemas, offerScaffold],
   );
 
   // what differs from the saved file, per row path ("*" = a new rule)
@@ -2221,9 +2255,7 @@ export function App() {
           )}
           {tree && view === "rules" && (
             <div className="toolbar">
-              <button onClick={() => void addRule("field")}>+ Field</button>
-              <button onClick={() => void addRule("object")}>+ Object</button>
-              <button onClick={() => void addRule("loop")}>+ Loop</button>
+              <AddMenu onAdd={(kind) => void addRule(kind)} />
               <button onClick={() => void deleteRule()}>Delete</button>
               <select
                 className="state-filter"
@@ -2247,7 +2279,16 @@ export function App() {
                 onChange={(e) => setFilterText(e.target.value)}
                 onKeyDown={(e) => e.key === "Escape" && setFilterText("")}
               />
-              <SchemaStatusButtons status={schemas} onPick={(kind) => void pickSchema(kind)}>
+              <SchemaStatusButtons
+                status={schemas}
+                onPick={(kind) => void pickSchema(kind)}
+                onUse={(kind, file) => void pickSchema(kind, file)}
+                listFiles={() => schemasList(project ?? "")}
+                onScaffold={() => {
+                  const open = treeRef.current;
+                  if (open) offerScaffold(open, true).catch((e) => setStatus(String(e instanceof Error ? e.message : e)));
+                }}
+              >
                 <OutputInputButton
                   cases={cases}
                   source={outputSource}

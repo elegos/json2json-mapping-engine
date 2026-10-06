@@ -167,6 +167,9 @@ button.primary:hover:not(:disabled) { background: #3468b3; }
 .output-menu button { text-align: left; border: none; background: none; color: inherit; }
 .output-menu button:hover, .output-menu button.current { background: #8882; }
 .output-group { padding: 4px 8px 0; font-size: 11px; opacity: .6; text-transform: uppercase; }
+.output-menu button:disabled { opacity: .5; cursor: default; }
+.output-path { padding: 0 8px 4px; font-size: 11px; word-break: break-all; }
+.add-menu .output-menu { left: 0; right: auto; min-width: 120px; }
 .output-cell { font-family: ui-monospace, monospace; }
 .output-cell.diff { background: #c0392b26; }
 .output-cell.same { background: #2e9e4f1a; }
