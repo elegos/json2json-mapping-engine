@@ -1014,7 +1014,7 @@ Sliced; each slice is usable on its own:
       - Still open: the Lookups screenshot of the guide does not show the project-wide section;
         the tour fixture has no project-wide table.
 
-- [ ] **M6.8 — Golden data in the tool.** Manage the cases of `tests/golden/<mapping>/` from the
+- [x] **M6.8 — Golden data in the tool.** Manage the cases of `tests/golden/<mapping>/` from the
       UI, so that a functional user can check on their own machine that, given an input, the
       output is the one expected: list a mapping's cases; create, rename, delete; edit the input
       JSON, the expected output and the expected rule errors (`.input.json`, `.expected.json`,
@@ -1055,12 +1055,8 @@ Sliced; each slice is usable on its own:
         of mapping). A failure of a rule with a regular expression because Python cannot compile the
         pattern (`re.error`), on a project whose backend is not Python, is an amber warning flagged as a possible false positive (the pattern is in the
         backend's dialect, the cases run on Python's). A loop or an object is marked as a whole.
-        Walked through by `ui/shots/golden-marks-check.mjs`. Still to do: the output of a run shown
-        next to the input (the *Extra mile* of M6).
-      - Buttons in place, disabled until the Python backend exists: ▶ on each case (run it) and
-        *▶ Execute all…* next to *Import a case…*. To do after the Python backend: running one case
-        or all, how the results are shown (PASS / FAIL per case, the output diff, the per-rule
-        errors on the grid rows), and what the buttons wait on while a run is going.
+        Walked through by `ui/shots/golden-marks-check.mjs`. The output of a run next to the input
+        is the Output column of the grid (M6.11, see "Python backend").
 
 **Extra mile (needs the Python backend below).** *Try a mapping in the tool*: import an input
 JSON for the open mapping, run it and show the output next to the input, with the per-rule
