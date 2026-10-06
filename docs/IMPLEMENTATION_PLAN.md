@@ -1184,14 +1184,16 @@ points where the two could differ, once written down (rounding, null against emp
 same output, and the same rule errors, whichever backend compiled the mapping. Consequences to
 build in:
 
-- [ ] The golden cases (`tests/golden/<mapping>/*.input.json`, `.expected.json`,
+- [x] The golden cases (`tests/golden/<mapping>/*.input.json`, `.expected.json`,
       `.expected_errors.json`) are the shared contract: every backend runs all of them. Track 2
       stays per target (Oracle image for PL/SQL, none for Python), the cases do not.
 - [ ] (empty text = null decided and done, golden `empty_text`; rounding, dates, `split_nth` beyond the end and division by zero were already agreed on by the golden cases) Built-ins: the Python reference implementations in `builtins.py` become the Python
       backend's implementations; where PL/SQL and Python could differ (rounding, null and empty
       string, date parsing, `split_nth` beyond the end, division by zero), the difference is
       settled once, written down, and both backends follow it.
-- [ ] A conformance run in CI: the same cases on both backends, comparing outputs.
+- [x] A conformance run in CI: every case runs on both backends (track 1: Python, track 2: Oracle) against the same
+      `expected.json`, so they agree through it; a test (`test_every_golden_case_states_its_expected_output`) fails a
+      case with no expected output, which would pass whatever a backend gave. No job comparing artifacts: it would repeat this.
 - [ ] Error isolation and `required` semantics (§Runtime error semantics) implemented
       identically.
 - [ ] **Target interpreter.** The Python that *runs the generated module* is the host
