@@ -1187,7 +1187,7 @@ build in:
 - [ ] The golden cases (`tests/golden/<mapping>/*.input.json`, `.expected.json`,
       `.expected_errors.json`) are the shared contract: every backend runs all of them. Track 2
       stays per target (Oracle image for PL/SQL, none for Python), the cases do not.
-- [ ] Built-ins: the Python reference implementations in `builtins.py` become the Python
+- [ ] (empty text = null decided and done, golden `empty_text`; rounding, dates, `split_nth` beyond the end and division by zero were already agreed on by the golden cases) Built-ins: the Python reference implementations in `builtins.py` become the Python
       backend's implementations; where PL/SQL and Python could differ (rounding, null and empty
       string, date parsing, `split_nth` beyond the end, division by zero), the difference is
       settled once, written down, and both backends follow it.

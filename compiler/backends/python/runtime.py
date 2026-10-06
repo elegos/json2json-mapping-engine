@@ -8,6 +8,8 @@ interpreter. The rules it keeps are the engine's, not Python's:
   never an error;
 - arithmetic on a null is null; an ordering comparison with a null is false (as in SQL);
 - a rule that fails leaves its field out and is reported once, under its name; the others go on;
+- an empty text is null, as in Oracle: it is read as null from the input, built-ins give null for it,
+  and the output never holds one;
 - a bare `return` leaves the field out, `return Null` (or a value that is null) puts a null.
 """
 
@@ -172,8 +174,22 @@ _gt = _order(operator.gt)
 _ge = _order(operator.ge)
 
 
+def _blank(value: Any) -> Any:
+    """`value` with every empty text replaced by null (an empty text is null, as in Oracle)."""
+    if value == "":
+        return None
+    if isinstance(value, dict):
+        return {k: _blank(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_blank(v) for v in value]
+    return value
+
+
 def _plain(value: Any) -> Any:
-    """The output as JSON: a number that is whole is written as an integer (5, not 5.0)."""
+    """The output as JSON: a number that is whole is written as an integer (5, not 5.0), an empty
+    text is null."""
+    if value == "":
+        return None
     if isinstance(value, float) and value.is_integer():
         return int(value)
     if isinstance(value, dict):
@@ -189,6 +205,7 @@ def _execute(
     """Runs a mapping on `source` (JSON text, or the parsed document). Gives the output and
     the rule errors; with `raising`, a MappingError instead when there are errors."""
     document = json.loads(source) if isinstance(source, str | bytes | bytearray) else source
+    document = _blank(document)
     errors: dict[str, str] = {}
     token = _errors.set(errors)
     out = _Out()

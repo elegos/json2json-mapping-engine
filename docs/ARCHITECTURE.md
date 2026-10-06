@@ -459,6 +459,14 @@ time is midnight, no offset is UTC, the fraction of a second is kept as written)
 (`2026-10-03T07:30:00Z`), or with its offset kept (`2026-10-03T09:30:00+02:00`). `round(x)` without
 digits rounds to a whole number.
 
+**Empty text.** An empty text is null, as in Oracle, which cannot tell them apart: the language
+follows it, so that every backend gives the same results. An empty text in the input is read as
+null; a built-in whose result would be empty (`split_first`, `split_nth` on an empty part,
+`replace` that removes everything, `concat` of nothing, `lookup`, `regexp_*`, `remove_prefix`,
+`to_string`) gives null; the output never holds an empty text. `split_nth("a|b||||f|", "|", n)` is
+`a`, `b`, null, null, null, `f`, null for 1 to 7, and null beyond the end or for `n < 1`; a null
+text gives null in every text function. Golden mapping: `empty_text`.
+
 **Regular expressions are the one place where backends are not interchangeable.** The pattern of
 `regexp_replace` and `regexp_group` is written in the dialect of the backend that runs the mapping
 (Python's `re` for the Python backend, Oracle's `REGEXP_*` for PL/SQL); the tool does not translate

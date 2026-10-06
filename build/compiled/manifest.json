@@ -4,6 +4,7 @@
   "sources": {
     "mapper.toml": "ec4b540b9fa588f251cad9e1ab2760f587fbdd191df3c01ce1e664731076bf55",
     "mappings/builtins_text.map.py": "0cc80ea3840000c22e8654dc5b30cf8cedb4a0aa76eca7641cfe54d43483a821",
+    "mappings/empty_text.map.py": "6b046f519f87ed449d0a5fc0b326b05f99f41f19ee8e3e3d178cd502fd1bcaf4",
     "mappings/orders.map.py": "b8f5296a092ea1914d8e19e4af6eb0b5d895ae52c153d95abd576570eba7e1d2",
     "mappings/pick.map.py": "196adbbebf4a904e93dc18cb394bde81f61dd6ba453c5cb6cd25bc21eaf730a1",
     "mappings/positions.map.py": "71c1b15b88f2c6398fbdee95a07e75f0dfa7673f3799fad14c78e3fabce14235",
@@ -13,13 +14,14 @@
     "schemas/orders_output.schema.json": "0435c9b471bc1b7c4eaa9722f2c359fd4cf573ab716a6bf1100c92d2fb89dfc3"
   },
   "outputs": {
-    "j2jme_functions.sql": "74d9961d4d5c86f018937b9bbb7189193ef84064b7beae1cc4e61850c847402f",
+    "j2jme_functions.sql": "74294cd4b99c460158169be7463dcde09051d8fe3bb58718ac41a85e52a240c4",
     "j2jme_map_builtins_text.sql": "1de1f4efcd148b4c05f8811079860cf605ab20e57b891ee4faf8a78ea66ec416",
+    "j2jme_map_empty_text.sql": "1433c316560b28c6e9859fe30d8e2cd11aceab9116a4f792b8073d5b64a095df",
     "j2jme_map_orders.sql": "d4660a61ef22a2aaf251c549e3ec6d401fcbe726c9bcb2c403dcea5a2c423510",
     "j2jme_map_pick.sql": "ffdc2fc227f2d83e523b4b1820fe2f93547c0b6e046fb85fbccb3cce38214eff",
     "j2jme_map_positions.sql": "e6b280332470aaefd30b2e7f7a019eb7375013825aefb2af19bd16a30db5e1f3",
     "j2jme_map_selection.sql": "488e6625ebb5181c81e3f670bf6965cddaa1cbc7b177532ce76cfd2218eab57b",
     "j2jme_map_truthiness.sql": "e8fc38bc9a33aedaf4f33a4c549b505a523cb564515ddf951ad9bb182c0e85c9",
-    "j2jme_mappings.sql": "cf0243f6991d6900f494cb764c4a9b99338d0933663c84b8e3c8bbf4f57a926c"
+    "j2jme_mappings.sql": "7ff63d54a5a0aee995850f40a1259fa10560efe4e74d9e108fc9e4576f9c0a0a"
   }
 }

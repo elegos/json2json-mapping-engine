@@ -97,10 +97,12 @@ def _split_nth_py(s: str, sep: str, n: int) -> str | None:
 def _split_nth_plsql(arg_exprs: list[str]) -> str:
     s, sep, n = arg_exprs
     padded = f"({s} || {sep})"
-    start_of_n = f"INSTR({padded}, {sep}, 1, {n} - 1)"
+    # INSTR rejects an occurrence below 1: the part before the first separator starts at 0, and a
+    # position below 1 has no part
+    start_of_n = f"(CASE WHEN {n} = 1 THEN 0 ELSE INSTR({padded}, {sep}, 1, {n} - 1) END)"
     end_of_n = f"INSTR({padded}, {sep}, 1, {n})"
     return (
-        f"(CASE WHEN {end_of_n} = 0 THEN NULL ELSE "
+        f"(CASE WHEN {n} < 1 THEN NULL WHEN {end_of_n} = 0 THEN NULL ELSE "
         f"SUBSTR({padded}, {start_of_n} + LENGTH({sep}), {end_of_n} - {start_of_n} - LENGTH({sep})) "
         "END)"
     )

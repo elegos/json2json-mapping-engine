@@ -1,0 +1,16 @@
+{
+  "Nth0": "~",
+  "Nth1": "a",
+  "Nth2": "b",
+  "Nth3": "~",
+  "Nth5": "~",
+  "Nth6": "f",
+  "Nth7": "~",
+  "Nth8": "~",
+  "First": "a",
+  "FirstLeadingEmpty": "~",
+  "FirstOfBlank": "~",
+  "Blank": "~",
+  "ConcatBlanks": "~",
+  "ReplaceToEmpty": "~"
+}

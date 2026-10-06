@@ -20,7 +20,7 @@ CREATE OR REPLACE PACKAGE BODY J2JME_FUNCTIONS AS
 
     FUNCTION split_nth(p_s IN VARCHAR2, p_sep IN VARCHAR2, p_n IN NUMBER) RETURN VARCHAR2 IS
     BEGIN
-        RETURN (CASE WHEN INSTR((p_s || p_sep), p_sep, 1, p_n) = 0 THEN NULL ELSE SUBSTR((p_s || p_sep), INSTR((p_s || p_sep), p_sep, 1, p_n - 1) + LENGTH(p_sep), INSTR((p_s || p_sep), p_sep, 1, p_n) - INSTR((p_s || p_sep), p_sep, 1, p_n - 1) - LENGTH(p_sep)) END);
+        RETURN (CASE WHEN p_n < 1 THEN NULL WHEN INSTR((p_s || p_sep), p_sep, 1, p_n) = 0 THEN NULL ELSE SUBSTR((p_s || p_sep), (CASE WHEN p_n = 1 THEN 0 ELSE INSTR((p_s || p_sep), p_sep, 1, p_n - 1) END) + LENGTH(p_sep), INSTR((p_s || p_sep), p_sep, 1, p_n) - (CASE WHEN p_n = 1 THEN 0 ELSE INSTR((p_s || p_sep), p_sep, 1, p_n - 1) END) - LENGTH(p_sep)) END);
     END split_nth;
 END J2JME_FUNCTIONS;
 /
