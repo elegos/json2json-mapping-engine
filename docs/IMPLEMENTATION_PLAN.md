@@ -1214,10 +1214,8 @@ build in:
       modules are loaded by path, so the functions would have to be importable by the workers); a
       loop that does more than append one `@parallel` rule's value (fused loops) stays sequential.
 - [ ] Then the desktop preview (Extra mile in M6).
-- [ ] Then the golden runs in the tool (M6.8): the disabled ▶ buttons of the *Golden* tab (one
-      case, and *Execute all…*) run the cases on this backend, and the tool shows the results
-      (PASS / FAIL per case, the output diff, the per-rule errors on the grid rows). How the
-      results are shown is still to be designed.
+- [x] The golden runs in the tool (M6.8): *Execute all…* and the ▶ of each case run on this backend,
+      with PASS / FAIL, the output diff and the per-rule errors on the grid rows (done, see M6.8).
 - [x] The Output column (M6.11): the grid shows, per rule, the value it gave on a golden case
       (compared with `expected.json`: red where it differs) or on any JSON file (shown only).
       Decided: one selector (`OutputInputButton`, with a light like the schema buttons) beside the
