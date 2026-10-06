@@ -1186,15 +1186,17 @@ build in:
 - [x] The golden cases (`tests/golden/<mapping>/*.input.json`, `.expected.json`,
       `.expected_errors.json`) are the shared contract: every backend runs all of them. Track 2
       stays per target (Oracle image for PL/SQL, none for Python), the cases do not.
-- [ ] (empty text = null decided and done, golden `empty_text`; rounding, dates, `split_nth` beyond the end and division by zero were already agreed on by the golden cases) Built-ins: the Python reference implementations in `builtins.py` become the Python
+- [x] Built-ins (settled by the golden cases `builtins_text` and `empty_text`: empty text = null, rounding, dates, `split_nth` beyond the end, division by zero): the Python reference implementations in `builtins.py` become the Python
       backend's implementations; where PL/SQL and Python could differ (rounding, null and empty
       string, date parsing, `split_nth` beyond the end, division by zero), the difference is
       settled once, written down, and both backends follow it.
 - [x] A conformance run in CI: every case runs on both backends (track 1: Python, track 2: Oracle) against the same
       `expected.json`, so they agree through it; a test (`test_every_golden_case_states_its_expected_output`) fails a
       case with no expected output, which would pass whatever a backend gave. No job comparing artifacts: it would repeat this.
-- [ ] Error isolation and `required` semantics (§Runtime error semantics) implemented
+- [x] Error isolation and `required` semantics (§Runtime error semantics) implemented
       identically.
+      Checked by `orders/failed_member` on both backends and, for the Python one, by
+      `test_error_isolation_keeps_the_first_failure_and_the_parent`.
 - [x] **Target interpreter.** The Python that *runs the generated module* is the host project's, not the
       engine's own (which the tool runs on 3.14 to compile). Decided: no `[target.python] python` key; the
       generated code does not change with the version, so what matters is the floor: **Python 3.10 or later**

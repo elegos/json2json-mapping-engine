@@ -94,6 +94,34 @@ def test_a_failing_rule_is_reported_once_and_the_rest_goes_on(tmp_path: Path) ->
     assert json.loads(str(raised.value))["total_errors"] == 1
 
 
+def test_error_isolation_keeps_the_first_failure_and_the_parent(tmp_path: Path) -> None:
+    """A failing nested rule leaves out only its member (the parent is emitted, `required` is not
+    enforced), a rule is reported once with its first cause, and the raising entry point agrees."""
+    module = _load(
+        tmp_path,
+        "from __mapping__ import *\n"
+        "def unit(item: Any) -> float:\n    return item.total / item.qty\n"
+        "@dataclass\nclass Line:\n    Sku: str\n    Unit: float | None\n"
+        "def line(item: Any) -> Line:\n    return Line(Sku=item.sku, Unit=unit(item))\n"
+        "for item in root.items:\n    out.Lines.append(line(item))\n",
+    )
+    source = {
+        "items": [
+            {"sku": "A", "total": 10, "qty": 2},
+            {"sku": "B", "total": 7, "qty": 0},
+            {"sku": "C", "total": 8, "qty": 0},
+        ]
+    }
+    out, errors = module.map_m_safe(source)
+    assert out == {"Lines": [{"Sku": "A", "Unit": 5}, {"Sku": "B"}, {"Sku": "C"}]}
+    assert [e["rule"] for e in errors] == ["unit"]
+    assert errors[0]["cause"].startswith("ZeroDivisionError")
+    with pytest.raises(module.MappingError) as raised:
+        module.map_m(source)
+    assert json.loads(str(raised.value))["total_errors"] == 1
+    assert module.map_m({"items": [source["items"][0]]}) == {"Lines": [{"Sku": "A", "Unit": 5}]}
+
+
 def test_missing_values_are_null_and_arithmetic_and_ordering_propagate_it(tmp_path: Path) -> None:
     module = _load(
         tmp_path,
