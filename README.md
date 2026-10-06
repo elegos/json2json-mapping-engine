@@ -6,7 +6,7 @@
 ![Status: work in progress](https://img.shields.io/badge/status-work%20in%20progress-orange)
 
 ![Target: PL/SQL](https://img.shields.io/badge/target-PL%2FSQL-008800?logo=oracle&logoColor=white) <!-- Done -->
-![Target: Python](https://img.shields.io/badge/target-Python-FF8800?logo=oracle&logoColor=white) <!-- WIP -->
+![Target: Python](https://img.shields.io/badge/target-Python-008800?logo=oracle&logoColor=white) <!-- Done -->
 
 A **compiled** mapping engine for JSON-to-JSON transformations. Write mapping rules in a
 restricted, hard-typed subset of Python; the compiler turns them into native code for the target
@@ -52,7 +52,7 @@ Project settings live in `mapper.toml`.
 | Target | State |
 |---|---|
 | PL/SQL (Oracle) | ✅ reference implementation, see [`docs/backends/plsql.md`](docs/backends/plsql.md) |
-| Python | 🚧 in progress (generated modules need Python 3.10+) |
+| Python | ✅ complete (generated modules need Python 3.10+) |
 
 Writing another one: [`docs/backends/writing-a-backend.md`](docs/backends/writing-a-backend.md).
 

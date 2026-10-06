@@ -1151,7 +1151,7 @@ match); `lookup` and `if_else` cover the rest. The limits of `to_number` (a plai
 before the dot and 18 after; no exponent, separators or decimal comma) are in its description, which the
 explorer and the guide show.
 
-## 🟨 Python backend (first slice done)
+## ✅ Python backend (done)
 
 A backend of its own (`compiler/backends/python/`, `[project] target = "python"`), lightweight:
 it compiles a mapping to a Python module (rule functions, `map_<id>` / `map_<id>_safe`
