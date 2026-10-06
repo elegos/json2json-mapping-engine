@@ -102,4 +102,5 @@ Both pipelines (`.forgejo/workflows` and `.github/workflows`) are kept in sync.
 - 🗺️ [Implementation plan](docs/IMPLEMENTATION_PLAN.md)
 - 🤖 [Running `mapper` in CI](docs/CI.md)
 - 🔌 [PL/SQL backend](docs/backends/plsql.md) · [Writing a backend](docs/backends/writing-a-backend.md)
+- 🧪 [Oracle runtime spike notes](docs/spike-notes.md)
 - 📝 [Changelog](CHANGELOG.md)
