@@ -26,6 +26,7 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass, field
+from functools import cache
 from pathlib import Path
 
 from cli.build_dir import cache_dir, compiled_dir, transpiled_dir
@@ -118,8 +119,23 @@ def _refuse_unfinished(path: Path) -> None:
         raise BuildError(f"{path}: rules the output schema requires are not defined yet\n{lines}")
 
 
+@cache
+def engine_fingerprint() -> str:
+    """A hash of the engine's own code (the compiler, the transpiler and the runtime): a unit built
+    by another version of the generator is not what this one would build, so the cache must not
+    answer for it. Where the sources are not there (a packaged engine) it is empty."""
+    root = Path(__file__).resolve().parent.parent
+    h = hashlib.sha256()
+    for package in ("compiler", "transpiler", "runtime", "fn"):
+        for path in sorted((root / package).rglob("*.py")):
+            h.update(path.relative_to(root).as_posix().encode())
+            h.update(path.read_bytes())
+    return h.hexdigest()
+
+
 def compute_hash(source: bytes, config_raw: dict, extra: list[bytes] | None = None) -> str:
     h = hashlib.sha256()
+    h.update(engine_fingerprint().encode())
     h.update(source)
     h.update(json.dumps(config_raw, sort_keys=True).encode())
     for blob in extra or []:

@@ -1462,7 +1462,7 @@ Other choices where the spec was silent or needed a decision:
 ### Build folder and incremental compilation
 
 The build folder mirrors the two pipeline stages. Each source file produces one
-intermediate artifact per stage; stages are skipped if the source hash is unchanged.
+intermediate artifact per stage; stages are skipped if the source hash is unchanged (the hash also covers `mapper.toml`, the schemas, the lookups the mapping reads and the engine's own code, so a change in the generator rebuilds everything).
 
 ```
 build/

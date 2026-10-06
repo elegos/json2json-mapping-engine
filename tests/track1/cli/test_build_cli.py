@@ -281,3 +281,12 @@ def test_json_diagnostic_carries_the_rule_path() -> None:
         "rule": "rules[0].rules[2]",
         "message": "bad type",
     }
+
+
+def test_the_build_cache_follows_the_engine(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A unit built by another version of the generator must be built again."""
+    from cli import build
+
+    before = build.compute_hash(b"source", {})
+    monkeypatch.setattr(build, "engine_fingerprint", lambda: "another engine")
+    assert build.compute_hash(b"source", {}) != before
