@@ -294,5 +294,5 @@ def test_the_build_says_a_parallel_rule_is_not_faster_with_the_global_lock() -> 
 def test_every_golden_case_states_its_expected_output() -> None:
     """The golden cases are the contract every backend is held to: a case with no expected output
     would pass on any backend, whatever it gave (and the backends could disagree unseen)."""
-    without = [f"{c.mapping}/{c.name}" for c in discover_cases() if c.expected is None]
+    without = [f"{c.mapping}/{c.name}" for c in discover_cases() if c.expected_path is None]
     assert not without, f"golden cases with no .expected.json: {without}"
