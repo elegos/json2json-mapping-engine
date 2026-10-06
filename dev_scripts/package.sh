@@ -4,7 +4,8 @@
 #   macOS needs J2JME_MACOS_SDK=<path to MacOSX*.sdk.tar.xz>; with MACOS_CERT_P12_BASE64 and
 #   MACOS_CERT_PASSWORD the app is signed with that certificate, otherwise ad-hoc.
 # The image is built the first time (a few minutes). target/ and the downloads are kept in
-# build/pkg-cache, or in the volume j2jme-pkg-cache with J2JME_PKG_COPY=1.
+# build/pkg-cache, or in the volume j2jme-pkg-cache-<target> with J2JME_PKG_COPY=1 (one per target,
+# so the targets can be built at the same time on the same daemon).
 # J2JME_PKG_COPY=1: for a docker daemon that does not share this machine's files (CI on dind):
 # the repository is copied into the container and the packages copied out, no bind mounts.
 set -euo pipefail
@@ -33,8 +34,9 @@ for target in "$@"; do
     docker run --rm --user "$(id -u):$(id -g)" -w /work "${mounts[@]}" "${env_args[@]}" \
       "$image" packaging/build.sh "$target"
   else
-    docker volume create j2jme-pkg-cache >/dev/null
-    cid="$(docker create -w /work -v j2jme-pkg-cache:/work/build/pkg-cache "${env_args[@]}" \
+    volume="j2jme-pkg-cache-$target"
+    docker volume create "$volume" >/dev/null
+    cid="$(docker create -w /work -v "$volume:/work/build/pkg-cache" "${env_args[@]}" \
       "$image" packaging/build.sh "$target")"
     trap 'docker rm -f "$cid" >/dev/null' EXIT
     docker cp "$root/." "$cid:/work"

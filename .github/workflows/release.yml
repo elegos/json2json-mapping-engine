@@ -12,6 +12,8 @@ name: Release
 #    `Unreleased` section, else none (packaging/release.py).
 # A manual run only builds the packages (artifacts), with the version of Cargo.toml.
 #
+# One job per target (they run at the same time), then the release.
+#
 # Secrets for the macOS package (without MACOS_SDK_URL it is left out):
 #   MACOS_SDK_URL, MACOS_SDK_TOKEN   where the CI downloads the MacOSX*.sdk.tar.xz from (token optional)
 #   MACOS_CERT_P12_BASE64, MACOS_CERT_PASSWORD   the signing certificate (else an ad-hoc signature)
@@ -26,8 +28,12 @@ permissions:
 
 jobs:
   packages:
-    name: Packages
+    name: Package ${{ matrix.target }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [linux, windows, macos]
     env:
       MACOS_SDK_URL: ${{ secrets.MACOS_SDK_URL }}
       MACOS_SDK_TOKEN: ${{ secrets.MACOS_SDK_TOKEN }}
@@ -42,28 +48,46 @@ jobs:
         run: python3 packaging/release.py prepare "$GITHUB_REF_NAME" --notes "$RUNNER_TEMP/notes.md" >> "$GITHUB_ENV"
 
       - name: Fetch the macOS SDK
+        if: matrix.target == 'macos'
         run: |
           if [ -n "$MACOS_SDK_URL" ]; then
             auth=(); [ -z "$MACOS_SDK_TOKEN" ] || auth=(-H "Authorization: token $MACOS_SDK_TOKEN")
             curl -fsSL "${auth[@]}" -o "$RUNNER_TEMP/macos-sdk.tar.xz" "$MACOS_SDK_URL"
             echo "J2JME_MACOS_SDK=$RUNNER_TEMP/macos-sdk.tar.xz" >> "$GITHUB_ENV"
             echo "macOS SDK downloaded ($(du -h "$RUNNER_TEMP/macos-sdk.tar.xz" | cut -f1), sha256 $(sha256sum "$RUNNER_TEMP/macos-sdk.tar.xz" | cut -c1-16)…): the macOS package is built"
-            echo "J2JME_TARGETS=linux windows macos" >> "$GITHUB_ENV"
           else
             echo "no MACOS_SDK_URL: no macOS package"
-            echo "J2JME_TARGETS=linux windows" >> "$GITHUB_ENV"
+            echo "J2JME_SKIP=1" >> "$GITHUB_ENV"
           fi
 
-      - name: Build the packages
-        run: dev_scripts/package.sh $J2JME_TARGETS
+      - name: Build the package
+        if: env.J2JME_SKIP != '1'
+        run: dev_scripts/package.sh ${{ matrix.target }}
 
       - uses: actions/upload-artifact@v4
+        if: env.J2JME_SKIP != '1'
         with:
-          name: packages
+          name: packages-${{ matrix.target }}
           path: dist/packages/*
 
+  release:
+    name: Draft the release
+    needs: packages
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version and release notes from the tag
+        run: python3 packaging/release.py prepare "$GITHUB_REF_NAME" --notes "$RUNNER_TEMP/notes.md" >> "$GITHUB_ENV"
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: packages-*
+          merge-multiple: true
+          path: dist/packages
+
       - name: Draft the release
-        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           name: ${{ github.ref_name }}
