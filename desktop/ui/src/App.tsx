@@ -14,7 +14,25 @@ import { GoldenImport } from "./GoldenImport";
 import { nameProblem } from "./mappings";
 import { PromptDialog, type PromptField } from "./PromptDialog";
 import { OutputInputButton } from "./OutputInput";
-import { outputCell, type OutputSource } from "./ruleOutput";
+import { RunReport } from "./RunReport";
+import { dirName, inputDialogDir, mappedFilePath, outputCell, type OutputSource } from "./ruleOutput";
+
+/** The folder the last input of a run was taken from (a convenience of this machine). */
+const LAST_INPUT_DIR = "lastInputDir";
+const localStorageGet = (key: string): string | null => {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+const localStorageSet = (key: string, value: string): void => {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    /* kept only for convenience */
+  }
+};
 import { AddMenu } from "./AddMenu";
 import { SchemaStatusButtons } from "./SchemaStatus";
 import {
@@ -76,6 +94,7 @@ import {
   type VcsConflictItem,
   inputRun,
   chooseJsonFile,
+  saveJsonFile,
   type GoldenResult,
   goldenRename,
   type GoldenCase,
@@ -1540,12 +1559,24 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project, current, saved, outputKey, functionsRev]);
   const pickOutputFile = useCallback(async () => {
-    const file = await chooseJsonFile("Input to run the mapping on");
+    const lastDir = localStorageGet(LAST_INPUT_DIR);
+    const file = await chooseJsonFile("Input to run the mapping on", inputDialogDir(rememberedFile, lastDir, project));
     if (!file || !project || !current) return;
+    localStorageSet(LAST_INPUT_DIR, dirName(file));
     setRememberedFile(file);
     setOutputSource({ kind: "file", path: file });
     await inputFileSet(project, mappingName(current), file).catch(() => undefined);
-  }, [project, current]);
+  }, [project, current, rememberedFile]);
+
+  const downloadMapped = useCallback(async () => {
+    if (!outputSource || !outputResult) return;
+    try {
+      const file = await saveJsonFile("Save the mapped JSON", mappedFilePath(outputSource, project), outputResult.output);
+      if (file) setStatus(`Mapped JSON saved to ${file}`);
+    } catch (e) {
+      setStatus(String(e instanceof Error ? e.message : e));
+    }
+  }, [outputSource, outputResult, project]);
 
   const importCase = useCallback(
     async (v: { name: string; input: string; expected: string | null; errors: string | null }) => {
@@ -2303,6 +2334,7 @@ export function App() {
                   }}
                   onChooseFile={() => void pickOutputFile()}
                 />
+                <RunReport result={outputResult} onDownload={() => void downloadMapped()} />
               </SchemaStatusButtons>
             </div>
           )}

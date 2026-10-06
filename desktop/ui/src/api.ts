@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import type { Diagnostic, FunctionalFile, ReviewFlag } from "./model";
 import type { ConfigIssue, ConfigSchema, ConfigValues } from "./projectConfig";
 
@@ -236,9 +236,18 @@ export interface GoldenCase {
 export const goldenCases = async (project: string, mapping: string) =>
   (await reviewRequest<{ cases: GoldenCase[] }>({ op: "golden_cases", project, mapping })).cases;
 
-export async function chooseJsonFile(title: string): Promise<string | null> {
-  const file = await open({ title, filters: [{ name: "JSON", extensions: ["json"] }] });
+export async function chooseJsonFile(title: string, defaultPath?: string): Promise<string | null> {
+  const file = await open({ title, defaultPath, filters: [{ name: "JSON", extensions: ["json"] }] });
   return typeof file === "string" ? file : null;
+}
+
+/** Asks where to save a JSON file and writes `value` there (pretty-printed). Gives the path, or null
+ * when the user gave up. */
+export async function saveJsonFile(title: string, defaultPath: string, value: unknown): Promise<string | null> {
+  const file = await save({ title, defaultPath, filters: [{ name: "JSON", extensions: ["json"] }] });
+  if (!file) return null;
+  await invoke<void>("write_text_file", { path: file, text: JSON.stringify(value, null, 2) + "\n" });
+  return file;
 }
 
 /** Copies the files into `tests/golden/<mapping>/` under the standard names. */

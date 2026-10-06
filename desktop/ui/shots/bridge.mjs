@@ -2,7 +2,7 @@
 // commands the Rust side has (src-tauri/src/main.rs), answered by the real `mapper` CLI and
 // `mapper serve`. Not part of the app; used by shots/run.mjs only.
 import { execFileSync, spawn } from "node:child_process";
-import { cpSync, existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -90,6 +90,7 @@ const commands = {
     if (path) inputFiles.set(`${project}|${mapping}`, path);
     else inputFiles.delete(`${project}|${mapping}`);
   },
+  write_text_file: async ({ path, text }) => writeFileSync(path, text),
   python_status: async () => ({ available: true, python, engine: root, version: "3.12" }),
   initial_project: async () => initial,
   list_fn_files: async ({ project }) =>
@@ -147,6 +148,7 @@ export const shim = `
     unregisterCallback() {},
     convertFileSrc: (p) => p,
     invoke: async (cmd, args) => {
+      if (cmd === "plugin:dialog|save" && window.__saveTo) return window.__saveTo;
       if (cmd.startsWith("plugin:")) return 0;
       const r = await (await fetch("/__bridge/" + cmd, { method: "POST", body: JSON.stringify(args ?? {}) })).json();
       if (!r.ok) throw r.error;

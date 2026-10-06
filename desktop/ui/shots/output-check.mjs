@@ -38,7 +38,7 @@ const page = await context.newPage();
 page.on("pageerror", (e) => console.error("page error:", e.message));
 await page.goto(server.resolvedUrls.local[0]);
 await page.waitForSelector(".ag-row");
-const button = page.locator(".output-input > button");
+const button = page.locator('.schema-button:has-text("Example input file")');
 const fail = (m) => {
   console.error("FAIL:", m);
   process.exitCode = 1;
@@ -54,6 +54,17 @@ if (first.trim() !== "A1") fail(`first rule gave ${first}`);
 if ((await page.locator(".output-cell.diff, .output-cell.same").count()) !== 0) fail("a file is compared");
 console.log("file:", first.trim());
 
+// the report: no rule failed on this input, and the mapped JSON is saved where the user chooses
+const report = page.locator(".run-report > button").first();
+if ((await report.textContent()).trim() !== "No errors") fail(`report says ${await report.textContent()}`);
+const saved = join(project, "..", "saved-output.json");
+await page.evaluate((p) => (window.__saveTo = p), saved);
+await page.click('button:has-text("Download mapped JSON")');
+await page.waitForFunction(() => document.body.textContent.includes("Mapped JSON saved"));
+const mapped = JSON.parse(readFileSync(saved, "utf8"));
+if (mapped.OrderId !== "A1") fail(`the saved output has OrderId ${mapped.OrderId}`);
+console.log("download: OrderId", mapped.OrderId);
+
 // a golden case: compared with its expected output (changed on disk above)
 await button.click();
 await page.click('.output-menu button:has-text("two_lines")');
@@ -62,6 +73,16 @@ const diff = page.locator('.ag-row[row-index="0"] .ag-cell[col-id="output"]');
 console.log("diff:", (await diff.getAttribute("class")).includes("diff"), "| same cells:", await page.locator(".output-cell.same").count());
 if ((await page.locator(".output-cell.same").count()) === 0) fail("no cell agrees with the expected output");
 if (!(await button.getAttribute("class")).includes("ok")) fail("light is not green for the case");
+
+// a case where a rule fails: the report counts it, and a click lists the rule with its cause
+await button.click();
+await page.click('.output-menu button:has-text("failed_member")');
+const failing = page.locator(".run-report > button").first();
+await page.waitForFunction(() => /^\d+ errors?$/.test(document.querySelector(".run-report > button")?.textContent?.trim() ?? ""));
+await failing.click();
+const listed = await page.locator(".run-report-list").textContent();
+if (!listed.includes("ZeroDivisionError")) fail(`the list does not give the cause: ${listed}`);
+console.log("errors:", (await failing.textContent()).trim(), "|", listed.trim());
 
 // no output: the column stays, with its placeholder
 await button.click();
@@ -72,7 +93,7 @@ if (!(await button.getAttribute("class")).includes("unknown")) fail("light is no
 await page.reload();
 await page.waitForSelector(".ag-row");
 await page.waitForTimeout(500);
-if (!(await page.locator(".output-input > button").getAttribute("class")).includes("unknown")) fail("the file came back");
+if (!(await page.locator('.schema-button:has-text("Example input file")').getAttribute("class")).includes("unknown")) fail("the file came back");
 console.log(process.exitCode ? "FAILED" : "ok");
 await browser.close();
 await server.close();

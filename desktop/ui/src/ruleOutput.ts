@@ -61,3 +61,24 @@ export function outputLight(
   if (source.kind === "case") return caseNames.includes(source.name) ? "ok" : "missing";
   return fileMissing ? "missing" : "ok";
 }
+
+/** The folder part of a path (with the separator it uses); "" when it has none. */
+export const dirName = (path: string): string => {
+  const at = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+  return at < 0 ? "" : path.slice(0, at);
+};
+
+/** Where the dialogs of the run's input and output start: the folder of the input file when there is
+ * one, else the last folder an input was taken from, else the project's folder. */
+export function inputDialogDir(rememberedFile: string | null, lastDir: string | null, project: string | null): string | undefined {
+  return (rememberedFile && dirName(rememberedFile)) || lastDir || project || undefined;
+}
+
+/** The name proposed for the mapped JSON of a run: the input's name with `.mapped` before `.json`,
+ * in the input's folder (a golden case has no file of its own: the project folder is used). */
+export function mappedFilePath(source: OutputSource, project: string | null): string {
+  if (source.kind === "case") return `${project ? project + "/" : ""}${source.name}.mapped.json`;
+  const file = baseName(source.path).replace(/\.json$/i, "");
+  const dir = dirName(source.path);
+  return `${dir ? dir + "/" : ""}${file}.mapped.json`;
+}

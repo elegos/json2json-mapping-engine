@@ -413,3 +413,5 @@ span.result-badge { cursor: default; }
 
 .presence { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; opacity: 0.85; }
 .presence .same { color: #b26a00; font-weight: 600; opacity: 1; }
+.run-report { position: relative; display: flex; gap: 6px; align-items: center; }
+.run-report-list { right: auto; left: 0; min-width: 320px; padding: 6px 8px; gap: 4px; font-size: .9em; }

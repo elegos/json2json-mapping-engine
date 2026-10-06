@@ -1058,7 +1058,7 @@ Sliced; each slice is usable on its own:
         Walked through by `ui/shots/golden-marks-check.mjs`. The output of a run next to the input
         is the Output column of the grid (M6.11, see "Python backend").
 
-**Extra mile (needs the Python backend below).** *Try a mapping in the tool*: import an input
+**Extra mile (done, see "Python backend").** *Try a mapping in the tool*: import an input
 JSON for the open mapping, run it and show the output next to the input, with the per-rule
 errors highlighted on the grid rows (as `_safe` reports them). It runs the mapping compiled by
 the Python backend, not the `.map.py` executed as Python (ARCHITECTURE.md: the `.map` files are
@@ -1215,7 +1215,11 @@ build in:
       tests (also run on 3.14t). Still open: `process` (`ProcessPoolExecutor`: the generated
       modules are loaded by path, so the functions would have to be importable by the workers); a
       loop that does more than append one `@parallel` rule's value (fused loops) stays sequential.
-- [ ] Then the desktop preview (Extra mile in M6).
+- [x] The desktop preview (Extra mile in M6): the input chosen with a file dialog (it starts in the folder of the
+      last input, else the project's), the run's report beside the selector (*No errors*, or the rules that
+      failed with their cause) and *Download mapped JSON* (a save dialog, the input's folder and name `.mapped.json`
+      proposed; Tauri command `write_text_file`). Walked through by `ui/shots/output-check.mjs`; not seen in the
+      running Tauri window.
 - [x] The golden runs in the tool (M6.8): *Execute all…* and the ▶ of each case run on this backend,
       with PASS / FAIL, the output diff and the per-rule errors on the grid rows (done, see M6.8).
 - [x] The Output column (M6.11): the grid shows, per rule, the value it gave on a golden case

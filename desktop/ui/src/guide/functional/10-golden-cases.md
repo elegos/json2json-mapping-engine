@@ -100,3 +100,11 @@ to the grid: what each rule gave when the mapping ran on an input, right next to
 The button's light is green while the case or the file is there, red when it is gone. Like the
 cases, the column is computed from the **saved** mapping: it refreshes when you save. A rule inside
 a loop shows one value per element, as a list; a rule that left nothing in the output is blank.
+
+### The report and the mapped JSON
+
+Next to the button, a report says how the run went: **No errors**, or the number of rules that failed
+(click it to list them, each with its cause). **Download mapped JSON** saves the whole output of the
+run in a file you choose; it proposes the input's folder and its name with `.mapped` before `.json`.
+The window to choose the input opens in the folder of the last input (or the project's folder the
+first time).

@@ -238,6 +238,12 @@ fn input_file_get(app: tauri::AppHandle, project: String, mapping: String) -> Op
     input_files::get(app.path().app_config_dir().ok()?, &project, &mapping)
 }
 
+/// Writes `text` to `path`, which the user chose in a save dialog (the mapped JSON of a run).
+#[tauri::command]
+fn write_text_file(path: String, text: String) -> Result<(), String> {
+    std::fs::write(&path, text).map_err(|e| format!("{path}: {e}"))
+}
+
 #[tauri::command]
 fn input_file_set(
     app: tauri::AppHandle,
@@ -348,6 +354,7 @@ fn main() {
             edit_request,
             input_file_get,
             input_file_set,
+            write_text_file,
             tour_project_prepare,
             tour_project_cleanup
         ])
