@@ -794,8 +794,9 @@ Sliced; each slice is usable on its own:
         input and output schemas are loaded: two status buttons, *Input schema* and *Output
         schema*, each with a light, green when the schema is found and readable, red when it is
         missing or does not parse (the tooltip gives the path, or the reason). Clicking one opens
-        the picker to load it, or to load another in its place.
-      - Done: the status buttons in the rules toolbar (`SchemaStatus.tsx`; `schemas_status` / `schema_import` ops of `mapper serve`, `compiler/schema_files.py`): green when the schema is found and readable, red when missing or not valid JSON; a click picks a file, which is copied into `schemas/` under the mapping's name (a `schemas:` override of that kind is dropped, as it would hide the copy). The list on the left shows the mapping's name (`orders`), not the file's.
+        a menu: load it from a file, or from the project's own schemas (or load another in its
+        place), and, for the output schema, lay its rules out again.
+      - Done: the status buttons in the rules toolbar (`SchemaStatus.tsx`; `schemas_status` / `schema_import` ops of `mapper serve`, `compiler/schema_files.py`): green when the schema is found and readable, red when missing or not valid JSON; a click opens a menu (see *the schema menus* below), and a file loaded from it is copied into `schemas/` under the mapping's name (a `schemas:` override of that kind is dropped, as it would hide the copy). The list on the left shows the mapping's name (`orders`), not the file's.
       - Done: scaffolding (`transpiler/scaffold.py`, op `scaffold` of `mapper serve`). After a new output schema is loaded the tool asks whether to create the rules it describes: a field per scalar property (type from `type` / `format`, `required` from the schema), an object per object, a loop per array of objects, nested; an existing mapping keeps its rules and gets only the missing ones, at the end of their container. Not laid out (and reported): arrays of non-objects, objects with no properties listed, names that are not valid field names. Loading a schema also checks it is one (valid, with schema keywords), not any JSON.
       - **Done: what "validated" becomes.** A rule the new schema invalidates (its
         source path is gone or has another type, or it writes an output field that is gone or has
