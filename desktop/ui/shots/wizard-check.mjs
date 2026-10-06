@@ -45,6 +45,8 @@ await page.click('.wizard button:has-text("open the project")');
 await page.waitForSelector('.wizard h3:has-text("Project ready")');
 console.log(await page.textContent(".wizard p"));
 await page.click('.wizard button:has-text("Open the project properties")');
+// a new project outside git is offered git first
+await page.click('.modal button:has-text("Not now")');
 await page.waitForSelector(".config h2");
 console.log("properties:", await page.textContent(".config h2"), "| project:", await page.textContent("header .project"));
 await browser.close();
