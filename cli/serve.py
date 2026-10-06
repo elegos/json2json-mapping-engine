@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -46,6 +47,7 @@ from transpiler.complete import complete
 from transpiler.edit import add_rule, delete_rule, retarget, set_source
 from transpiler.model import FnYamlError, functional_from_dict, functional_to_dict, parse_functional
 from transpiler.scaffold import scaffold_rules
+from transpiler.schema_decay import review_after_schema_change
 from transpiler.serialize import functional_to_yaml
 
 _REVIEW_OPS = {
@@ -215,8 +217,22 @@ def _handle(request: dict[str, Any]) -> dict[str, Any]:
         }
     if op == "schema_import":
         project = Path(request["project"])
-        import_schema(project, request["stem"], request["kind"], Path(request["source"]))
-        return {"ok": True, **schema_status(project, request["stem"], request["kind"])}
+        kind = request["kind"]
+        tree = request.get("tree")
+        open_file = functional_from_dict(tree) if tree else None
+        refs = open_file.schemas if open_file else None
+        old = schemas_for(project, request["stem"], refs)
+        import_schema(project, request["stem"], kind, Path(request["source"]))
+        imported: dict[str, Any] = {"ok": True, **schema_status(project, request["stem"], kind)}
+        if open_file and refs:
+            # the loaded copy is the mapping's own now: a `schemas:` override of this kind goes
+            moved = replace(refs, **{kind: None})
+            new = schemas_for(project, request["stem"], moved)
+            marked = review_after_schema_change(open_file, kind, old, new)
+            if marked:
+                imported["moved"] = marked
+                imported["tree"] = functional_to_dict(open_file)
+        return imported
     if op == "mapping_create":
         file = mappings.create_mapping(
             Path(request["project"]),

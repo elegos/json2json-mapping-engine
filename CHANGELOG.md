@@ -61,6 +61,8 @@ Still missing:
   (temporary file and rename).
 - Presence in a synced folder: the footer says who else has a mapping open ("bob is editing
   orders"), advisory, nothing is locked.
+- Loading an input or an output schema sends back to review the validated rules it no longer fits
+  (a Source or a Target that is gone or has another type), with a note saying why.
 - A git repository inside a synced folder is refused: the tool explains why (the sync corrupts
   `.git`) and offers to delete `.git` (the files stay, the history goes); if you decline, the project
   is not opened. A project outside any repository is offered `git init` (optional).

@@ -428,6 +428,14 @@ The tool flags affected rows in the grid with a schema-conflict indicator so the
 developer can filter and resolve them before pushing. Silent schema drift is not
 permitted.
 
+Loading a schema in the tool (input or output) also acts on validation: a **validated** rule that
+the new schema invalidates, that is, a rule with an error against the new schemas that it did not
+have against the old ones (its Source path is gone or has another type, or its Target field is gone
+or has another type), goes back to review (`validated: false, needs_review: true`) with a note that
+says what the schema did (`transpiler/schema_decay.py`, op `schema_import`). The tool says how many
+went back. A rule already in review or never validated, and a rule the schema does not touch, stays
+as it is. The change is in the open tree, unsaved, like any edit.
+
 ---
 
 ## Function library

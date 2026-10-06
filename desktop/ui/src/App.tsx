@@ -1689,15 +1689,20 @@ export function App() {
         const source = await chooseSchemaFile(kind, project);
         if (!source) return;
         const stem = mappingName(current);
-        await importSchema(project, stem, kind, source);
-        let next = open;
-        if (open.schemas[kind]) {
+        const loaded = await importSchema(project, stem, kind, source, open);
+        const moved = loaded.moved?.length ?? 0;
+        let next = loaded.tree ?? open;
+        if (open.schemas[kind] || moved > 0) {
           remember(open, "schemas");
-          next = { ...open, schemas: { ...open.schemas, [kind]: null } };
-          setTree((old) => (old ? { ...old, schemas: { ...old.schemas, [kind]: null } } : old));
+          next = { ...next, schemas: { ...next.schemas, [kind]: null } };
+          setTree(next);
         }
         setSchemaTick((n) => n + 1);
-        setStatus("");
+        setStatus(
+          moved > 0
+            ? `${moved} validated rule${moved === 1 ? "" : "s"} went back to review: the ${kind} schema no longer fits ${moved === 1 ? "it" : "them"}.`
+            : "",
+        );
         // a new output schema: offer the rules it describes, empty, for the user to fill in
         if (kind === "output") {
           const found = await scaffoldRules(next, project, stem, false);

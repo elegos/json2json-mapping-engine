@@ -797,12 +797,15 @@ Sliced; each slice is usable on its own:
         the picker to load it, or to load another in its place.
       - Done: the status buttons in the rules toolbar (`SchemaStatus.tsx`; `schemas_status` / `schema_import` ops of `mapper serve`, `compiler/schema_files.py`): green when the schema is found and readable, red when missing or not valid JSON; a click picks a file, which is copied into `schemas/` under the mapping's name (a `schemas:` override of that kind is dropped, as it would hide the copy). The list on the left shows the mapping's name (`orders`), not the file's.
       - Done: scaffolding (`transpiler/scaffold.py`, op `scaffold` of `mapper serve`). After a new output schema is loaded the tool asks whether to create the rules it describes: a field per scalar property (type from `type` / `format`, `required` from the schema), an object per object, a loop per array of objects, nested; an existing mapping keeps its rules and gets only the missing ones, at the end of their container. Not laid out (and reported): arrays of non-objects, objects with no properties listed, names that are not valid field names. Loading a schema also checks it is one (valid, with schema keywords), not any JSON.
-      - **Decided, not built: what "validated" becomes.** A rule the new schema invalidates (its
+      - **Done: what "validated" becomes.** A rule the new schema invalidates (its
         source path is gone or has another type, or it writes an output field that is gone or has
         another type: the comparison the build already makes on the stubs) goes back to review,
         like the decay on a changed source or expression: `validated: false, needs_review: true`,
-        written in the file when the schema is loaded. A rule that is already in review or not
+        in the open tree (unsaved, like any edit) when the schema is loaded. A rule that is already in review or not
         validated is left as it is, and so are the rules the schema does not touch.
+        Built in `transpiler/schema_decay.py` (the check with the old and the new schemas, the errors
+        that are new) and the op `schema_import`, which takes the open `tree` and answers `moved` and
+        the tree; the tool says how many rules went back.
       - Still open: a picker among the project's own schemas (only a file from outside can be
         loaded so far); a command to lay out the rules again from the schema, outside the load.
       - Still open: loading a schema over an existing one has no confirmation (offered, not

@@ -160,9 +160,23 @@ export async function chooseSchemaFile(kind: SchemaKind, defaultPath?: string): 
   return typeof file === "string" ? file : null;
 }
 
-/** Copies a schema file into the project as the mapping's own (named by the convention). */
-export const importSchema = (project: string, stem: string, kind: SchemaKind, source: string) =>
-  reviewRequest<SchemaStatus>({ op: "schema_import", project, stem, kind, source });
+/** Copies a schema file into the project as the mapping's own (named by the convention). Given the
+ * open `tree`, the answer says which validated rules the new schema invalidates (`moved`) and
+ * carries the tree with them sent back to review. */
+export const importSchema = (
+  project: string,
+  stem: string,
+  kind: SchemaKind,
+  source: string,
+  tree?: FunctionalFile,
+) => reviewRequest<SchemaStatus & { moved?: { path: string; message: string }[]; tree?: FunctionalFile }>({
+  op: "schema_import",
+  project,
+  stem,
+  kind,
+  source,
+  tree,
+});
 
 /** The empty rules the mapping's output schema adds (one per property not covered yet).
  * With `apply` the answer also carries the tree with them in. */
