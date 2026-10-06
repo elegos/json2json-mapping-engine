@@ -1215,7 +1215,11 @@ build in:
       tests (also run on 3.14t). `process` done: a `ProcessPoolExecutor` per degree, kept between loops
       (`atexit` closes it); a worker loads the module by its file (`_call_in_worker`), so nothing has to be
       importable by name; if the rule's module has no file, or an element cannot be pickled, or the pool
-      breaks, the loop runs in threads with the same result. Still open: a loop that does more than append one `@parallel` rule's value (fused loops) stays sequential.
+      breaks, the loop runs in threads with the same result. Fused loops done too: a top-level loop whose body is only appends to output arrays (some under `if`s) and calls at
+      least one `@parallel` rule becomes a function of its own run per element (`_pmap_fused`, `_fuse_N` in the generated
+      module); what it appends comes back as (array, value) pairs and the errors in the order the body met them, merged in
+      element order, so the outcome is the sequential one's, errors order included; an exception outside a rule stops
+      the loop at its element. Still sequential: a loop with a nested loop, a local variable or a name of another loop in its body.
 - [x] The desktop preview (Extra mile in M6): the input chosen with a file dialog (it starts in the folder of the
       last input, else the project's), the run's report beside the selector (*No errors*, or the rules that
       failed with their cause) and *Download mapped JSON* (a save dialog, the input's folder and name `.mapped.json`

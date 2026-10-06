@@ -98,12 +98,8 @@ def _process_pool(degree: int) -> ProcessPoolExecutor:
     return pool
 
 
-def _call_in_worker(
-    file: str, function: str, name: str, args: tuple
-) -> tuple[Any, dict[str, str], bool]:
-    """Runs in a worker process: calls the rule `function` of the module `file` on `args`. Gives
-    what it gave (null for OMIT, which is flagged: the marker does not survive the trip), and the
-    errors of the call."""
+def _worker_function(file: str, function: str) -> Any:
+    """In a worker process: `function` of the module `file`, loaded once."""
     module = _worker_modules.get(file)
     if module is None:
         spec = importlib.util.spec_from_file_location(f"_j2jme_worker_{len(_worker_modules)}", file)
@@ -111,21 +107,60 @@ def _call_in_worker(
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         _worker_modules[file] = module
+    return getattr(module, function)
+
+
+def _call_in_worker(
+    file: str, function: str, name: str, args: tuple
+) -> tuple[Any, dict[str, str], bool]:
+    """Runs in a worker process: calls the rule `function` of the module `file` on `args`. Gives
+    what it gave (null for OMIT, which is flagged: the marker does not survive the trip), and the
+    errors of the call."""
     errors: dict[str, str] = {}
     token = _errors.set(errors)
     try:
-        value = _rule(name, getattr(module, function), *args)
+        value = _rule(name, _worker_function(file, function), *args)
     finally:
         _errors.reset(token)
     return (None, errors, True) if value is OMIT else (value, errors, False)
 
 
-def _in_processes(
-    name: str, function: Any, degree: int, calls: list[tuple]
-) -> list[tuple[Any, dict[str, str]]] | None:
-    """The calls run in worker processes, in element order; None when they cannot (the rule is not
-    in a module that has a file, an argument or a result cannot travel, the workers died): the
-    caller then runs them itself, with the same result."""
+class _Failure(Exception):
+    """An exception raised in a worker process, as the text it would have been reported with."""
+
+
+def _element(function: Any, args: tuple) -> tuple[list[tuple[int, Any]], dict[str, str], Any]:
+    """One element of a fused loop: what its body appends (as (array, value) pairs), the errors of
+    its rules, and what stopped it, if an exception outside a rule did."""
+    acc: list[tuple[int, Any]] = []
+    errors: dict[str, str] = {}
+    token = _errors.set(errors)
+    failure = None
+    try:
+        function(acc, *args)
+    except Exception as exc:  # noqa: BLE001 - what the sequential run would report for the mapping
+        failure = exc
+    finally:
+        _errors.reset(token)
+    return acc, errors, failure
+
+
+def _element_in_worker(
+    file: str, function: str, args: tuple
+) -> tuple[list[tuple[int, Any]], dict[str, str], Any]:
+    """`_element` in a worker process (an exception travels as its text)."""
+    acc, errors, failure = _element(_worker_function(file, function), args)
+    if failure is not None:
+        failure = f"{type(failure).__name__}: {failure}"
+    return acc, errors, failure
+
+
+def _processes(
+    task: Any, function: Any, extra: tuple, degree: int, calls: list[tuple]
+) -> list | None:
+    """`task(file, function name, *extra, args)` for each of `calls` in the worker processes, in
+    order; None when they cannot (the function is not in a module that has a file, an argument or a
+    result cannot travel, the workers died): the caller then runs them itself, with the same result."""
     file = getattr(function, "__globals__", {}).get("__file__")
     if not file:
         return None
@@ -133,12 +168,12 @@ def _in_processes(
     # (no `max` here: the built-ins of the language, which shadow Python's, follow this text)
     chunk = len(calls) // (degree * 4) or 1
     try:
-        got = list(
+        return list(
             pool.map(
-                _call_in_worker,
+                task,
                 itertools.repeat(file),
                 itertools.repeat(function.__name__),
-                itertools.repeat(name),
+                *[itertools.repeat(e) for e in extra],
                 calls,
                 chunksize=chunk,
             )
@@ -147,7 +182,55 @@ def _in_processes(
         _pools.clear()
         pool.shutdown(wait=False, cancel_futures=True)
         return None
+
+
+def _in_processes(
+    name: str, function: Any, degree: int, calls: list[tuple]
+) -> list[tuple[Any, dict[str, str]]] | None:
+    """The calls of the rule `name` in worker processes (see `_processes`)."""
+    got = _processes(_call_in_worker, function, (name,), degree, calls)
+    if got is None:
+        return None
     return [(OMIT if omitted else value, errors) for value, errors, omitted in got]
+
+
+def _emit(acc: list[tuple[int, Any]], index: int, value: Any) -> None:
+    """What the body of a fused loop appends to the array `index`, for the element being mapped."""
+    if value is not OMIT:
+        acc.append((index, value))
+
+
+def _pmap_fused(
+    targets: list[list[Any]],
+    name: str,
+    function: Any,
+    degree: int,
+    elements: list[tuple],
+    mode: str = "thread",
+) -> None:
+    """A loop whose body is the function `function(acc, root, element)` (see `_fused_loop` in the
+    code generator): it runs for each element in up to `degree` threads or processes (`mode`), and
+    what each gave is put in the arrays `targets` in element order, with the errors merged in element
+    order: the result is the sequential run's. An exception outside a rule stops the loop at its
+    element, as it does there."""
+    results = None
+    if degree > 1 and len(elements) > 1:
+        if mode == "process":
+            results = _processes(_element_in_worker, function, (), degree, elements)
+        if results is None and mode != "none":
+            with ThreadPoolExecutor(max_workers=degree) as pool:
+                results = list(pool.map(lambda args: _element(function, args), elements))
+    if results is None:
+        results = [_element(function, args) for args in elements]
+    outer = _errors.get()
+    for acc, errors, failure in results:
+        for index, value in acc:
+            _append(targets[index], value)
+        if outer is not None:
+            for rule, cause in errors.items():
+                outer.setdefault(rule, cause)
+        if failure is not None:
+            raise _Failure(failure) if isinstance(failure, str) else failure
 
 
 def _pmap(
@@ -307,7 +390,9 @@ def _execute(
     try:
         run(document, out)
     except Exception as exc:  # noqa: BLE001 - outside any rule: reported as the mapping's own
-        errors.setdefault("<mapping>", f"{type(exc).__name__}: {exc}")
+        errors.setdefault(
+            "<mapping>", str(exc) if isinstance(exc, _Failure) else f"{type(exc).__name__}: {exc}"
+        )
     finally:
         _errors.reset(token)
     report = [{"rule": rule, "cause": cause} for rule, cause in errors.items()]

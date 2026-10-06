@@ -80,6 +80,11 @@ class _Rewriter(ast.NodeTransformer):
         # element functions of loops mapped by several threads (rule -> degree)
         self.parallel = parallel
         self.mode = mode
+        # set while the statements of the mapping (not its rule functions) are rewritten, which
+        # is where a whole loop body can become one function run for each element
+        self.in_run = False
+        self.bound: set[str] = set()  # names the mapping's statements assign or loop over
+        self.fused: list[ast.FunctionDef] = []  # the per-element functions of such loops
 
     # -- declarations ------------------------------------------------------------------
     def visit_FunctionDef(self, node: ast.FunctionDef) -> ast.FunctionDef:
@@ -236,14 +241,143 @@ class _Rewriter(ast.NodeTransformer):
             )
         )
 
+    def _fused_loop(self, node: ast.For) -> ast.stmt | None:
+        """A loop whose body is made of appends to output arrays (some of them guarded by `if`s) and
+        calls one `@parallel` rule at least: the body becomes a function of its own, run for each
+        element in threads or processes (`_pmap_fused`). What it appends comes back as a list, put
+        in the arrays in element order, and the errors are merged in element order: the result is the
+        sequential run's, whatever the timing. Any other loop stays as it is."""
+        if (
+            not self.in_run
+            or not self.parallel
+            or node.orelse
+            or not isinstance(node.target, ast.Name)
+        ):
+            return None
+        var = node.target.id
+        targets: list[ast.expr] = []
+        rule_degrees: list[int] = []
+
+        def transform(stmts: list[ast.stmt]) -> list[ast.stmt] | None:
+            out: list[ast.stmt] = []
+            for stmt in stmts:
+                if isinstance(stmt, ast.Pass):
+                    continue
+                if isinstance(stmt, ast.If) and not stmt.orelse:
+                    inner = transform(stmt.body)
+                    if inner is None or _unbound(stmt.test, self.bound - {var}):
+                        return None
+                    rule_degrees.extend(_parallel_calls(stmt.test, self.parallel))
+                    out.append(ast.If(test=stmt.test, body=inner or [ast.Pass()], orelse=[]))
+                elif (
+                    isinstance(stmt, ast.Expr)
+                    and isinstance(stmt.value, ast.Call)
+                    and isinstance(stmt.value.func, ast.Attribute)
+                    and stmt.value.func.attr == "append"
+                    and len(stmt.value.args) == 1
+                    and _is_out_array(stmt.value.func.value)
+                ):
+                    value = stmt.value.args[0]
+                    if _unbound(value, self.bound - {var}):
+                        return None
+                    rule_degrees.extend(_parallel_calls(value, self.parallel))
+                    key = ast.unparse(stmt.value.func.value)
+                    if key not in [ast.unparse(t) for t in targets]:
+                        targets.append(stmt.value.func.value)
+                    index = [ast.unparse(t) for t in targets].index(key)
+                    out.append(
+                        ast.Expr(
+                            value=_call("_emit", _name("_acc"), ast.Constant(value=index), value)
+                        )
+                    )
+                else:
+                    return None
+            return out
+
+        body = transform(list(node.body))
+        if not body or not rule_degrees:
+            return None
+        name = f"_fuse_{len(self.fused) + 1}"
+        function = ast.FunctionDef(
+            name=name,
+            args=ast.arguments(
+                posonlyargs=[],
+                args=[ast.arg(arg="_acc"), ast.arg(arg="root"), ast.arg(arg=var)],
+                kwonlyargs=[],
+                kw_defaults=[],
+                defaults=[],
+            ),
+            body=[self.visit(stmt) for stmt in body],
+            decorator_list=[],
+            returns=None,
+            type_params=[],
+        )
+        self.fused.append(function)
+        elements = ast.ListComp(
+            elt=ast.Tuple(elts=[_name("root"), _name(var)], ctx=ast.Load()),
+            generators=[
+                ast.comprehension(
+                    target=ast.Name(id=var, ctx=ast.Store()),
+                    iter=_call("_each", self.visit(node.iter)),
+                    ifs=[],
+                    is_async=0,
+                )
+            ],
+        )
+        return ast.Expr(
+            value=_call(
+                "_pmap_fused",
+                ast.List(elts=[self.visit(t) for t in targets], ctx=ast.Load()),
+                ast.Constant(value=name),
+                _name(name),
+                ast.Constant(value=max(rule_degrees)),
+                elements,
+                ast.Constant(value=self.mode),
+            )
+        )
+
     def visit_For(self, node: ast.For) -> ast.stmt:
-        threaded = self._parallel_loop(node)
+        threaded = self._parallel_loop(node) or self._fused_loop(node)
         if threaded is not None:
             return threaded
         node.iter = _call("_each", self.visit(node.iter))
         node.body = [self.visit(s) for s in node.body]
         node.orelse = [self.visit(s) for s in node.orelse]
         return node
+
+
+def _is_out_array(node: ast.expr) -> bool:
+    """`out.F`: an array of the output, whatever the loop variable is."""
+    return (
+        isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "out"
+    )
+
+
+def _unbound(node: ast.expr, bound: set[str]) -> bool:
+    """True when `node` reads a name the mapping's statements bind (another loop's variable, a local):
+    the body of a loop that does would not find it in a function of its own."""
+    return any(isinstance(n, ast.Name) and n.id in bound for n in ast.walk(node))
+
+
+def _parallel_calls(node: ast.expr, parallel: dict[str, int]) -> list[int]:
+    """The degrees of the `@parallel` rules `node` calls."""
+    return [
+        parallel[n.func.id]
+        for n in ast.walk(node)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in parallel
+    ]
+
+
+def _bound_names(statements: list[ast.stmt]) -> set[str]:
+    """The names assigned, or looped over, anywhere in `statements`."""
+    return {
+        n.id
+        for stmt in statements
+        for n in ast.walk(stmt)
+        if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store)
+    }
 
 
 def _parallel_degree(node: ast.FunctionDef) -> int | None:
@@ -383,7 +517,10 @@ def compile_module(
         ast.Expr(value=ast.Attribute(value=_name("out"), attr=name, ctx=ast.Load()))
         for name in _output_arrays(body)
     ]
+    rewriter.in_run = True
+    rewriter.bound = _bound_names(body)
     run_body: list[ast.stmt] = [*arrays, *(rewriter.visit(s) for s in body)] or [ast.Pass()]
+    rewriter.in_run = False
     run = ast.FunctionDef(
         name="_run",
         args=ast.arguments(
@@ -404,7 +541,7 @@ def compile_module(
         f"def map_{mapping_id}_safe(source):\n"
         f"    return _execute({mapping_id!r}, _run, source, False)\n"
     ).body
-    module = ast.Module(body=[*new_functions, run, *entry], type_ignores=[])
+    module = ast.Module(body=[*new_functions, *rewriter.fused, run, *entry], type_ignores=[])
     ast.fix_missing_locations(module)
     header = (
         f"# Generated by `mapper` for the mapping {mapping_id!r} — do not edit.\n"

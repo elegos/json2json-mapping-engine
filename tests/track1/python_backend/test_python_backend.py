@@ -49,8 +49,9 @@ def _load(tmp_path: Path, source: str, mapping_id: str = "m") -> Any:
         sys.path.remove(str(tmp_path))
 
 
-def test_every_golden_case_passes_on_the_python_backend() -> None:
-    backend = PythonBackend({})
+@pytest.mark.parametrize("options", [{}, {"parallel": "process"}, {"parallel": "none"}])
+def test_every_golden_case_passes_on_the_python_backend(options: dict[str, Any]) -> None:
+    backend = PythonBackend(options)
     units = [
         compile_unit((ROOT / "mappings" / f"{name}.map.py").read_text(), name, backend)
         for name in GOLDEN_MAPPINGS
@@ -306,6 +307,84 @@ def test_a_process_parallel_loop_really_runs_in_other_processes(tmp_path: Path) 
         {"N": 5, "Half": 2},
     ]
     assert runtime._pools  # the workers are kept for the next loop
+
+
+_FUSED = """\
+from __mapping__ import *
+
+@dataclass
+class Doc:
+    items: list
+
+@dataclass
+class A:
+    N: int
+
+@dataclass
+class B:
+    M: int
+
+
+def tenth(n: int) -> int:
+    return 10 // n
+
+
+@parallel(degree=3)
+def a(root: Doc, src: Any) -> A:
+    return A(N=tenth(src.n))
+
+
+def b(root: Doc, src: Any) -> B:
+    return B(M=100 // (src.n - 3))
+
+
+for src in root.items:
+    if src.skip:
+        continue
+    out.As.append(a(root, src))
+for src in root.items:
+    out.Bs.append(b(root, src))
+"""
+
+
+def _run_fused(tmp_path: Path, mode: str, items: list[dict[str, Any]]) -> tuple[Any, Any]:
+    backend = PythonBackend({"parallel": mode})
+    unit = compile_unit(_FUSED, "m", backend)
+    tmp_path.mkdir()
+    for name, text in backend.assemble([unit]).items():
+        (tmp_path / name).write_text(text)
+    return unit, _load_files(tmp_path).map_m_safe({"items": items})
+
+
+@pytest.mark.parametrize("mode", ["thread", "process"])
+def test_a_fused_parallel_loop_gives_what_the_sequential_one_does(
+    tmp_path: Path, mode: str
+) -> None:
+    # `a` fails at the elements with 0, `b` at the ones with 3 (and the first of `b` comes first)
+    items = [{"n": n, "skip": n == 4} for n in (3, 1, 0, 2, 4, 0, 5, 3, 10)]
+    unit, got = _run_fused(tmp_path / "f", mode, items)
+    plain_unit, plain = _run_fused(tmp_path / "p", "none", items)
+    assert "_pmap_fused(" in unit.source and "_pmap_fused(" not in plain_unit.source
+    assert got == plain
+    output, errors = got
+    assert [e["rule"] for e in errors] == ["b", "tenth"]  # in the order a sequential run meets them
+    assert len(output["As"]) == 8 and len(output["Bs"]) == 7
+
+
+def test_an_exception_outside_a_rule_stops_a_fused_loop_at_its_element(tmp_path: Path) -> None:
+    """As in the sequential run: what the earlier elements appended is kept, the later ones are not."""
+    _run_fused(tmp_path / "f", "thread", [{"n": 1}])
+    runtime = sys.modules["j2jme_runtime"]
+
+    def body(acc: list, root: Any, element: int) -> None:
+        runtime._emit(acc, 0, element)
+        if element == 3:
+            raise ValueError("boom")
+
+    target: list[Any] = []
+    with pytest.raises(ValueError, match="boom"):
+        runtime._pmap_fused([target], "_body", body, 3, [(None, n) for n in range(6)], "thread")
+    assert target == [0, 1, 2, 3]
 
 
 def test_the_build_says_a_parallel_rule_is_not_faster_with_the_global_lock() -> None:
