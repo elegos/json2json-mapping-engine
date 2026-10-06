@@ -38,6 +38,10 @@ the project; every mapping then reads it as `@label`, exactly as before. The Loo
 those under **Project wide**, and says which mappings read each one. Use **+ Project lookup** to
 make one from scratch.
 
+```figure
+{"src": "lookups-wide.png", "alt": "A project-wide lookup in the Lookups view"}
+```
+
 - A project-wide table is edited in one place, with **Save**. A label is chosen when it is created
   and does not change afterwards.
 - **When it changes**, the rules that read it, in every mapping, go back to **To review** if they

@@ -35,6 +35,27 @@ export const SHOTS = [
     ],
   },
   {
+    name: "lookups-wide",
+    setup: async (p) => {
+      await tab(p, "Lookups");
+      // the table is made project wide the way a user does it
+      await p.click('.lookup-list .file:has-text("@countryCurrency")');
+      await p.click(".wide-flag input");
+      await p.click('.modal button:has-text("Make it project wide")');
+      await p.waitForSelector(".lookup-list .file:has-text(\"@countryCurrency\")");
+      await p.waitForTimeout(800);
+      await p.click(".lookup-list .file:has-text(\"@countryCurrency\")");
+      await p.waitForSelector(".lookup-readers");
+    },
+    callouts: [
+      { sel: ".lookup-section", text: "Project wide: the tables kept in the project, one place for every mapping." },
+      { sel: ".lookup-list .file.current", text: "The table, still read as @label; a click opens it." },
+      { sel: ".lookup-readers", text: "The mappings that read this table." },
+      { sel: ".lookup-detail .toolbar", text: "Save writes the table; saving a change sends the rules that read it back to review." },
+      { sel: ".lookup-detail .wide-flag", text: "Clear it to give each mapping its own copy again." },
+    ],
+  },
+  {
     name: "paths",
     setup: (p) => tab(p, "Paths"),
     callouts: [

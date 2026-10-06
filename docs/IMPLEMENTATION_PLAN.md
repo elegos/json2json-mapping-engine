@@ -1011,8 +1011,7 @@ Sliced; each slice is usable on its own:
         `lookup_delete` / `lookup_share` / `lookup_unshare` in `mapper serve`; the Lookups view
         (project-wide section, readers, Save / Revert / Delete, *Project wide* flag, *+ Project
         lookup*); the guide's Lookups page. Walked through by `ui/shots/lookups-check.mjs`.
-      - Still open: the Lookups screenshot of the guide does not show the project-wide section;
-        the tour fixture has no project-wide table.
+      - Shot `lookups-wide` (the table made project wide by the shot itself, so the fixture stays as it is) is on the guide's Lookups page.
 
 - [x] **M6.8 — Golden data in the tool.** Manage the cases of `tests/golden/<mapping>/` from the
       UI, so that a functional user can check on their own machine that, given an input, the

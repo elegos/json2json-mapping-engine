@@ -1,0 +1,42 @@
+[
+ {
+  "n": 1,
+  "x": 14.5,
+  "y": 23.9,
+  "w": 14.2,
+  "h": 1.7,
+  "text": "Project wide: the tables kept in the project, one place for every mapping."
+ },
+ {
+  "n": 2,
+  "x": 14,
+  "y": 30.2,
+  "w": 15.3,
+  "h": 3.4,
+  "text": "The table, still read as @label; a click opens it."
+ },
+ {
+  "n": 3,
+  "x": 30.4,
+  "y": 9.9,
+  "w": 66.3,
+  "h": 1.9,
+  "text": "The mappings that read this table."
+ },
+ {
+  "n": 4,
+  "x": 30.4,
+  "y": 31.7,
+  "w": 66.3,
+  "h": 4.4,
+  "text": "Save writes the table; saving a change sends the rules that read it back to review."
+ },
+ {
+  "n": 5,
+  "x": 30.4,
+  "y": 39.6,
+  "w": 66.3,
+  "h": 2.1,
+  "text": "Clear it to give each mapping its own copy again."
+ }
+]
