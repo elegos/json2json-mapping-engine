@@ -13,6 +13,7 @@ Scripts the development reuses; add one here when a command sequence is run more
 | `python_floor.sh [version…]` | the golden cases run by the generated Python modules on other Pythons (default 3.10, 3.11, 3.14t): the floor the backend supports |
 | `shots.sh [name…]` | regenerates the guide's screenshots |
 | `package.sh linux|windows|macos…` | the desktop packages, built in the packaging image (`packaging/`): AppImage, Windows installer and portable zip, macOS dmg; output in `dist/packages/` |
+| `ci_watch.sh <run> [job] [secs]` | follows a Forgejo Actions job (status, steps, log lines) until it ends; token from `.env` |
 | `start_dev.sh [args…]` | the desktop app in dev mode (`cargo tauri dev`: Vite hot reload for the UI, Rust rebuild), restarting it when the Python engine changes, with the settings Wayland needs |
 
 Not scripts, on purpose: file edits go through the editor tools, not `python - <<EOF` rewrites.
