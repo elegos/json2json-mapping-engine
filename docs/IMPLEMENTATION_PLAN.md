@@ -421,7 +421,7 @@ Sliced; each slice is usable on its own:
       "Empty container". Open: `Source` of a *nested* field is kept as typed (its
       `@item.…` / `$.items[*].…` convention is not settled).
 - [x] **Add / delete rules** (`add_rule`, `delete_rule` in `transpiler/edit.py`; toolbar
-      `+ Field` / `+ Object` / `+ Loop` / `Delete`). A new rule goes inside the selected
+      `+ Add ▾` (Field / Object / Loop) / `Delete`). A new rule goes inside the selected
       container, else after the selected rule, else at the end; it gets a free name
       (`NewField`, `NewField2`, …) and is incomplete on purpose: the check flags the empty
       expression / loop source, and Save refuses it until filled. Deleting a container asks
@@ -806,11 +806,16 @@ Sliced; each slice is usable on its own:
         Built in `transpiler/schema_decay.py` (the check with the old and the new schemas, the errors
         that are new) and the op `schema_import`, which takes the open `tree` and answers `moved` and
         the tree; the tool says how many rules went back.
-      - Still open: a picker among the project's own schemas (only a file from outside can be
-        loaded so far); a command to lay out the rules again from the schema, outside the load.
-      - Still open: loading a schema over an existing one has no confirmation (offered, not
-        decided); a change to the schema files made outside the tool while the mapping is open
-        is not noticed (the status and the check are read at load).
+      - **Done: the schema menus.** The toolbar buttons *Input schema* / *Output schema* open a
+        menu: *Load from a file…*, the project's own schemas (`schemas_list` op,
+        `list_schemas` in `compiler/schema_files.py`; `schema_import` takes a path from the project
+        root as well as an absolute one), the path and state, and, on the output schema only,
+        *Lay out the rules again* (the `scaffold` op: only the missing rules are added; it says
+        when there is nothing to add). The toolbar's three add buttons are one *+ Add ▾*
+        (`AddMenu.tsx`). Loading a schema over a loaded one asks first (the validated rules it no
+        longer fits go back to review). A change to the schema files outside the tool is picked up
+        when the window is back in focus (status and check read again; nothing is moved to review
+        by itself). Test: `test_schema_decay.py`. **Not verified**: the menus in the running tool.
 - [x] **M6.6 — Create, rename and delete mappings.** Every session so far has used the `orders` fixture:
       the tool cannot make a new `.fn.yaml` (name, id, and the schemas of M6.5; an empty file
       that loads) nor delete one (with a confirmation; what depends on it: `build/`, `generated/`,
