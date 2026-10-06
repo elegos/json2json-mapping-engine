@@ -202,6 +202,7 @@ _BUILTIN_ARG_EXPECTED: dict[str, list[str | None]] = {
     "format_decimal": ["NUMBER", "NUMBER"],
     "to_number": ["VARCHAR2"],
     "to_string": ["NUMBER"],
+    "is_empty": [None, "BOOLEAN"],
     "to_utc": ["VARCHAR2"],
     "rfc3339_normalize": ["VARCHAR2"],
 }
@@ -681,6 +682,25 @@ class _ExprTranslator:
         except ValueError as exc:
             raise CodeGenError(f"{name}(): {exc}") from exc
 
+    def _is_empty(self, args: list[ast.expr]) -> str:
+        """`is_empty(value [, zero_is_empty])` by what the value is: a value read from the document
+        goes, as the element, to the shared function that looks at it; a typed one is tested by its
+        type (an empty text is NULL in Oracle)."""
+        zero = self.translate(args[1], "BOOLEAN") if len(args) > 1 else "FALSE"
+        arg = args[0]
+        if isinstance(arg, ast.Attribute | ast.Subscript):
+            library = self.library_name("is_empty") if self.library_name else None
+            if library is None:
+                raise CodeGenError("the shared functions package is not available for `is_empty`")
+            return f"{library}({self._document_element(arg)}, {zero})"
+        if isinstance(arg, ast.Constant) and arg.value is None:
+            return "TRUE"
+        kind = infer_type(arg, self.ctx) if isinstance(self.ctx, _FnCtx) else "VARCHAR2"
+        value = self.translate(arg, kind)
+        if kind == "NUMBER":
+            return f"({value} IS NULL OR ({zero} AND {value} = 0))"
+        return f"({value} IS NULL)"
+
     def _t_BoolOp(self, node: ast.BoolOp, expected: str | None) -> str:
         return self.condition(node)
 
@@ -716,6 +736,8 @@ class _ExprTranslator:
         impl = self.function_linker.resolve(name)
         if name in ("to_string", "to_number") and len(node.args) == 1:
             return self._convert(name, node.args[0])
+        if name == "is_empty" and 1 <= len(node.args) <= 2:
+            return self._is_empty(node.args)
         if name == "if_else" and len(node.args) == 3:
             test = self.condition(node.args[0])
             arms = [self.translate(a, expected) for a in node.args[1:]]
@@ -996,6 +1018,8 @@ def infer_type(node: ast.expr, ctx: _FnCtx) -> str:
             return infer_type(node.args[1], ctx)
         if fname in ("round", "trunc", "to_number"):
             return "NUMBER"
+        if fname == "is_empty":
+            return "BOOLEAN"
         if fname == "parse_date":
             return "DATE"
         if fname in ("concat", "split_first", "split_nth", "lookup"):

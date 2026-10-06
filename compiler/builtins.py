@@ -188,6 +188,20 @@ def _decimal(x: Any) -> Decimal:
         raise ValueError(f"not a number: {x!r}") from None
 
 
+def is_empty(value: Any, zero_is_empty: bool = False) -> bool:
+    """True when `value` is missing, null or an empty text; with `zero_is_empty`, a number that is
+    0 counts as empty too (by default 0 is a valid number). A boolean, a list and an object are not
+    empty: `count` tells whether a list has elements."""
+    if value is None or value == "":
+        return True
+    return (
+        bool(zero_is_empty)
+        and isinstance(value, int | float)
+        and not isinstance(value, bool)
+        and value == 0
+    )
+
+
 def to_number(x: Any) -> float | None:
     """`x` as a number. A number stays as it is. A text must be a plain decimal number:
 

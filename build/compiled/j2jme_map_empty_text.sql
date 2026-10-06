@@ -97,6 +97,72 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAP_EMPTY_TEXT AS
         RETURN COALESCE(REPLACE(p_root.get_String('word'), 'x', ''), '~');
     END fn_empty_text_replace_to_empty;
 
+    FUNCTION fn_empty_text_is_empty_blank(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+    BEGIN
+        p_omitted := FALSE;
+        RETURN (CASE WHEN COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.is_empty(p_root.get('blank'), FALSE), FALSE) THEN 'T' ELSE 'F' END);
+    END fn_empty_text_is_empty_blank;
+
+    FUNCTION fn_empty_text_is_empty_missing(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+    BEGIN
+        p_omitted := FALSE;
+        RETURN (CASE WHEN COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.is_empty(p_root.get('missing'), FALSE), FALSE) THEN 'T' ELSE 'F' END);
+    END fn_empty_text_is_empty_missing;
+
+    FUNCTION fn_empty_text_is_empty_null(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+    BEGIN
+        p_omitted := FALSE;
+        RETURN (CASE WHEN COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.is_empty(p_root.get('json_null'), FALSE), FALSE) THEN 'T' ELSE 'F' END);
+    END fn_empty_text_is_empty_null;
+
+    FUNCTION fn_empty_text_is_empty_text(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+    BEGIN
+        p_omitted := FALSE;
+        RETURN (CASE WHEN COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.is_empty(p_root.get('word'), FALSE), FALSE) THEN 'T' ELSE 'F' END);
+    END fn_empty_text_is_empty_text;
+
+    FUNCTION fn_empty_text_is_empty_zero(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+    BEGIN
+        p_omitted := FALSE;
+        RETURN (CASE WHEN COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.is_empty(p_root.get('zero'), FALSE), FALSE) THEN 'T' ELSE 'F' END);
+    END fn_empty_text_is_empty_zero;
+
+    FUNCTION fn_empty_text_is_empty_zero_option(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+    BEGIN
+        p_omitted := FALSE;
+        RETURN (CASE WHEN COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.is_empty(p_root.get('zero'), TRUE), FALSE) THEN 'T' ELSE 'F' END);
+    END fn_empty_text_is_empty_zero_option;
+
+    FUNCTION fn_empty_text_is_empty_number_option(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+    BEGIN
+        p_omitted := FALSE;
+        RETURN (CASE WHEN COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.is_empty(p_root.get('num'), TRUE), FALSE) THEN 'T' ELSE 'F' END);
+    END fn_empty_text_is_empty_number_option;
+
+    FUNCTION fn_empty_text_is_empty_false(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+    BEGIN
+        p_omitted := FALSE;
+        RETURN (CASE WHEN COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.is_empty(p_root.get('flag'), TRUE), FALSE) THEN 'T' ELSE 'F' END);
+    END fn_empty_text_is_empty_false;
+
+    FUNCTION fn_empty_text_is_empty_list(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+    BEGIN
+        p_omitted := FALSE;
+        RETURN (CASE WHEN COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.is_empty(p_root.get('list'), FALSE), FALSE) THEN 'T' ELSE 'F' END);
+    END fn_empty_text_is_empty_list;
+
+    FUNCTION fn_empty_text_is_empty_part(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+    BEGIN
+        p_omitted := FALSE;
+        RETURN (CASE WHEN COALESCE((MAPPING_OWNER.J2JME_FUNCTIONS.split_nth(p_root.get_String('s'), '|', 3) IS NULL), FALSE) THEN 'T' ELSE 'F' END);
+    END fn_empty_text_is_empty_part;
+
+    FUNCTION fn_empty_text_is_empty_rounded_zero(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+    BEGIN
+        p_omitted := FALSE;
+        RETURN (CASE WHEN COALESCE((ROUND(p_root.get_Number('small')) IS NULL OR (TRUE AND ROUND(p_root.get_Number('small')) = 0)), FALSE) THEN 'T' ELSE 'F' END);
+    END fn_empty_text_is_empty_rounded_zero;
+
     PROCEDURE map_empty_text (
         p_src IN  CLOB,
         p_out OUT CLOB
@@ -300,6 +366,160 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAP_EMPTY_TEXT AS
             WHEN OTHERS THEN
                 IF NOT v_errors.EXISTS('replace_to_empty') THEN
                     v_errors('replace_to_empty') := SQLERRM;
+                END IF;
+        END;
+        DECLARE
+            v_result_is_empty_blank VARCHAR2(4000 CHAR);
+            v_omitted_is_empty_blank BOOLEAN;
+        BEGIN
+            v_result_is_empty_blank := fn_empty_text_is_empty_blank(v_srcroot, v_omitted_is_empty_blank);
+            IF NOT v_omitted_is_empty_blank THEN
+                v_out_obj.put('IsEmptyBlank', v_result_is_empty_blank);
+            END IF;
+        EXCEPTION
+            WHEN OTHERS THEN
+                IF NOT v_errors.EXISTS('is_empty_blank') THEN
+                    v_errors('is_empty_blank') := SQLERRM;
+                END IF;
+        END;
+        DECLARE
+            v_result_is_empty_missing VARCHAR2(4000 CHAR);
+            v_omitted_is_empty_missing BOOLEAN;
+        BEGIN
+            v_result_is_empty_missing := fn_empty_text_is_empty_missing(v_srcroot, v_omitted_is_empty_missing);
+            IF NOT v_omitted_is_empty_missing THEN
+                v_out_obj.put('IsEmptyMissing', v_result_is_empty_missing);
+            END IF;
+        EXCEPTION
+            WHEN OTHERS THEN
+                IF NOT v_errors.EXISTS('is_empty_missing') THEN
+                    v_errors('is_empty_missing') := SQLERRM;
+                END IF;
+        END;
+        DECLARE
+            v_result_is_empty_null VARCHAR2(4000 CHAR);
+            v_omitted_is_empty_null BOOLEAN;
+        BEGIN
+            v_result_is_empty_null := fn_empty_text_is_empty_null(v_srcroot, v_omitted_is_empty_null);
+            IF NOT v_omitted_is_empty_null THEN
+                v_out_obj.put('IsEmptyNull', v_result_is_empty_null);
+            END IF;
+        EXCEPTION
+            WHEN OTHERS THEN
+                IF NOT v_errors.EXISTS('is_empty_null') THEN
+                    v_errors('is_empty_null') := SQLERRM;
+                END IF;
+        END;
+        DECLARE
+            v_result_is_empty_text VARCHAR2(4000 CHAR);
+            v_omitted_is_empty_text BOOLEAN;
+        BEGIN
+            v_result_is_empty_text := fn_empty_text_is_empty_text(v_srcroot, v_omitted_is_empty_text);
+            IF NOT v_omitted_is_empty_text THEN
+                v_out_obj.put('IsEmptyText', v_result_is_empty_text);
+            END IF;
+        EXCEPTION
+            WHEN OTHERS THEN
+                IF NOT v_errors.EXISTS('is_empty_text') THEN
+                    v_errors('is_empty_text') := SQLERRM;
+                END IF;
+        END;
+        DECLARE
+            v_result_is_empty_zero VARCHAR2(4000 CHAR);
+            v_omitted_is_empty_zero BOOLEAN;
+        BEGIN
+            v_result_is_empty_zero := fn_empty_text_is_empty_zero(v_srcroot, v_omitted_is_empty_zero);
+            IF NOT v_omitted_is_empty_zero THEN
+                v_out_obj.put('IsEmptyZero', v_result_is_empty_zero);
+            END IF;
+        EXCEPTION
+            WHEN OTHERS THEN
+                IF NOT v_errors.EXISTS('is_empty_zero') THEN
+                    v_errors('is_empty_zero') := SQLERRM;
+                END IF;
+        END;
+        DECLARE
+            v_result_is_empty_zero_option VARCHAR2(4000 CHAR);
+            v_omitted_is_empty_zero_option BOOLEAN;
+        BEGIN
+            v_result_is_empty_zero_option := fn_empty_text_is_empty_zero_option(v_srcroot, v_omitted_is_empty_zero_option);
+            IF NOT v_omitted_is_empty_zero_option THEN
+                v_out_obj.put('IsEmptyZeroOption', v_result_is_empty_zero_option);
+            END IF;
+        EXCEPTION
+            WHEN OTHERS THEN
+                IF NOT v_errors.EXISTS('is_empty_zero_option') THEN
+                    v_errors('is_empty_zero_option') := SQLERRM;
+                END IF;
+        END;
+        DECLARE
+            v_result_is_empty_number_option VARCHAR2(4000 CHAR);
+            v_omitted_is_empty_number_option BOOLEAN;
+        BEGIN
+            v_result_is_empty_number_option := fn_empty_text_is_empty_number_option(v_srcroot, v_omitted_is_empty_number_option);
+            IF NOT v_omitted_is_empty_number_option THEN
+                v_out_obj.put('IsEmptyNumberOption', v_result_is_empty_number_option);
+            END IF;
+        EXCEPTION
+            WHEN OTHERS THEN
+                IF NOT v_errors.EXISTS('is_empty_number_option') THEN
+                    v_errors('is_empty_number_option') := SQLERRM;
+                END IF;
+        END;
+        DECLARE
+            v_result_is_empty_false VARCHAR2(4000 CHAR);
+            v_omitted_is_empty_false BOOLEAN;
+        BEGIN
+            v_result_is_empty_false := fn_empty_text_is_empty_false(v_srcroot, v_omitted_is_empty_false);
+            IF NOT v_omitted_is_empty_false THEN
+                v_out_obj.put('IsEmptyFalse', v_result_is_empty_false);
+            END IF;
+        EXCEPTION
+            WHEN OTHERS THEN
+                IF NOT v_errors.EXISTS('is_empty_false') THEN
+                    v_errors('is_empty_false') := SQLERRM;
+                END IF;
+        END;
+        DECLARE
+            v_result_is_empty_list VARCHAR2(4000 CHAR);
+            v_omitted_is_empty_list BOOLEAN;
+        BEGIN
+            v_result_is_empty_list := fn_empty_text_is_empty_list(v_srcroot, v_omitted_is_empty_list);
+            IF NOT v_omitted_is_empty_list THEN
+                v_out_obj.put('IsEmptyList', v_result_is_empty_list);
+            END IF;
+        EXCEPTION
+            WHEN OTHERS THEN
+                IF NOT v_errors.EXISTS('is_empty_list') THEN
+                    v_errors('is_empty_list') := SQLERRM;
+                END IF;
+        END;
+        DECLARE
+            v_result_is_empty_part VARCHAR2(4000 CHAR);
+            v_omitted_is_empty_part BOOLEAN;
+        BEGIN
+            v_result_is_empty_part := fn_empty_text_is_empty_part(v_srcroot, v_omitted_is_empty_part);
+            IF NOT v_omitted_is_empty_part THEN
+                v_out_obj.put('IsEmptyPart', v_result_is_empty_part);
+            END IF;
+        EXCEPTION
+            WHEN OTHERS THEN
+                IF NOT v_errors.EXISTS('is_empty_part') THEN
+                    v_errors('is_empty_part') := SQLERRM;
+                END IF;
+        END;
+        DECLARE
+            v_result_is_empty_rounded_zero VARCHAR2(4000 CHAR);
+            v_omitted_is_empty_rounded_zero BOOLEAN;
+        BEGIN
+            v_result_is_empty_rounded_zero := fn_empty_text_is_empty_rounded_zero(v_srcroot, v_omitted_is_empty_rounded_zero);
+            IF NOT v_omitted_is_empty_rounded_zero THEN
+                v_out_obj.put('IsEmptyRoundedZero', v_result_is_empty_rounded_zero);
+            END IF;
+        EXCEPTION
+            WHEN OTHERS THEN
+                IF NOT v_errors.EXISTS('is_empty_rounded_zero') THEN
+                    v_errors('is_empty_rounded_zero') := SQLERRM;
                 END IF;
         END;
 
@@ -545,6 +765,160 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAP_EMPTY_TEXT AS
             WHEN OTHERS THEN
                 IF NOT v_errors.EXISTS('replace_to_empty') THEN
                     v_errors('replace_to_empty') := SQLERRM;
+                END IF;
+        END;
+        DECLARE
+            v_result_is_empty_blank VARCHAR2(4000 CHAR);
+            v_omitted_is_empty_blank BOOLEAN;
+        BEGIN
+            v_result_is_empty_blank := fn_empty_text_is_empty_blank(v_srcroot, v_omitted_is_empty_blank);
+            IF NOT v_omitted_is_empty_blank THEN
+                v_out_obj.put('IsEmptyBlank', v_result_is_empty_blank);
+            END IF;
+        EXCEPTION
+            WHEN OTHERS THEN
+                IF NOT v_errors.EXISTS('is_empty_blank') THEN
+                    v_errors('is_empty_blank') := SQLERRM;
+                END IF;
+        END;
+        DECLARE
+            v_result_is_empty_missing VARCHAR2(4000 CHAR);
+            v_omitted_is_empty_missing BOOLEAN;
+        BEGIN
+            v_result_is_empty_missing := fn_empty_text_is_empty_missing(v_srcroot, v_omitted_is_empty_missing);
+            IF NOT v_omitted_is_empty_missing THEN
+                v_out_obj.put('IsEmptyMissing', v_result_is_empty_missing);
+            END IF;
+        EXCEPTION
+            WHEN OTHERS THEN
+                IF NOT v_errors.EXISTS('is_empty_missing') THEN
+                    v_errors('is_empty_missing') := SQLERRM;
+                END IF;
+        END;
+        DECLARE
+            v_result_is_empty_null VARCHAR2(4000 CHAR);
+            v_omitted_is_empty_null BOOLEAN;
+        BEGIN
+            v_result_is_empty_null := fn_empty_text_is_empty_null(v_srcroot, v_omitted_is_empty_null);
+            IF NOT v_omitted_is_empty_null THEN
+                v_out_obj.put('IsEmptyNull', v_result_is_empty_null);
+            END IF;
+        EXCEPTION
+            WHEN OTHERS THEN
+                IF NOT v_errors.EXISTS('is_empty_null') THEN
+                    v_errors('is_empty_null') := SQLERRM;
+                END IF;
+        END;
+        DECLARE
+            v_result_is_empty_text VARCHAR2(4000 CHAR);
+            v_omitted_is_empty_text BOOLEAN;
+        BEGIN
+            v_result_is_empty_text := fn_empty_text_is_empty_text(v_srcroot, v_omitted_is_empty_text);
+            IF NOT v_omitted_is_empty_text THEN
+                v_out_obj.put('IsEmptyText', v_result_is_empty_text);
+            END IF;
+        EXCEPTION
+            WHEN OTHERS THEN
+                IF NOT v_errors.EXISTS('is_empty_text') THEN
+                    v_errors('is_empty_text') := SQLERRM;
+                END IF;
+        END;
+        DECLARE
+            v_result_is_empty_zero VARCHAR2(4000 CHAR);
+            v_omitted_is_empty_zero BOOLEAN;
+        BEGIN
+            v_result_is_empty_zero := fn_empty_text_is_empty_zero(v_srcroot, v_omitted_is_empty_zero);
+            IF NOT v_omitted_is_empty_zero THEN
+                v_out_obj.put('IsEmptyZero', v_result_is_empty_zero);
+            END IF;
+        EXCEPTION
+            WHEN OTHERS THEN
+                IF NOT v_errors.EXISTS('is_empty_zero') THEN
+                    v_errors('is_empty_zero') := SQLERRM;
+                END IF;
+        END;
+        DECLARE
+            v_result_is_empty_zero_option VARCHAR2(4000 CHAR);
+            v_omitted_is_empty_zero_option BOOLEAN;
+        BEGIN
+            v_result_is_empty_zero_option := fn_empty_text_is_empty_zero_option(v_srcroot, v_omitted_is_empty_zero_option);
+            IF NOT v_omitted_is_empty_zero_option THEN
+                v_out_obj.put('IsEmptyZeroOption', v_result_is_empty_zero_option);
+            END IF;
+        EXCEPTION
+            WHEN OTHERS THEN
+                IF NOT v_errors.EXISTS('is_empty_zero_option') THEN
+                    v_errors('is_empty_zero_option') := SQLERRM;
+                END IF;
+        END;
+        DECLARE
+            v_result_is_empty_number_option VARCHAR2(4000 CHAR);
+            v_omitted_is_empty_number_option BOOLEAN;
+        BEGIN
+            v_result_is_empty_number_option := fn_empty_text_is_empty_number_option(v_srcroot, v_omitted_is_empty_number_option);
+            IF NOT v_omitted_is_empty_number_option THEN
+                v_out_obj.put('IsEmptyNumberOption', v_result_is_empty_number_option);
+            END IF;
+        EXCEPTION
+            WHEN OTHERS THEN
+                IF NOT v_errors.EXISTS('is_empty_number_option') THEN
+                    v_errors('is_empty_number_option') := SQLERRM;
+                END IF;
+        END;
+        DECLARE
+            v_result_is_empty_false VARCHAR2(4000 CHAR);
+            v_omitted_is_empty_false BOOLEAN;
+        BEGIN
+            v_result_is_empty_false := fn_empty_text_is_empty_false(v_srcroot, v_omitted_is_empty_false);
+            IF NOT v_omitted_is_empty_false THEN
+                v_out_obj.put('IsEmptyFalse', v_result_is_empty_false);
+            END IF;
+        EXCEPTION
+            WHEN OTHERS THEN
+                IF NOT v_errors.EXISTS('is_empty_false') THEN
+                    v_errors('is_empty_false') := SQLERRM;
+                END IF;
+        END;
+        DECLARE
+            v_result_is_empty_list VARCHAR2(4000 CHAR);
+            v_omitted_is_empty_list BOOLEAN;
+        BEGIN
+            v_result_is_empty_list := fn_empty_text_is_empty_list(v_srcroot, v_omitted_is_empty_list);
+            IF NOT v_omitted_is_empty_list THEN
+                v_out_obj.put('IsEmptyList', v_result_is_empty_list);
+            END IF;
+        EXCEPTION
+            WHEN OTHERS THEN
+                IF NOT v_errors.EXISTS('is_empty_list') THEN
+                    v_errors('is_empty_list') := SQLERRM;
+                END IF;
+        END;
+        DECLARE
+            v_result_is_empty_part VARCHAR2(4000 CHAR);
+            v_omitted_is_empty_part BOOLEAN;
+        BEGIN
+            v_result_is_empty_part := fn_empty_text_is_empty_part(v_srcroot, v_omitted_is_empty_part);
+            IF NOT v_omitted_is_empty_part THEN
+                v_out_obj.put('IsEmptyPart', v_result_is_empty_part);
+            END IF;
+        EXCEPTION
+            WHEN OTHERS THEN
+                IF NOT v_errors.EXISTS('is_empty_part') THEN
+                    v_errors('is_empty_part') := SQLERRM;
+                END IF;
+        END;
+        DECLARE
+            v_result_is_empty_rounded_zero VARCHAR2(4000 CHAR);
+            v_omitted_is_empty_rounded_zero BOOLEAN;
+        BEGIN
+            v_result_is_empty_rounded_zero := fn_empty_text_is_empty_rounded_zero(v_srcroot, v_omitted_is_empty_rounded_zero);
+            IF NOT v_omitted_is_empty_rounded_zero THEN
+                v_out_obj.put('IsEmptyRoundedZero', v_result_is_empty_rounded_zero);
+            END IF;
+        EXCEPTION
+            WHEN OTHERS THEN
+                IF NOT v_errors.EXISTS('is_empty_rounded_zero') THEN
+                    v_errors('is_empty_rounded_zero') := SQLERRM;
                 END IF;
         END;
 

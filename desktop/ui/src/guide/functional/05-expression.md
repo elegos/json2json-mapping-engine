@@ -32,6 +32,7 @@ Anchors work as in the Source: `$.defaults.price`, `@.qty`, `@line.price`.
 | A text as a number | `to_number(@.qty)` — see the limits below |
 | A value as text | `to_string(@.id)` (numbers without an exponent, whole numbers without decimals) |
 | A timestamp in UTC | `to_utc(@.created)` (or `rfc3339_normalize` to keep the offset) |
+| Is it empty? | `is_empty(@.name)` is true for a missing, null or empty value; `is_empty(@.qty, True)` counts a 0 as empty too (by default 0 is a valid number) |
 
 > **`to_number` reads only a plain decimal**: an optional sign, digits and a fraction after a dot
 > (`-12`, `3.75`, `.5`), with spaces around it ignored and at most 20 digits before the dot and 18

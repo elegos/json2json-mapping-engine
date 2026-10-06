@@ -161,3 +161,11 @@ def test_a_library_function_that_calls_another_is_deployed_with_it() -> None:
     unit = compile_unit(source, "m", backend)
     package = backend.assemble([unit])["j2jme_functions.sql"]
     assert package.count("FUNCTION json_text(") == 2  # in the spec and in the body
+
+
+def test_is_empty() -> None:
+    assert b.is_empty(None) and b.is_empty("")
+    assert not b.is_empty(" ") and not b.is_empty("0") and not b.is_empty(False)
+    assert not b.is_empty([]) and not b.is_empty({})
+    assert not b.is_empty(0) and b.is_empty(0, True) and b.is_empty(0.0, True)
+    assert not b.is_empty(5, True) and not b.is_empty(False, True)

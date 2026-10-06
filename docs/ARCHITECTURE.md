@@ -459,6 +459,8 @@ time is midnight, no offset is UTC, the fraction of a second is kept as written)
 (`2026-10-03T07:30:00Z`), or with its offset kept (`2026-10-03T09:30:00+02:00`). `round(x)` without
 digits rounds to a whole number.
 
+`is_empty(x [, zero_is_empty])` is true when `x` (a field or any expression) is missing, null or an empty text, and, with `zero_is_empty`, a number that is 0 (by default 0 is a valid number). A boolean, a list and an object are never empty (`count` tells whether a list has elements). Use it instead of comparing with `''`.
+
 **Empty text.** An empty text is null, as in Oracle, which cannot tell them apart: the language
 follows it, so that every backend gives the same results. An empty text in the input is read as
 null; a built-in whose result would be empty (`split_first`, `split_nth` on an empty part,

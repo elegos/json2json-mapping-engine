@@ -378,6 +378,8 @@ BUILTIN_FUNCTIONS: dict[str, FunctionImpl] = {
     ),
     "to_number": FunctionImpl(name="to_number", target_templates={"plsql": _to_number_plsql}),
     "to_string": FunctionImpl(name="to_string", target_templates={"plsql": _to_string_plsql}),
+    # rendered by the code generator, by the type of the value (or in the functions package)
+    "is_empty": FunctionImpl(name="is_empty", target_templates={"plsql": "NULL"}),
     # these two live in the functions package only (statements, not one expression)
     "to_utc": FunctionImpl(name="to_utc", target_templates={"plsql": "NULL"}),
     "rfc3339_normalize": FunctionImpl(name="rfc3339_normalize", target_templates={"plsql": "NULL"}),
@@ -436,6 +438,20 @@ IF p_el IS NULL OR p_el.is_Null THEN
     RETURN TRUE;"""
 
 
+# `is_empty` of a value read from the document: the element is looked at (a typed value is
+# tested inline by the code generator, by its type).
+_IS_EMPTY_BODY = """\
+IF p_el IS NULL OR p_el.is_Null THEN
+        RETURN TRUE;
+    ELSIF p_el.is_String THEN
+        -- to_String is the JSON text, quotes included: the empty string is '""', not NULL
+        RETURN p_el.to_String = '""';
+    ELSIF p_el.is_Number THEN
+        RETURN COALESCE(p_zero, FALSE) AND p_el.to_Number = 0;
+    END IF;
+    RETURN FALSE;"""
+
+
 def truthy_py(value) -> bool:
     """Python truthiness, which is the language's (docs/ARCHITECTURE.md, §Truthiness)."""
     return bool(value)
@@ -445,6 +461,13 @@ LIBRARY_FUNCTIONS: dict[str, LibraryFunction] = {
     # not callable from a mapping: the conditions of the code generator use it
     "truthy": LibraryFunction(
         "p_el IN JSON_ELEMENT_T", "BOOLEAN", ["p_el"], lambda a: "NULL", body=_TRUTHY_BODY
+    ),
+    "is_empty": LibraryFunction(
+        "p_el IN JSON_ELEMENT_T, p_zero IN BOOLEAN DEFAULT FALSE",
+        "BOOLEAN",
+        ["p_el", "p_zero"],
+        lambda a: "NULL",
+        body=_IS_EMPTY_BODY,
     ),
     "split_first": LibraryFunction(
         "p_s IN VARCHAR2, p_sep IN VARCHAR2",

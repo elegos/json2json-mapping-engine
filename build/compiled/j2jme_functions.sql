@@ -1,6 +1,8 @@
 CREATE OR REPLACE PACKAGE MAPPING_OWNER.J2JME_FUNCTIONS AS
     FUNCTION format_decimal(p_x IN NUMBER, p_n IN NUMBER) RETURN VARCHAR2;
 
+    FUNCTION is_empty(p_el IN JSON_ELEMENT_T, p_zero IN BOOLEAN DEFAULT FALSE) RETURN BOOLEAN;
+
     FUNCTION json_text(p_el IN JSON_ELEMENT_T) RETURN VARCHAR2;
 
     FUNCTION lookup(p_key IN VARCHAR2, p_table IN JSON_OBJECT_T, p_default IN VARCHAR2 DEFAULT NULL) RETURN VARCHAR2;
@@ -34,6 +36,19 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_FUNCTIONS AS
         END IF;
         RETURN TRIM(TO_CHAR(ROUND(p_x, p_n), 'FM999999999999999999990' || CASE WHEN p_n > 0 THEN '.' || RPAD('0', p_n, '0') END, 'NLS_NUMERIC_CHARACTERS=''.,'''));
     END format_decimal;
+
+    FUNCTION is_empty(p_el IN JSON_ELEMENT_T, p_zero IN BOOLEAN DEFAULT FALSE) RETURN BOOLEAN IS
+    BEGIN
+        IF p_el IS NULL OR p_el.is_Null THEN
+            RETURN TRUE;
+        ELSIF p_el.is_String THEN
+            -- to_String is the JSON text, quotes included: the empty string is '""', not NULL
+            RETURN p_el.to_String = '""';
+        ELSIF p_el.is_Number THEN
+            RETURN COALESCE(p_zero, FALSE) AND p_el.to_Number = 0;
+        END IF;
+        RETURN FALSE;
+    END is_empty;
 
     FUNCTION json_text(p_el IN JSON_ELEMENT_T) RETURN VARCHAR2 IS
     BEGIN

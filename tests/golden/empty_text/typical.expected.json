@@ -12,5 +12,16 @@
   "FirstOfBlank": "~",
   "Blank": "~",
   "ConcatBlanks": "~",
-  "ReplaceToEmpty": "~"
+  "ReplaceToEmpty": "~",
+  "IsEmptyBlank": "T",
+  "IsEmptyMissing": "T",
+  "IsEmptyNull": "T",
+  "IsEmptyText": "F",
+  "IsEmptyZero": "F",
+  "IsEmptyZeroOption": "T",
+  "IsEmptyNumberOption": "F",
+  "IsEmptyFalse": "F",
+  "IsEmptyList": "F",
+  "IsEmptyPart": "T",
+  "IsEmptyRoundedZero": "T"
 }
