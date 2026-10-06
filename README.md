@@ -2,10 +2,11 @@
 
 [![Latest release](https://git.giacomofurlan.name/elegos/json2json-mapping-engine/badges/release.svg)](https://git.giacomofurlan.name/elegos/json2json-mapping-engine/releases)
 [![CI (latest commit)](https://git.giacomofurlan.name/elegos/json2json-mapping-engine/actions/workflows/ci.yml/badge.svg?branch=main)](https://git.giacomofurlan.name/elegos/json2json-mapping-engine/actions?workflow=ci.yml)
-[![CI (latest release)](https://git.giacomofurlan.name/elegos/json2json-mapping-engine/actions/workflows/release.yml/badge.svg)](https://git.giacomofurlan.name/elegos/json2json-mapping-engine/actions?workflow=release.yml)
 ![Python 3.14+](https://img.shields.io/badge/python-3.14%2B-3776AB?logo=python&logoColor=white)
-![Target: PL/SQL](https://img.shields.io/badge/target-PL%2FSQL-F80000?logo=oracle&logoColor=white)
 ![Status: work in progress](https://img.shields.io/badge/status-work%20in%20progress-orange)
+
+![Target: PL/SQL](https://img.shields.io/badge/target-PL%2FSQL-008800?logo=oracle&logoColor=white) <!-- Done -->
+![Target: Python](https://img.shields.io/badge/target-Python-FF8800?logo=oracle&logoColor=white) <!-- WIP -->
 
 A **compiled** mapping engine for JSON-to-JSON transformations. Write mapping rules in a
 restricted, hard-typed subset of Python; the compiler turns them into native code for the target
@@ -13,15 +14,17 @@ runtime. No DSL interpreted at runtime, just ordinary compiled code.
 
 ## 📑 Contents
 
-- [✨ Why](#-why)
-- [🧩 How it works](#-how-it-works)
-- [🎯 Targets](#-targets)
-- [🖥️ Desktop tool](#️-desktop-tool)
-- [📦 Install](#-install)
-- [🚀 Quick start](#-quick-start)
-- [🤖 CI](#-ci)
-- [🛠️ Development](#️-development)
-- [📚 Documentation](#-documentation)
+- [🔀 json2json-mapping-engine](#-json2json-mapping-engine)
+  - [📑 Contents](#-contents)
+  - [✨ Why](#-why)
+  - [🧩 How it works](#-how-it-works)
+  - [🎯 Targets](#-targets)
+  - [🖥️ Desktop tool](#️-desktop-tool)
+  - [📦 Install](#-install)
+  - [🚀 Quick start](#-quick-start)
+  - [🤖 CI](#-ci)
+  - [🛠️ Development](#️-development)
+  - [📚 Documentation](#-documentation)
 
 ## ✨ Why
 
