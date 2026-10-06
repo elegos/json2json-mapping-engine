@@ -65,12 +65,27 @@ See [`desktop/README.md`](desktop/README.md).
 ## 📦 Install
 
 - 📥 **Desktop tool and CLI**: download from the project's releases page (see the release badge).
-- 🐍 **From source**: Python >= 3.14 and [uv](https://docs.astral.sh/uv/).
+- 🐍 **From source**: Python >= 3.14 and [uv](https://docs.astral.sh/uv/) for the engine and the
+  `mapper` CLI (headless use, CI).
 
 ```sh
 uv sync --all-extras --dev
 uv run mapper --help
 ```
+
+- 🖥️ **Desktop tool from source**: it is the app, not `mapper`, that people work with. On top of
+  the Python setup above it needs:
+  - [Rust](https://rustup.rs) (stable) and a C compiler;
+  - [Node.js](https://nodejs.org) and npm (the React UI);
+  - `cargo install tauri-cli --version '^2'`;
+  - on Linux, the WebKitGTK 4.1 dev packages (Fedora: `webkit2gtk4.1-devel`).
+
+```sh
+(cd desktop/ui && npm install)
+dev_scripts/start_dev.sh      # the app in dev mode, with the settings Wayland needs
+```
+
+Details in [`desktop/README.md`](desktop/README.md).
 
 ## 🚀 Quick start
 
