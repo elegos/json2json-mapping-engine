@@ -547,7 +547,7 @@ Sliced; each slice is usable on its own:
         override out of date, with errors (with counts; the validation ones in Developer mode).
       - Limits: a rule that cannot be transpiled makes the auto code of every rule unavailable
         (the pane shows the reason).
-- [ ] **M6.3 — VCS and collaboration.** Split in three; the old "Gitoxide save-as-commit, pull
+- [x] **M6.3 — VCS and collaboration.** Split in three; the old "Gitoxide save-as-commit, pull
       --rebase, semantic rule-level merge" is replaced by this (ARCHITECTURE.md §VCS says
       Gitoxide first and no custom merge driver: to be updated when a slice lands). Two ways of
       working, one merge engine under both.
@@ -695,7 +695,7 @@ Sliced; each slice is usable on its own:
             is fine, ad-hoc signed.
             **Not verified**: SSH remotes, a real Windows machine, LFS, submodules; any run of the
             macOS package on a Mac; the panel in the running tool.
-      - [ ] **M6.3c — Shared-folder mode (OneDrive / SharePoint).** Only when a real team needs
+      - [x] **M6.3c — Shared-folder mode (OneDrive / SharePoint).** Only when a real team needs
             it. A git repo inside a synced folder is **not supported** (it corrupts `.git`): the
             tool detects such a path and warns.
         - Nothing generated is written in the synced folder: `build/` (and the rest that is not
