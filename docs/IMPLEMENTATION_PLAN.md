@@ -681,9 +681,16 @@ Sliced; each slice is usable on its own:
             `~/.cargo/git` and `desktop/gitfallback/target`, keyed on the crate's `Cargo.lock`. Run
             on the real runners of both pipelines: green. The Forgejo image installs Rust with rustup
             and uses the runner's cache server (without one the cache steps only warn).
-            **Not verified**: SSH remotes, Windows, LFS, submodules; the packaged builds with the new
-            dependency (the Windows and macOS cross-builds in particular: rustls and its C code), and a
-            run in the packaged tool.
+            **Packaged builds (checked, commit f02fe57)**: the AppImage and the CLI archive build,
+            and so do the Windows installer and portable zip (the rustls cross-build works). From the
+            packaged AppImage's own executable (`--git-helper`) and the archive's Python, with no
+            `git` on the PATH: state, init, a first commit, and a pull over https from github.com
+            all work; the archive runs `mapper build` / `check` on the tour project. The Windows
+            executable starts under Wine and answers `ping` / `is_repo`, but `init` fails there with
+            OS error 4390 (a reparse-point query that Wine does not implement; probably the symlink
+            probe of gitoxide's init), which says nothing about real Windows.
+            **Not verified**: SSH remotes, a real Windows machine, LFS, submodules; the macOS package
+            (it needs `J2JME_MACOS_SDK`, which is not on this machine); the panel in the running tool.
       - [ ] **M6.3c — Shared-folder mode (OneDrive / SharePoint).** Only when a real team needs
             it. A git repo inside a synced folder is **not supported** (it corrupts `.git`): the
             tool detects such a path and warns.

@@ -52,8 +52,9 @@ section (see `packaging/release.py`).
 
 ### Not verified
 
-- The panel and its dialogs in the running tool (also the synced-folder dialog); the gitoxide fallback over SSH remotes, on
-  Windows, with LFS and with submodules; the packaged builds with the new dependency.
+- The panel and its dialogs in the running tool (also the synced-folder dialog); the gitoxide
+  fallback over SSH remotes, on a real Windows machine, with LFS and with submodules; the macOS
+  package with the new dependency (no SDK to build it with here).
 
 ## [0.1.0] - 2026-10-05
 
