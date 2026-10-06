@@ -1254,7 +1254,9 @@ what Tauri does for its own tools), then run the copy the same way.
 The window title is `J2JME v<version> (<short commit id>)`: the version is the one of
 `desktop/src-tauri/Cargo.toml` (`tauri.conf.json` has none, so it is the only source), the id comes
 from `build.rs` (`git rev-parse --short HEAD`, or `J2JME_GIT_SHA` where there is no `.git`).
-`.forgejo/workflows/release.yml` and its GitHub twin build the packages. A tag `vX.Y.Z` (or
+`.forgejo/workflows/release.yml` and its GitHub twin build the packages, one job per target (they
+run at the same time where the runner has the slots; the macOS one is left out without the SDK
+secret), and a last job drafts the release from their artifacts. A tag `vX.Y.Z` (or
 `vX.Y.Z-suffix`) also makes a **draft release**, with `packaging/release.py`:
 - the version of the tag replaces the one in `Cargo.toml` (and `Cargo.lock`) for that build, so
   what is written there matters only for local builds; a tag that is not semver fails the job;
