@@ -1529,7 +1529,7 @@ the repository, so that they show up in review and a deploy reads what was revie
 the tool puts them in `.gitignore` and removes them from the repository, and CI builds and deploys
 them instead. All other `build/` contents are ephemeral and git-ignored.
 
-The switch is `mapper artifacts ignore` / `track` (in the desktop tool, *Generated files…*;
+The switch is `mapper artifacts ignore` / `track` (in the desktop tool, *Project properties › Generated files*;
 `cli/artifacts_mode.py`). `ignore` replaces what `.gitignore` says about `build/compiled` with
 `build/compiled/` and runs `git rm -r --cached` on it: the removal is **staged, never committed**
 (the commit is the user's), and the files stay on disk. `track` takes the rule out (turning a

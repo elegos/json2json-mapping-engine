@@ -596,3 +596,68 @@ export function addEntry(entries: Record<string, unknown>): Record<string, unkno
   for (let n = 2; key in entries; n++) key = `key${n}`;
   return { ...entries, [key]: "" };
 }
+
+/** `rules[2].rules[1]` -> its parent (`rules[2]`, "" at the top) and its index. */
+export function splitPath(path: string): { parent: string; index: number } {
+  const at = path.lastIndexOf(".rules[");
+  const index = Number(/\[(\d+)\]$/.exec(path)?.[1] ?? 0);
+  return { parent: at < 0 ? "" : path.slice(0, at), index };
+}
+
+function siblings(tree: FunctionalFile, parent: string): Rule[] | null {
+  if (parent === "") return tree.rules;
+  const holder = ruleAt(tree, parent);
+  return holder && (holder.kind === "object" || holder.kind === "loop") ? holder.rules : null;
+}
+
+/** How many rules the container at `parent` ("" = the document root) holds. */
+export function childCount(tree: FunctionalFile, parent: string | null): number {
+  return siblings(tree, parent ?? "")?.length ?? 0;
+}
+
+/** The path of the rule `over` sits in, at the level of `path` (its sibling, or `over` itself),
+ *  or null when `over` is not on that level: rules are moved among their own siblings only. */
+export function siblingOver(path: string, over: string): string | null {
+  const level = splitPath(path).parent;
+  let at = over;
+  for (;;) {
+    const here = splitPath(at);
+    if (here.parent === level) return at;
+    if (here.parent === "") return null;
+    at = here.parent;
+  }
+}
+
+/** Moves the rule at `path` to sit before (or, with `after`, behind) its sibling `sibling`. The
+ *  new tree and the new index of the moved rule; null when nothing changes or it is not a sibling. */
+export function moveRule(
+  tree: FunctionalFile,
+  path: string,
+  sibling: string,
+  after: boolean,
+): { tree: FunctionalFile; index: number } | null {
+  const from = splitPath(path);
+  const to = splitPath(sibling);
+  if (from.parent !== to.parent || path === sibling) return null;
+  const copy = structuredClone(tree);
+  const list = siblings(copy, from.parent);
+  if (!list) return null;
+  const [moved] = list.splice(from.index, 1);
+  const target = to.index > from.index ? to.index - 1 : to.index;
+  const index = target + (after ? 1 : 0);
+  if (index === from.index) return null;
+  list.splice(index, 0, moved);
+  return { tree: copy, index };
+}
+
+/** Where a path ends up after the rule at `from` (in `parent`) moved to index `to`: the paths of the
+ *  rules shifted by the move (and of what is inside them), for the folded rows to follow. */
+export function pathAfterMove(path: string, parent: string, from: number, to: number): string {
+  const head = parent === "" ? "rules[" : `${parent}.rules[`;
+  if (!path.startsWith(head)) return path;
+  const rest = path.slice(head.length);
+  const end = rest.indexOf("]");
+  const i = Number(rest.slice(0, end));
+  const j = i === from ? to : from < to && i > from && i <= to ? i - 1 : to < from && i >= to && i < from ? i + 1 : i;
+  return `${head}${j}${rest.slice(end)}`;
+}

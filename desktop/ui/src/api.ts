@@ -472,7 +472,15 @@ export async function reviewEdit(
 export async function changeStructure(
   tree: FunctionalFile,
   change:
-    | { op: "add_rule"; parent: string | null; index: number | null; kind: string }
+    | {
+        op: "add_rule";
+        parent: string | null;
+        index: number | null;
+        kind: string;
+        name?: string;
+        type?: string;
+        required?: boolean;
+      }
     | { op: "delete_rule"; path: string },
 ): Promise<FunctionalFile> {
   const answer = await invoke<string>("edit_request", {

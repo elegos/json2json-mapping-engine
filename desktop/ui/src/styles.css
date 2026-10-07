@@ -415,3 +415,33 @@ span.result-badge { cursor: default; }
 .presence .same { color: #b26a00; font-weight: 600; opacity: 1; }
 .run-report { position: relative; display: flex; gap: 6px; align-items: stretch; }
 .run-report-list { right: auto; left: 0; min-width: 320px; padding: 6px 8px; gap: 4px; font-size: .9em; }
+
+/* ag-grid draws the horizontal scrollbar of an overlay-scrollbar system (WebKitGTK) on top of the
+   last rows: give it a place of its own under the body */
+.grid .ag-body-horizontal-scroll.ag-scrollbar-invisible { position: relative; }
+
+/* the new-rule dialog */
+.new-rule-row { display: flex; align-items: flex-end; gap: 18px; }
+.new-rule-row .prompt-field { flex: 1; }
+.new-rule-row select { font: inherit; color: inherit; padding: 4px 8px; background: color-mix(in srgb, CanvasText 6%, Canvas); border: 1px solid color-mix(in srgb, CanvasText 22%, transparent); border-radius: 4px; }
+.new-rule-required { display: flex; align-items: center; gap: 6px; margin-bottom: 14px; white-space: nowrap; }
+
+/* the Description / Notes bubble */
+.rule-tip { position: relative; max-width: 460px; max-height: 240px; overflow: auto; padding: 8px 12px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.4; font-size: 13px; background: Canvas; color: CanvasText; border: 1px solid color-mix(in srgb, CanvasText 35%, transparent); border-radius: 10px; box-shadow: 0 4px 14px #0004; }
+
+/* Project properties: this machine and repository */
+.local-settings { margin-top: 16px; }
+.local-row { display: flex; align-items: center; gap: 16px; padding: 8px 0; border-top: 1px solid #8883; }
+.local-row:first-of-type { border-top: none; }
+.local-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.local-value { font-family: ui-monospace, monospace; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.local-text small { opacity: 0.6; }
+
+/* a rule being dragged: where it would land */
+.drag-cell { cursor: grab; }
+.grid .ag-row { transition: translate 0.12s ease; }
+.grid .ag-row.drag-source { opacity: 0.45; }
+/* an overlay, not the row's own background: the rows' state colours are !important, and an
+   important declaration beats an animation */
+@keyframes dropped { 0% { opacity: 0; animation-timing-function: ease-in; } 33.333% { opacity: 1; } 66.667% { opacity: 1; animation-timing-function: ease-out; } 100% { opacity: 0; } }
+.grid .ag-row.just-dropped::after { content: ""; position: absolute; inset: 0; z-index: 3; pointer-events: none; background: color-mix(in srgb, CanvasText 24%, transparent); animation: dropped 750ms linear var(--drop-elapsed, 0ms) 1 both; }

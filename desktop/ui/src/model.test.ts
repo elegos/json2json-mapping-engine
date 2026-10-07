@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import { type ConfigOption, issuesAt, setAt, shownValue, tableAt } from "./projectConfig";
 import {
   columnOfMessage,
+  moveRule,
+  pathAfterMove,
+  siblingOver,
   addEntry,
   filterRows,
   changedColumns,
@@ -454,5 +457,38 @@ describe("isUnfinished", () => {
     expect(isUnfinished(loop)).toBe(true);
     expect(isUnfinished({ ...loop, rules: [field("b", "B", "@.b")] })).toBe(false);
     expect(isUnfinished({ ...loop, source: "$.items[*]" })).toBe(false);
+  });
+});
+
+describe("moving rules among their siblings", () => {
+  const field = (name: string) => ({ kind: "field", field: name }) as never;
+  const tree = {
+    rules: [
+      field("A"),
+      { kind: "loop", output: "$.L[*]", rules: [field("x"), field("y"), field("z")] },
+      field("B"),
+    ],
+  } as never;
+  const names = (t: FunctionalFile) => t.rules.map((r) => (r.kind === "field" ? r.field : "L"));
+
+  it("finds the sibling at the level of the dragged rule", () => {
+    expect(siblingOver("rules[0]", "rules[1].rules[2]")).toBe("rules[1]");
+    expect(siblingOver("rules[1].rules[0]", "rules[1].rules[2]")).toBe("rules[1].rules[2]");
+    expect(siblingOver("rules[1].rules[0]", "rules[2]")).toBeNull();
+  });
+
+  it("moves down (behind the sibling) and up (before it)", () => {
+    expect(names(moveRule(tree, "rules[0]", "rules[2]", true)!.tree)).toEqual(["L", "B", "A"]);
+    expect(names(moveRule(tree, "rules[2]", "rules[0]", false)!.tree)).toEqual(["B", "A", "L"]);
+    expect(moveRule(tree, "rules[0]", "rules[1]", false)).toBeNull();
+  });
+
+  it("moves inside a loop and keeps the folded paths where they were", () => {
+    const moved = moveRule(tree, "rules[1].rules[2]", "rules[1].rules[0]", false)!;
+    expect(moved.index).toBe(0);
+    expect(pathAfterMove("rules[1].rules[0]", "rules[1]", 2, 0)).toBe("rules[1].rules[1]");
+    expect(pathAfterMove("rules[1].rules[2]", "rules[1]", 2, 0)).toBe("rules[1].rules[0]");
+    expect(pathAfterMove("rules[1].rules[1]", "rules[1]", 2, 0)).toBe("rules[1].rules[2]");
+    expect(pathAfterMove("rules[2]", "rules[1]", 2, 0)).toBe("rules[2]");
   });
 });

@@ -208,7 +208,7 @@ export const DEVELOPER_TOUR: TourDef = compose(
       title: "Developer mode",
       label: "the Developer mode switch",
       text:
-        "Switch it on to see what functional users do not need: the validation column, the code of each rule, and the Transpile and Build buttons. " +
+        "Switch it on to see what functional users do not need: the validation column, the code of each rule, and the Transpile, Build and Publish steps of the Check button. " +
         "It is on for this tour.",
       target: ".switches",
       side: "top",
@@ -263,11 +263,12 @@ export const DEVELOPER_TOUR: TourDef = compose(
     {
       id: "build",
       title: "Save, transpile, build, check",
-      label: "the Save, Transpile, Build and Check buttons",
+      label: "the Save and Check buttons",
       text:
-        "Transpile turns the rules into the intermediate Python code (.map.py), without compiling it. " +
-        "Build does that and compiles it to the backend's code, in the build folder.\n\n" +
         "Check verifies that what is committed still matches the sources, and reports what is wrong. " +
+        "Its caret lists the other steps: Transpile turns the rules into the intermediate Python code " +
+        "(.map.py), Build compiles it to the backend's code in the build folder, Publish writes the result " +
+        "to the publish folder.\n\n" +
         "mapper test runs the golden cases, from a terminal.",
       target: '[data-tour="actions"]',
       side: "bottom",
