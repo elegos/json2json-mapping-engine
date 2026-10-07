@@ -4,6 +4,8 @@ version = "0.1.0"
 description = "Compiled JSON-to-JSON mapping engine — Python DSL subset compiled to native target code (initially PL/SQL)."
 requires-python = ">=3.14"
 readme = "README.md"
+license = "GPL-3.0-only"
+license-files = ["LICENSE"]
 dependencies = [
     "typer>=0.12",
     "tomli>=2.0; python_version < '3.11'",

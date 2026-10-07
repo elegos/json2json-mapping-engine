@@ -124,6 +124,22 @@ def version() -> None:
     typer.echo(ENGINE_VERSION)
 
 
+@app.command(name="license")
+def license_cmd() -> None:
+    """Print the engine's license (GPLv3) and the generated-output exception."""
+    typer.echo(
+        "json2json-mapping-engine  Copyright (C) 2026 Giacomo Furlan\n"
+        "This program comes with ABSOLUTELY NO WARRANTY. This is free software, licensed\n"
+        "under the GNU General Public License v3.0 (GPLv3); see the LICENSE file, or\n"
+        "<https://www.gnu.org/licenses/gpl-3.0.html>, for the full text.\n"
+        "\n"
+        "Generated output exception: code produced by `mapper build` / `mapper compile`\n"
+        "from your mapping rules (PL/SQL, Python, or any other backend target) is not\n"
+        "covered by the GPL and may be used under terms of your choosing — only the engine\n"
+        "itself is GPLv3. The exact terms are at the end of the LICENSE file."
+    )
+
+
 @app.command()
 def stubs() -> None:
     """Generate .pyi/@dataclass artifacts from JSON Schemas, the

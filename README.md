@@ -25,6 +25,7 @@ runtime. No DSL interpreted at runtime, just ordinary compiled code.
   - [🤖 CI](#-ci)
   - [🛠️ Development](#️-development)
   - [📚 Documentation](#-documentation)
+  - [📜 License](#-license)
 
 ## ✨ Why
 
@@ -122,3 +123,16 @@ Both pipelines (`.forgejo/workflows` and `.github/workflows`) are kept in sync.
 - 🔌 [PL/SQL backend](docs/backends/plsql.md) · [Writing a backend](docs/backends/writing-a-backend.md)
 - 🧪 [Oracle runtime spike notes](docs/spike-notes.md)
 - 📝 [Changelog](CHANGELOG.md)
+
+## 📜 License
+
+Copyright (C) 2026 Giacomo Furlan.
+
+Licensed under the **GNU General Public License v3.0** (GPLv3) — see
+[`LICENSE`](LICENSE) for the full text.
+
+**Generated output exception**: code that the engine generates from your mapping rules (PL/SQL
+packages, Python modules, dataclasses, or any other backend target) is **not** covered by the
+GPL and may be used, distributed, and relicensed under terms of your choosing. Only the engine
+itself (compiler, transpiler, CLI, desktop tool) is GPLv3; see the exception's exact terms at
+the end of [`LICENSE`](LICENSE).

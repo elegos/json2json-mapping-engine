@@ -46,6 +46,7 @@ import { ProjectButton } from "./ProjectButton";
 import { Wizard } from "./Wizard";
 import { Guide } from "./Guide";
 import { HelpMenu } from "./HelpMenu";
+import { LicenseInfo } from "./LicenseInfo";
 import { Tour } from "./Tour";
 import { TOURS } from "./tourSteps";
 import type { TourState } from "./tour";
@@ -240,6 +241,7 @@ export function App() {
   const [wizard, setWizard] = useState(false);
   const [guide, setGuide] = useState<string | null>(null);
   const [explorer, setExplorer] = useState(false);
+  const [license, setLicense] = useState(false);
   /** A project to show the properties of as soon as it is the open one (the wizard asked). */
   const [propertiesFor, setPropertiesFor] = useState<string | null>(null);
   const [tourRun, setTourRun] = useState<{ book: Book; index: number } | null>(null);
@@ -2198,8 +2200,10 @@ export function App() {
           onGuide={() => setGuide("functional")}
           onExplorer={() => setExplorer((on) => !on)}
           onTour={(book) => void startTour(book)}
+          onLicense={() => setLicense(true)}
         />
       </header>
+      {license && <LicenseInfo onClose={() => setLicense(false)} />}
       {tourCopy && (
         <div className="banner">Tutorial project: read-only, nothing here is kept.</div>
       )}
