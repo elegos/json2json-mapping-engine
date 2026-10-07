@@ -341,3 +341,23 @@ def test_a_json_document_that_is_not_a_schema_is_refused(tmp_path: Path) -> None
         '{"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object"}'
     )
     assert import_schema(tmp_path, "m", "input", source).is_file()
+
+
+def test_add_with_a_name_type_and_required() -> None:
+    result = add_rule(tree(), None, None, "field", " Total ", "number", False)
+    new = result.rules[-1]
+    assert isinstance(new, FieldRule)
+    assert (new.field, new.type, new.required) == ("Total", "number", False)
+    loop = add_rule(tree(), None, None, "loop", "Items")
+    assert names(loop.rules)[-1] == "$.Items[*]"
+    obj = add_rule(tree(), "rules[2]", None, "object", "Tax")
+    assert names(obj.rules[2].rules)[-1] == "@.Tax"  # type: ignore[union-attr]
+
+
+def test_add_with_a_bad_or_taken_name_is_refused() -> None:
+    with pytest.raises(FnYamlError, match="not a valid name"):
+        add_rule(tree(), None, None, "field", "1abc")
+    with pytest.raises(FnYamlError, match="not a valid name"):
+        add_rule(tree(), None, None, "field", "A.B")
+    with pytest.raises(FnYamlError, match="already a rule"):
+        add_rule(tree(), None, None, "field", "OrderId")

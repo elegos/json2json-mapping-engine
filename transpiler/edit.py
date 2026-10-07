@@ -161,12 +161,20 @@ def _fresh_name(children: list[Rule], base: str) -> str:
 
 
 def add_rule(
-    file: FunctionalFile, parent: str | None, index: int | None, kind: str
+    file: FunctionalFile,
+    parent: str | None,
+    index: int | None,
+    kind: str,
+    name: str | None = None,
+    type: str | None = None,  # noqa: A002 - the request's key
+    required: bool | None = None,
 ) -> FunctionalFile:
     """Insert a new rule of `kind` (field / object / loop / lookup) into the container at `parent`
-    (None = the document root), at `index` (None = last). It gets a free default name
-    (`NewField`, `NewField2`, ...) and is incomplete on purpose: the check flags what is
-    still missing (a field's expression, a loop's source)."""
+    (None = the document root), at `index` (None = last). Without a `name` it gets a free default
+    one (`NewField`, `NewField2`, ...); a given `name` (a plain identifier, not already a rule of
+    the container) is used as it is, and for a field `type` and `required` too. The rule is
+    incomplete on purpose: the check flags what is still missing (a field's expression, a loop's
+    source)."""
     file = copy.deepcopy(file)
     if parent is None:
         children, top_level = file.rules, True
@@ -177,13 +185,28 @@ def add_rule(
             raise FnYamlError("rules can only be added to an object or a loop")
         children, top_level = container.rules, False
     prefix = _scope_prefix(top_level)
+    if name is not None and kind != "lookup":
+        name = name.strip()
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
+            raise FnYamlError(
+                f"{name!r} is not a valid name: letters, digits and _, not starting with a digit"
+            )
+        if _name_taken(children, name, skip=None):  # type: ignore[arg-type]
+            raise FnYamlError(f"{name!r} is already a rule of that container")
     rule: Rule
     if kind == "field":
-        rule = FieldRule(id=None, field=_fresh_name(children, "NewField"), type="str")
+        rule = FieldRule(
+            id=None,
+            field=name or _fresh_name(children, "NewField"),
+            type=type or "str",
+            required=True if required is None else required,
+        )
     elif kind == "object":
-        rule = ObjectRule(id=None, output=f"{prefix}{_fresh_name(children, 'NewObject')}")
+        rule = ObjectRule(id=None, output=f"{prefix}{name or _fresh_name(children, 'NewObject')}")
     elif kind == "loop":
-        rule = LoopRule(id=None, source="", output=f"{prefix}{_fresh_name(children, 'NewList')}[*]")
+        rule = LoopRule(
+            id=None, source="", output=f"{prefix}{name or _fresh_name(children, 'NewList')}[*]"
+        )
     elif kind == "lookup":
         # labels share one namespace (`@label` in expressions), so a free one is file-wide
         taken = {r.label for r in _walk(file.rules) if isinstance(r, LookupRule)}
