@@ -66,6 +66,9 @@ See [`desktop/README.md`](desktop/README.md).
 ## 📦 Install
 
 - 📥 **Desktop tool and CLI**: download from the project's releases page (see the release badge).
+  - 🪟 Windows: the installer isn't code-signed yet, so SmartScreen will warn "Windows protected
+    your PC". Click **More info → Run anyway**, or right-click the installer and choose **Run as
+    administrator** (skips the warning entirely).
 - 🐍 **From source**: Python >= 3.14 and [uv](https://docs.astral.sh/uv/) for the engine and the
   `mapper` CLI (headless use, CI).
 
