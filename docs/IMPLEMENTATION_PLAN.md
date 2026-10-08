@@ -765,7 +765,7 @@ Sliced; each slice is usable on its own:
         in the app's config folder (`publish-dirs.json`, `publish_dirs.rs`), and Publish passes it as
         `--to`, so it beats `[publish] dir`.
 - [ ] **M6.4 — LLM assist.** Validation suggestions, expression builder (Ollama / API).
-- [ ] **M6.5 — Schemas per mapping.** Each mapping owns its input and output JSON Schema, chosen
+- [x] **M6.5 — Schemas per mapping.** Each mapping owns its input and output JSON Schema, chosen
       in the tool; changing one forces the Targets and Sources to be validated again (the check
       re-runs on the whole mapping and the grid flags what no longer fits: ARCHITECTURE.md,
       §Schema change management, no silent drift).
