@@ -968,8 +968,7 @@ Sliced; each slice is usable on its own:
         waits. At the end it offers to
         open the Project properties, saying that they are behind the *Project properties…* button.
         Done, and walked through by `ui/shots/wizard-check.mjs`.
-      - Still open: the tutorial project is found next to the executable or in the checkout, but
-        nothing copies it into a package yet (`bundle.active` is false); the guide pages are short and want a read by someone who uses the tool.
+      - Still open: the guide pages are short and want a read by someone who uses the tool.
 
 - [x] **M6.9 — Project functions in the tool.** Creating and editing the project's `fn/*.fn`
       without an external editor: the tool is self-contained.
