@@ -15,17 +15,17 @@ runtime. No DSL interpreted at runtime, just ordinary compiled code.
 ## 📑 Contents
 
 - [🔀 json2json-mapping-engine](#-json2json-mapping-engine)
-  - [📑 Contents](#-contents)
-  - [✨ Why](#-why)
-  - [🧩 How it works](#-how-it-works)
-  - [🎯 Targets](#-targets)
-  - [🖥️ Desktop tool](#️-desktop-tool)
-  - [📦 Install](#-install)
-  - [🚀 Quick start](#-quick-start)
-  - [🤖 CI](#-ci)
-  - [🛠️ Development](#️-development)
-  - [📚 Documentation](#-documentation)
-  - [📜 License](#-license)
+  - [📑 Contents](#contents)
+  - [✨ Why](#why)
+  - [🧩 How it works](#how-it-works)
+  - [🎯 Targets](#targets)
+  - [🖥️ Desktop tool](#️desktop-tool)
+  - [📦 Install](#install)
+  - [🚀 Quick start](#quick-start)
+  - [🤖 CI](#ci)
+  - [🛠️ Development](#️development)
+  - [📚 Documentation](#documentation)
+  - [📜 License](#license)
 
 ## ✨ Why
 
