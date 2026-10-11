@@ -764,7 +764,48 @@ Sliced; each slice is usable on its own:
         folder** in the desktop tool: *Publish folder…* (developer mode) keeps a folder per project
         in the app's config folder (`publish-dirs.json`, `publish_dirs.rs`), and Publish passes it as
         `--to`, so it beats `[publish] dir`.
-- [ ] **M6.4 — LLM assist.** Validation suggestions, expression builder (Ollama / API).
+- [ ] **M6.4 — LLM assist.** Split in two (decided): the LLM is kept for the **expression builder**
+      (here) and for the **import of an external project** (M7), and nowhere else. Validation
+      suggestions are **not** LLM work: the check already names the cell and what is wrong, and
+      what is left to say (the closest name) is computed, deterministically, with no network,
+      cost or privacy question.
+      - [x] **M6.4a — "Did you mean" in the check** (`transpiler/check.py`, `transpiler/exprtypes.py`:
+        `did_you_mean`, `_Schemas.names` / `near`). A name the schema does not have (Target, Source,
+        a `$.` / `@.` reference, a loop source, a `paths:` alias) and a name an override uses but
+        nothing defines get ` — did you mean 'x'?`: the closest property of the object where it
+        was looked up (not of the whole schema), or the closest variable / function in scope;
+        case aside, cutoff 0.6 (`difflib`), nothing said when nothing is close. Tests in
+        `tests/track1/transpiler/test_check.py`.
+      - [x] **M6.4a-bis — friendlier messages** (no LLM). Done, in the check:
+        - *Syntax* (`transpiler/expr.py::explain_syntax_error`, used by `parse_block`, so the
+          grid and the build say the same): what a user of another language types is named with
+          its replacement (`&&` → `and`, `||` → `or`, `!` → `not`, `===` / `!==` → `==` / `!=`,
+          `cond ? a : b` → `a if cond else b`, `;`; string literals are not read as operators);
+          "invalid syntax" says where it stopped ("it ends too soon: a value is missing after the
+          last operator", "unexpected `y`"); an unclosed text says the quote is missing; `(line N)`
+          only in a block of several lines; `$.id = 'a'` points to `==`.
+        - *Names* (`ExprTyper.names`): an unknown function in an expression was **silent in the
+          grid** and failed only in the build; now `unknown function 'x'`, with the closest
+          function or "the guide lists the functions". `true` / `false` / `null` / `nil` say what
+          to write. Only with the project's function list (always the case in the tool, the CLI
+          and the build); without it a name cannot be judged.
+        - *Nullability*: the words of the type checker (`non-nullable`, `annotated … returns
+          nothing`) reached the user only at build time, with a line of the generated file, while
+          the check said OK. Now the grid flags a bare `return` on a required field ("a bare
+          `return` leaves the field out, but the field is required: untick Required, or return a
+          value"). Tests in `tests/track1/transpiler/test_check.py`.
+        - *Not done*: the build still prints the type checker's own text for what the check does
+          not foresee (it names the rule's id, and a line of the generated file). If the
+          functionals meet such messages, translate them at the build boundary; measure first.
+      - [ ] **M6.4b — Expression builder** (Ollama / API). The Description (free text) becomes a
+        candidate for the Expression. The prompt carries the input / output schema of the mapping,
+        the functions available (built-ins and the project's `fn/`), the anchor syntax and a few of
+        the project's rules as examples. **Acceptance is mechanical:** the candidate goes through the
+        check (and the type check); it is then run on the golden sample and the result is shown next
+        to the Description ("with this input you get X"), because the functional reads results, not
+        expressions. Never applied by itself: the user accepts or discards. Backends: Ollama
+        (local, the default for enterprise) or an API; the data leaving the network with an API is
+        stated in the settings.
 - [x] **M6.5 — Schemas per mapping.** Each mapping owns its input and output JSON Schema, chosen
       in the tool; changing one forces the Targets and Sources to be validated again (the check
       re-runs on the whole mapping and the grid flags what no longer fits: ARCHITECTURE.md,

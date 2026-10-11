@@ -32,8 +32,8 @@ from transpiler.anchors import (
     resolve_anchors,
     uses_value,
 )
-from transpiler.expr import parse_block
-from transpiler.exprtypes import ExprTyper
+from transpiler.expr import Block, parse_block
+from transpiler.exprtypes import ExprTyper, did_you_mean
 from transpiler.model import (
     RESERVED_ALIASES,
     FieldRule,
@@ -155,6 +155,30 @@ class _Schemas:
             if not isinstance(props, dict) or extra is True or "patternProperties" in v:
                 unknown = True
         return UNKNOWN if unknown else None
+
+    def names(self, node: Node) -> list[str]:
+        """The property names an object offers (empty where they cannot be listed)."""
+        if not isinstance(node, dict):
+            return []
+        return [
+            k
+            for v in self.variants(node)
+            if isinstance(v.get("properties"), dict)
+            for k in v["properties"]
+        ]
+
+    def near(self, base: Node, text: str, missing: str | None) -> str:
+        """The "did you mean" for `missing`, the segment of `text` (followed from `base`) that
+        the schema does not have: the closest property of the object it was looked up in."""
+        if not missing or missing.startswith("["):
+            return ""
+        parent: Node = base
+        for m in _SEGMENT.finditer(text):
+            reached = self.items(parent) if m.group(2) else self.prop(parent, m.group(1))
+            if reached is None:
+                break
+            parent = reached
+        return did_you_mean(missing, self.names(parent))
 
     def values(self, node: Schema) -> list[Schema] | None:
         """The schemas of an object's values (its properties, or `additionalProperties`);
@@ -342,12 +366,13 @@ class _Checker:
 
     def block(
         self, path: str, text: str, scope: AnchorScope, column: str, dev: bool = False
-    ) -> None:
+    ) -> Block | None:
         try:
             resolved = text if dev else resolve_anchors(text, scope, "expression").text
-            parse_block(resolved, "x", "expression")
+            return parse_block(resolved, "x", "expression")
         except FnYamlError as exc:
             self.add(path, column, str(exc).split(": ", 1)[-1])
+            return None
 
     # -- data ------------------------------------------------------------------
 
@@ -376,7 +401,10 @@ class _Checker:
             if self.has_in and m and base is not UNKNOWN and base is not None:
                 reached, missing = self.inp.resolve(base, f"{m.group(2)}[*]")
                 if reached is None:
-                    self.add(path, column, f"'{missing}' is not in the input schema ({sel.path})")
+                    hint = self.inp.near(base, f"{m.group(2)}[*]", missing)
+                    self.add(
+                        path, column, f"'{missing}' is not in the input schema ({sel.path}){hint}"
+                    )
                 else:
                     item = reached
             inner = AnchorScope(
@@ -411,8 +439,11 @@ class _Checker:
                     continue
                 node, missing = self.inp.resolve(base, chain)
                 if node is None:
+                    hint = self.inp.near(base, chain, missing)
                     self.add(
-                        path, column, f"'{missing}' is not in the input schema ({anchor}{chain})"
+                        path,
+                        column,
+                        f"'{missing}' is not in the input schema ({anchor}{chain}){hint}",
                     )
 
     def types(
@@ -462,6 +493,7 @@ class _Checker:
         typer = ExprTyper(
             self.inp, env, lambda message: self.add(path, "expression", message), self.functions
         )
+        typer.names(resolved)
         typer.check(resolved, want, what)
 
     def devcheck(self, path: str, text: str, root: Node, items: list[Node]) -> None:
@@ -553,19 +585,28 @@ class _Checker:
                 base = in_root if src.startswith("$") else (items[-1] if items else in_root)
                 node, missing = self.inp.resolve(base, re.sub(r"^[$@]", "", src))
                 if node is None:
-                    self.add(path, "source", f"'{missing}' is not in the input schema")
+                    hint = self.inp.near(base, re.sub(r"^[$@]", "", src), missing)
+                    self.add(path, "source", f"'{missing}' is not in the input schema{hint}")
                 else:
                     value = node
         if text and t.status != "manual":
             text = self.selections(path, text, "expression", scope, in_root, items, labels)
         if text:
-            self.block(
+            parsed = self.block(
                 path,
                 text,
                 scope,
                 "status" if t.status == "manual" else "expression",
                 t.status == "manual",
             )
+            if parsed is not None and parsed.can_omit and rule.required and t.status != "manual":
+                # the build refuses it ("annotated non-nullable but returns nothing")
+                self.add(
+                    path,
+                    "expression",
+                    "a bare `return` leaves the field out, but the field is required: "
+                    "untick Required, or return a value",
+                )
             if t.status == "manual":
                 self.devcheck(path, text, in_root, items)
             if t.status != "manual":
@@ -579,7 +620,8 @@ class _Checker:
             return
         node = self.out.prop(out, rule.field)
         if node is None:
-            self.add(path, "target", f"'{rule.field}' is not in the output schema")
+            hint = did_you_mean(rule.field, self.out.names(out))
+            self.add(path, "target", f"'{rule.field}' is not in the output schema{hint}")
             return
         if isinstance(node, dict):
             declared = self.out.types(node)
@@ -600,7 +642,8 @@ class _Checker:
         if self.has_out and isinstance(out, dict):
             node = self.out.prop(out, name)
             if node is None:
-                self.add(path, "target", f"'{name}' is not in the output schema")
+                hint = did_you_mean(name, self.out.names(out))
+                self.add(path, "target", f"'{name}' is not in the output schema{hint}")
                 node = UNKNOWN
         is_loop = isinstance(rule, LoopRule)
         if isinstance(node, dict):
@@ -649,7 +692,8 @@ class _Checker:
             base = in_root if source.startswith("$") else (items[-1] if items else in_root)
             reached, missing = self.inp.resolve(base, re.sub(r"^[$@]", "", source))
             if reached is None:
-                self.add(path, "source", f"'{missing}' is not in the input schema")
+                hint = self.inp.near(base, re.sub(r"^[$@]", "", source), missing)
+                self.add(path, "source", f"'{missing}' is not in the input schema{hint}")
             else:
                 item = reached
         inner = AnchorScope(
@@ -708,10 +752,11 @@ class _Checker:
             if self.has_in and self.inp.root is not None:
                 node, missing = self.inp.resolve(self.inp.root, text.removeprefix("$"))
                 if node is None:
+                    hint = self.inp.near(self.inp.root, text.removeprefix("$"), missing)
                     self.add(
                         "",
                         "paths",
-                        f"paths: the {what} {text} — '{missing}' is not in the input schema",
+                        f"paths: the {what} {text} — '{missing}' is not in the input schema{hint}",
                     )
 
     def run(self) -> list[Issue]:

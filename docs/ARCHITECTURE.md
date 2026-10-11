@@ -199,7 +199,7 @@ build logic of its own.
 
 ```mermaid
 flowchart LR
-    DEV(["Developer"]) --> UI["Desktop tool (M6)<br/>rule grid, validation, LLM assist"]
+    DEV(["Developer"]) --> UI["Desktop tool (M6)<br/>rule grid, validation, expression builder"]
     DEV --> IDE["IDE<br/>(.map.py + generated stubs)"]
     DEV --> CLI["mapper CLI<br/>transpile · compile · build · check · test"]
     UI -->|"edits"| FNY[".fn.yaml"]
@@ -1549,12 +1549,16 @@ project), which is one of the sources, so a change of it shows as a changed sour
 compares the manifest too: a source or output that is new, gone or changed is a problem. It is also
 written last when publishing (§Build CLI, `mapper publish`), so a reader never sees half a set.
 
-An LLM is embedded in the tool for two purposes:
+An LLM is used for two things, and only these:
 
-1. **Validation suggestions** — when a rule fails to compile, the LLM proposes a corrected
-   expression in natural language before showing raw errors.
-2. **Expression builder** — the LLM translates the free-text `description` field into
-   a candidate expression for the `transform` field.
+1. **Expression builder** — the LLM translates the free-text `description` field into
+   a candidate expression for the `transform` field. The candidate must pass the check and is
+   shown with its result on the golden sample; it is never applied without the user's consent.
+2. **Import of an external project** (§Migration from existing mapping files).
+
+Validation suggestions are *not* LLM work: the check says which cell is wrong and why, and adds
+a deterministic "did you mean 'x'?" for a misspelt name (the closest property of the object where
+it was looked up, or the closest variable or function in scope).
 
 **LLM backend options** (user-configurable):
 

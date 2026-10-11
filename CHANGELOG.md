@@ -8,6 +8,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The text of a release is the section of its version below; if there is none, the `Unreleased`
 section (see `packaging/release.py`).
 
+## [Unreleased]
+
+### Features
+
+- The check suggests the closest name ("did you mean 'x'?") for a field, reference, alias or
+  function that does not exist.
+- Expression syntax errors say what to write instead (`&&` → `and`, `cond ? a : b` → `a if cond
+  else b`, …) and where the expression stopped.
+- The check reports an unknown function in an expression (it was found only by the build) and
+  a bare `return` on a required field.
+
 ## [0.2.0] - 2026-10-07
 
 ### Features

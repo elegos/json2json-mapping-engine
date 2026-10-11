@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import ast
 import builtins
+import difflib
 import textwrap
 from collections.abc import Callable, Collection, Mapping
 from typing import Any
@@ -90,6 +91,24 @@ def compatible(actual: Ty, want: Ty) -> bool:
     return actual is None or want is None or bool(actual & want)
 
 
+# names from other languages, with what to write here
+_FOREIGN_NAMES = {
+    "true": "write `True`",
+    "false": "write `False`",
+    "null": "write `None` for an empty value (`return Null` emits an explicit null)",
+    "nil": "write `None` for an empty value (`return Null` emits an explicit null)",
+    "NULL": "write `None` for an empty value (`return Null` emits an explicit null)",
+    "none": "write `None` for an empty value (`return Null` emits an explicit null)",
+}
+
+
+def did_you_mean(name: str, candidates: Collection[str]) -> str:
+    """` — did you mean 'x'?` for the candidate closest to `name` (case aside), else ``."""
+    pool = {c.lower(): c for c in candidates if isinstance(c, str) and c != name}
+    near = difflib.get_close_matches(name.lower(), list(pool), n=1, cutoff=0.6)
+    return f" — did you mean '{pool[near[0]]}'?" if near else ""
+
+
 class ExprTyper:
     """`env` maps the names the anchors resolve to (`root`, `_L1`, …) to schema nodes;
     `schemas` offers `types(node)`, `prop(node, name)` and `values(node)` on such nodes."""
@@ -107,6 +126,7 @@ class ExprTyper:
             {n for n, f in functions.items() if f.special} if functions is not None else HANDLED
         )
         self.registry = functions if functions is not None else _BUILTINS
+        self.complete = functions is not None  # else the project's own functions are not known
         self.schemas = schemas
         self.env = env
         self.report = report
@@ -141,6 +161,18 @@ class ExprTyper:
                 ):
                     self.infer(expr)
 
+    def names(self, text: str) -> None:
+        """The names a functional expression (or block) reads that nothing defines: the
+        variables it assigns, the functions and the references the check resolved are known.
+        Without the project's function list a name cannot be judged."""
+        if not self.complete:
+            return
+        try:
+            tree = ast.parse(textwrap.dedent(text).strip("\n"))
+        except SyntaxError:
+            return  # reported by the form check
+        self._undefined(tree, set())
+
     def _undefined(self, tree: ast.AST, extra: set[str]) -> None:
         """Names read in the block that nothing defines. A variable counts as defined anywhere
         in the block (use before assignment is not looked for); Python's own builtins are not
@@ -153,6 +185,14 @@ class ExprTyper:
                 known.add(n.arg)
             elif isinstance(n, ast.FunctionDef | ast.ClassDef):
                 known.add(n.name)
+        called = {
+            n.func.id
+            for n in ast.walk(tree)
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+        }
+        # what a name may be: the scope, the block's variables and the functions (not the
+        # internal `_L1` / `_LK_x` names, nor Python's builtins)
+        offered = [k for k in known if not k.startswith("_") and k not in dir(builtins)]
         reported: set[str] = set()
         for n in ast.walk(tree):
             if (
@@ -162,7 +202,13 @@ class ExprTyper:
                 and n.id not in reported
             ):
                 reported.add(n.id)
-                self.report(f"'{n.id}' is not defined")
+                if n.id in called:
+                    guess = did_you_mean(n.id, offered) or " — the guide lists the functions"
+                    self.report(f"unknown function '{n.id}'{guess}")
+                elif n.id in _FOREIGN_NAMES:
+                    self.report(f"'{n.id}' is not defined: {_FOREIGN_NAMES[n.id]}")
+                else:
+                    self.report(f"'{n.id}' is not defined{did_you_mean(n.id, offered)}")
 
     def _arity(self, node: ast.Call, name: str) -> None:
         """A call of a registered function must fit its parameters."""

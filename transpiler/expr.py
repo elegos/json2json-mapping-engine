@@ -21,6 +21,7 @@ import re
 import textwrap
 from dataclasses import dataclass
 
+from transpiler.anchors import _split_strings
 from transpiler.model import FnYamlError
 
 _RESERVED_PARAMS = {"root", "out", "Null"}
@@ -83,6 +84,49 @@ class _Rename(ast.NodeTransformer):
         return node
 
 
+# what a functional coming from another language is likely to type, with what it means here
+_FOREIGN = (
+    (re.compile(r"&&"), "`&&` is not valid: write `and`"),
+    (re.compile(r"\|\|"), "`||` is not valid: write `or`"),
+    (re.compile(r"[!=]==|<>"), "use `==` to compare and `!=` for 'different'"),
+    (re.compile(r"!(?!=)"), "`!` is not valid: write `not`"),
+    (
+        re.compile(r"\?"),
+        "there is no `cond ? a : b`: write `a if cond else b`, or `if_else(cond, a, b)`",
+    ),
+    (re.compile(r";"), "`;` is not valid: put one statement per line"),
+)
+_INTERNAL_NAME = re.compile(r"_(?:L|LK_|I)\w*$")
+_TOKEN = re.compile(r"\w+|\S")
+
+
+def explain_syntax_error(text: str, exc: SyntaxError) -> str:
+    """What is wrong with `text`, in a functional's words. `exc` is Python's own error for it
+    (whose "invalid syntax" says nothing); where the likely mistake is one made in another
+    language, say what to write here instead."""
+    # the string literals are blanked, so `"a && b"` is not read as an operator
+    masked = "".join(" " * len(c) if lit else c for lit, c in _split_strings(text))
+    for pattern, advice in _FOREIGN:
+        if pattern.search(masked):
+            return advice
+    msg = exc.msg
+    if msg.startswith("unterminated string literal"):
+        return "a text is not closed: the closing quote is missing"
+    if msg == "invalid syntax":
+        lines = text.splitlines() or [""]
+        line = lines[min((exc.lineno or 1), len(lines)) - 1]
+        offset = (exc.offset or 0) - 1
+        if offset < 0 or not line[offset:].strip():
+            return "it ends too soon: a value is missing after the last operator"
+        token = _TOKEN.match(line, offset)
+        shown = token.group() if token else ""
+        if _INTERNAL_NAME.match(shown):
+            return "a reference is not where it can be: an operator may be missing before it"
+        hint = " (is an operator missing before it?)" if shown[:1].isalnum() else ""
+        return f"unexpected `{shown}`{hint}"
+    return msg
+
+
 def _assigned_names(stmts: list[ast.stmt]) -> set[str]:
     names: set[str] = set()
     for stmt in stmts:
@@ -98,7 +142,10 @@ def _check_shape(stmts: list[ast.stmt], where: str) -> None:
     for stmt in stmts:
         if isinstance(stmt, ast.Assign):
             if len(stmt.targets) != 1 or not isinstance(stmt.targets[0], ast.Name):
-                raise FnYamlError(f"{where}: only `name = <expression>` assignments are allowed")
+                raise FnYamlError(
+                    f"{where}: only `name = <expression>` assignments are allowed "
+                    "(to compare two values, write `==`)"
+                )
         elif isinstance(stmt, ast.If):
             _check_shape(stmt.body, where)
             _check_shape(stmt.orelse, where)
@@ -132,10 +179,14 @@ def _finalize(stmts: list[ast.stmt], where: str, top: bool = True) -> list[ast.s
 
 
 def parse_block(text: str, prefix: str, where: str) -> Block:
+    source = textwrap.dedent(text).strip("\n")
     try:
-        tree = ast.parse(textwrap.dedent(text).strip("\n"))
+        tree = ast.parse(source)
     except SyntaxError as exc:
-        raise FnYamlError(f"{where}: invalid expression: {exc.msg} (line {exc.lineno})") from exc
+        at = f" (line {exc.lineno})" if "\n" in source else ""
+        raise FnYamlError(
+            f"{where}: invalid expression: {explain_syntax_error(source, exc)}{at}"
+        ) from exc
     _check_shape(tree.body, where)
 
     names = _assigned_names(tree.body)
