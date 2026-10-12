@@ -45,6 +45,7 @@ from transpiler.model import (
     Rule,
     SchemasSection,
     is_alias_path,
+    is_group,
     is_unfinished,
     load_rule,
 )
@@ -220,13 +221,22 @@ class _Schemas:
         return node, None
 
     def required(self, node: Node) -> list[str]:
+        """What the schema requires of an object. Of a schema that is one of several shapes
+        (`oneOf`), what every shape requires: a field only some shapes have is the mapping's to
+        guard, not required of all."""
         if not isinstance(node, dict):
             return []
-        out: list[str] = []
+        per_shape: list[set[str]] = []
         for v in self.variants(node):
             req = v.get("required")
-            out += [r for r in req if isinstance(r, str)] if isinstance(req, list) else []
-        return out
+            per_shape.append(
+                {r for r in req if isinstance(r, str)} if isinstance(req, list) else set()
+            )
+        if not per_shape:
+            return []
+        common = set.intersection(*per_shape)
+        ordered = [r for v in self.variants(node) for r in (v.get("required") or []) if r in common]
+        return list(dict.fromkeys(ordered))
 
 
 # the schema walker, for the tools that read a schema the way the check does
@@ -331,6 +341,7 @@ class _Checker:
         self.out = _Schemas(output_schema)
         self.has_in = input_schema is not None
         self.has_out = output_schema is not None
+        self.doc = "input"  # what `$` is read against (the output, for a check of the output)
         self.issues: list[Issue] = []
         found = [r for r in self._all(file.rules) if isinstance(r, LookupRule)]
         everything = [*file.shared.values(), *found]
@@ -443,7 +454,7 @@ class _Checker:
                     self.add(
                         path,
                         column,
-                        f"'{missing}' is not in the input schema ({anchor}{chain}){hint}",
+                        f"'{missing}' is not in the {self.doc} schema ({anchor}{chain}){hint}",
                     )
 
     def types(
@@ -490,6 +501,7 @@ class _Checker:
         env: dict[str, Any] = {"root": root, "value": value}
         env.update({f"_LK_{label}": node for label, node in self.lookup_nodes.items()})
         env.update({f"_L{i}": node for i, node in enumerate(items, 1)})
+        env.update({f"_I{i}": UNKNOWN for i in range(1, len(items) + 1)})  # `@index`: a position
         typer = ExprTyper(
             self.inp, env, lambda message: self.add(path, "expression", message), self.functions
         )
@@ -533,30 +545,56 @@ class _Checker:
         in_root: Node,
         items: list[Node],
         labels: list[str | None],
+        check_required: bool = True,
     ) -> None:
         names: set[str] = set()
+        loop_names: set[str] = set()  # loops may add to one list, one after the other
         covered: set[str] = set()
         for i, rule in enumerate(rules):
             path = f"{prefix}[{i}]"
             self.form(path, rule)
             if isinstance(rule, LookupRule):
                 continue
+            if isinstance(rule, ObjectRule) and is_group(rule):
+                # writes into this container: its rules count as this container's
+                self.group(path, rule, scope, out, in_root, items, labels)
+                covered |= {
+                    r.field if isinstance(r, FieldRule) else _basename(r.output)
+                    for r in rule.rules
+                    if not isinstance(r, LookupRule)
+                }
+                continue
             name = rule.field if isinstance(rule, FieldRule) else _basename(rule.output)
             covered.add(name)
             if is_unfinished(rule):
                 self.unfinished(path, rule, name, out)
-            if name in names:
+            if name in names and not (isinstance(rule, LoopRule) and name in loop_names):
                 self.add(path, "target", f"'{name}' is already a rule of this container")
             names.add(name)
+            if isinstance(rule, LoopRule):
+                loop_names.add(name)
             if isinstance(rule, FieldRule):
                 self.field(path, rule, scope, out, in_root, items, labels)
             else:
                 self.container(path, rule, scope, out, in_root, items, labels)
-        if self.has_out and isinstance(out, dict):
+        if check_required and self.has_out and isinstance(out, dict):
             missing = [r for r in self.out.required(out) if r not in covered]
             if missing:
                 where = prefix.rsplit(".rules", 1)[0] if ".rules" in prefix else ""
                 self.add(where, "target", f"the output schema requires {', '.join(missing)}")
+
+    def group(self, path, rule: ObjectRule, scope, out, in_root, items, labels) -> None:
+        """An object with `output: $`: its guard, then its rules as the rules of the container."""
+        if items:
+            self.add(path, "target", "a group (`output: $`) can only be at the top of the file")
+        if rule.guard:
+            guard = self.selections(path, rule.guard, "expression", scope, in_root, items, labels)
+            self.block(path, guard, scope, "expression")
+            self.refs(path, guard, "expression", in_root, items, labels)
+            self.typecheck(path, guard, None, "", in_root, items, labels)
+        self.walk(
+            rule.rules, f"{path}.rules", scope, out, in_root, items, labels, check_required=False
+        )
 
     def unfinished(self, path: str, rule: Rule, name: str, out: Node) -> None:
         """A rule with nothing defined: ignored by the build, so a warning, unless the output
@@ -581,7 +619,7 @@ class _Checker:
             value = _constant_node(rule.source_constant)
         elif rule.source_path:
             src = self.selections(path, rule.source_path, "source", scope, in_root, items, labels)
-            if self.has_in:
+            if self.has_in and not re.fullmatch(r"@index(\.\d+)?", src):  # `@index` is no field
                 base = in_root if src.startswith("$") else (items[-1] if items else in_root)
                 node, missing = self.inp.resolve(base, re.sub(r"^[$@]", "", src))
                 if node is None:
@@ -696,6 +734,20 @@ class _Checker:
                 self.add(path, "source", f"'{missing}' is not in the input schema{hint}")
             else:
                 item = reached
+                types = self.inp.types(reached) if isinstance(reached, dict) else set()
+                if (
+                    isinstance(rule, LoopRule)
+                    and "object" in types
+                    and "array" not in types
+                    and not source.strip().endswith("]")  # `[*]` already stepped into the list
+                    and source.strip() != "$"
+                ):
+                    self.add(
+                        path,
+                        "source",
+                        f"a loop runs over a list, but '{source}' is an object "
+                        "(only `$`, the document itself, is one element)",
+                    )
         inner = AnchorScope(
             loops=(*scope.loops, LoopRef(label, "src", "index")), lookups=scope.lookups
         )
@@ -764,7 +816,37 @@ class _Checker:
         root_out: Node = self.out.root if self.out.root is not None else UNKNOWN
         scope = AnchorScope(lookups=self.lookups)
         self.walk(self.file.rules, "rules", scope, root_out, root_in, [], [])
+        self.validations(scope, root_in, root_out)
         return self.issues
+
+    def validations(self, scope: AnchorScope, root_in: Node, root_out: Node) -> None:
+        """The extra validations: each `expect` is read as an expression on `$`, the input for the
+        input side and the output for the output side."""
+        for side, root, has in (
+            ("input", root_in, self.has_in),
+            ("output", root_out, self.has_out),
+        ):
+            spec = self.file.validations.side(side)
+            if spec.schema and not has:
+                self.add(
+                    f"validations.{side}",
+                    "schema",
+                    f"the {side} is validated against its JSON Schema, but the mapping has no "
+                    f"{side} schema",
+                )
+            saved = (self.inp, self.has_in, self.doc)
+            if side == "output":  # `$` is the output: read it against the output schema
+                self.inp, self.has_in, self.doc = self.out, self.has_out, "output"
+            try:
+                for i, check in enumerate(spec.checks):
+                    path = f"validations.{side}.checks[{i}]"
+                    text = self.selections(path, check.expect, "expect", scope, root, [], [])
+                    if self.block(path, text, scope, "expect") is None:
+                        continue
+                    self.refs(path, text, "expect", root, [], [])
+                    self.typecheck(path, text, None, "", root, [], [])
+            finally:
+                self.inp, self.has_in, self.doc = saved
 
 
 def _basename(output: str) -> str:

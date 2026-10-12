@@ -476,7 +476,7 @@ def test_a_code_override_is_checked_too() -> None:
 
 
 def test_a_code_override_name_that_nothing_defines_is_an_error() -> None:
-    assert _call_issues("root.name + missing", "manual") == ["'missing' is not defined"]
+    assert _call_issues("root.name + zzq", "manual") == ["'zzq' is not defined"]
     assert _call_issues("x = root.name\nx + y + y", "manual") == ["'y' is not defined"]
     # `src`/`index` exist only inside a loop; the root, the block's variables and functions do
     assert _call_issues("src.name", "manual") == ["'src' is not defined"]
@@ -607,8 +607,8 @@ def test_an_assignment_in_an_expression_points_to_the_comparison() -> None:
 
 
 def test_an_unknown_function_or_another_languages_name_is_reported() -> None:
-    assert _expression_issues("lenn($.id)") == [
-        "unknown function 'lenn' — the guide lists the functions"
+    assert _expression_issues("zzfn($.id)") == [
+        "unknown function 'zzfn' — the guide lists the functions"
     ]
     assert "did you mean 'to_string'?" in _expression_issues("to_strin($.country)")[0]
     assert "write `True`" in _expression_issues("true")[0]

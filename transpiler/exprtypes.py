@@ -109,6 +109,9 @@ def did_you_mean(name: str, candidates: Collection[str]) -> str:
     return f" — did you mean '{pool[near[0]]}'?" if near else ""
 
 
+_AGGREGATES = {"sum", "avg", "max", "min", "count", "join"}
+
+
 class ExprTyper:
     """`env` maps the names the anchors resolve to (`root`, `_L1`, …) to schema nodes;
     `schemas` offers `types(node)`, `prop(node, name)` and `values(node)` on such nodes."""
@@ -244,6 +247,14 @@ class ExprTyper:
                 return None
             found = self.schemas.prop(base, node.attr)
             return found if isinstance(found, dict) else None
+        if (  # a field named like a keyword: root["return"]
+            isinstance(node, ast.Subscript)
+            and isinstance(node.slice, ast.Constant)
+            and isinstance(node.slice.value, str)
+        ):
+            base = self._node(node.value)
+            found = self.schemas.prop(base, node.slice.value) if base is not None else None
+            return found if isinstance(found, dict) else None
         return None
 
     def _of_node(self, node: Any) -> Ty:
@@ -264,11 +275,11 @@ class ExprTyper:
             return STRING if isinstance(v, str) else None
         if isinstance(node, ast.JoinedStr):
             return STRING
-        if isinstance(node, ast.Name | ast.Attribute):
+        if isinstance(node, ast.Name | ast.Attribute | ast.Subscript):
             found = self._node(node)
             if found is not None:
                 return self._of_node(found)
-            if isinstance(node, ast.Attribute):
+            if isinstance(node, ast.Attribute | ast.Subscript):
                 self.infer(node.value)
             return None
         if isinstance(node, ast.BinOp):
@@ -370,6 +381,17 @@ class ExprTyper:
             for arg in args:
                 self.infer(arg)
             return STRING
+        if (
+            name in _AGGREGATES
+            and name in self.special
+            and args
+            and isinstance(args[0], ast.GeneratorExp)
+            and len(args) <= (2 if name == "join" else 1)
+        ):
+            return self._aggregate(node)
+        if name == "abs" and name in self.special and len(args) == 1:
+            ty = self._arg("abs", 0, args[0], NUMERIC)
+            return INTEGER if ty == INTEGER else NUMBER
         if name == "count" and name in self.special:
             for arg in args:
                 self.infer(arg)
@@ -382,6 +404,91 @@ class ExprTyper:
         for arg in args:
             self.infer(arg)
         return None
+
+    def _aggregate(self, call: ast.Call) -> Ty:
+        """`sum(value for x in list if condition)` (also `count`, `max`, `min`, `avg`): `x` is an
+        element of the list, so the fields it reads are checked against the list's schema."""
+        assert isinstance(call.func, ast.Name)
+        name = call.func.id
+        comp = call.args[0]
+        assert isinstance(comp, ast.GeneratorExp)
+        if call.keywords:
+            self.report(f"{name}() over a comprehension takes nothing else")
+        if len(comp.generators) != 1 or comp.generators[0].is_async:
+            self.report(f"{name}() takes one `for`, with `if` conditions after it")
+            return None
+        gen = comp.generators[0]
+        if not isinstance(gen.target, ast.Name):
+            self.report(f"the variable of the `for` in {name}() must be a single name")
+            return None
+        for inner in ast.walk(comp):
+            if (
+                isinstance(inner, ast.Call)
+                and isinstance(inner.func, ast.Name)
+                and inner.func.id in _AGGREGATES
+                and inner.func.id in self.special
+                and inner.args
+                and (isinstance(inner.args[0], ast.GeneratorExp) or inner.func.id != "count")
+            ):
+                self.report(f"{inner.func.id}() cannot be inside {name}(): an aggregate is a loop")
+        self.infer(gen.iter)
+        array = self._node(gen.iter)
+        element = self.schemas.items(array) if array is not None else None
+        var = gen.target.id
+        earlier = self.env.get(var)
+        self.env[var] = element
+        try:
+            self._element_fields(comp, var, element)
+            for cond in gen.ifs:
+                self.infer(cond)
+            value = self.infer(comp.elt)
+        finally:
+            if earlier is None:
+                self.env.pop(var, None)
+            else:
+                self.env[var] = earlier
+        if name == "count":
+            return INTEGER
+        if name == "join":
+            if len(call.args) > 1:
+                self._arg("join", 1, call.args[1], STRING)
+            if not compatible(value, STRING):
+                self.report(
+                    f"join() needs texts, but the value is {describe(value)}: use to_string()"
+                )
+            return STRING
+        if name in ("sum", "avg") and not compatible(value, NUMERIC):
+            self.report(f"{name}() needs numbers, but the value is {describe(value)}")
+            return NUMBER
+        if name == "sum":
+            return INTEGER if value == INTEGER else NUMBER
+        return NUMBER if name == "avg" else value
+
+    def _element_fields(self, comp: ast.GeneratorExp, var: str, element: Any) -> None:
+        """A field of the element that its schema does not have."""
+        if not isinstance(element, dict):
+            return
+        reported: set[tuple[str, str]] = set()
+        for n in ast.walk(comp):
+            if not isinstance(n, ast.Attribute):
+                continue
+            chain: list[str] = []
+            base: ast.expr = n
+            while isinstance(base, ast.Attribute):
+                chain.append(base.attr)
+                base = base.value
+            if not (isinstance(base, ast.Name) and base.id == var):
+                continue
+            node: Any = element
+            for attr in reversed(chain):
+                found = self.schemas.prop(node, attr)
+                if found is None:
+                    if (var, attr) not in reported:
+                        reported.add((var, attr))
+                        near = did_you_mean(attr, self.schemas.names(node))
+                        self.report(f"'{attr}' is not in the input schema{near}")
+                    break
+                node = found
 
     def _lookup(self, args: list[ast.expr], want: Ty) -> Ty:
         if len(args) not in (2, 3):

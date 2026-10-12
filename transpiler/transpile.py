@@ -35,6 +35,7 @@ the positions (`index2, index1, index`) that its subtree actually references.
 from __future__ import annotations
 
 import ast
+import json
 import re
 import textwrap
 from collections.abc import Callable, Sequence
@@ -58,6 +59,7 @@ from transpiler.model import (
     LoopRule,
     ObjectRule,
     Rule,
+    is_group,
     load_functional_file,
     prune_unfinished,
 )
@@ -86,7 +88,7 @@ def _pascal(name: str) -> str:
 
 
 _OUT_PATH = re.compile(r"^[$@]\.(?P<name>[A-Za-z_]\w*)(?:\[\*?\])?$")
-_ATTR_CHAIN = re.compile(r"^[A-Za-z_]\w*(\.[A-Za-z_]\w*(\[\d+\])*)*$")
+_ATTR_CHAIN = re.compile(r'^[A-Za-z_]\w*((\.[A-Za-z_]\w*|\["[A-Za-z_]\w*"\])(\[\d+\])*)*$')
 _INDEX_NAME = re.compile(r"^index(\d*)$")
 
 
@@ -242,12 +244,14 @@ class _Builder:
         self.schema = schema
         self.lookups: dict[str, dict] = {}
         self.classes: list[ast.stmt] = []
+        self.class_fields: dict[str, list[tuple[str, str]]] = {}  # name -> (field, annotation)s
         self.functions: list[ast.stmt] = []
         self.flow: list[ast.stmt] = []
         self._class_names: set[str] = set()
         # the functions picking the first element of a list by a condition, once each
         self._pickers: dict[tuple[str, str, _Frame], tuple[str, set[int]]] = {}
         self._picker_names: set[str] = set()
+        self.validation_directive: str | None = None  # `__validation__`, when the file validates
         self.proposals: dict[str, str] = {}  # fq id -> auto code, of every field rule
         self.proposal_errors: dict[str, str] = {}
 
@@ -543,6 +547,7 @@ class _Builder:
 
     def _make_class(self, base: str, fields: list[tuple[str, str]]) -> str:
         name = self._unique_class(base)
+        self.class_fields[name] = list(fields)
         body = "\n".join(f"    {n}: {a}" for n, a in fields)
         self.classes += self._stmts(f"@dataclass\nclass {name}:\n{body}")
         return name
@@ -568,20 +573,87 @@ class _Builder:
 
         for rule in self.file.rules:
             assert rule.id is not None
-            if isinstance(rule, LookupRule):
-                continue
-            if isinstance(rule, FieldRule):
-                self._top_field(rule)
-            elif isinstance(rule, ObjectRule):
-                self._top_object(rule)
-            elif rule.first:
-                self._top_first(rule)
-            else:
-                self._top_loop(rule)
+            self._top(rule, rule.id)
+        self._checks()
 
-    def _top_field(self, rule: FieldRule) -> None:
-        assert rule.id is not None
-        fq, ident = rule.id, ident_of(rule.id)
+    def _checks(self) -> None:
+        """The extra validations: each `expect` becomes a function of the document that must be
+        true (`$` is the input for the input side and the output for the output side), and the
+        directive that lists them for the compiler (compiler/validation.py)."""
+        directive: dict[str, Any] = {}
+        for side in ("input", "output"):
+            spec = self.file.validations.side(side)
+            checks: list[dict[str, str]] = []
+            for check in spec.checks:
+                ident = f"check_{side}_{check.id}"
+                where = f"validation '{check.id}'"
+                frame = _Frame()
+                picks = _Picks()
+                text = self._extract(check.expect, frame, where, picks)
+                block = parse_block(
+                    picks.prefix(resolve_anchors(text, self._scope(frame), where).text),
+                    ident,
+                    where,
+                )
+                fn = ast.parse(f"def {ident}(root: Any) -> bool:\n    pass").body[0]
+                assert isinstance(fn, ast.FunctionDef)
+                fn.body = block.stmts
+                self.functions.append(fn)
+                checks.append(
+                    {
+                        "fn": ident,
+                        "code": check.code,
+                        "message": check.message,
+                        "action": check.action,
+                    }
+                )
+            if spec.schema or checks:
+                directive[side] = {"schema": spec.schema, "checks": checks}
+        if directive:
+            self.validation_directive = json.dumps(directive, separators=(",", ":"))
+
+    def _top(self, rule: Rule, fq: str) -> None:
+        """One rule written straight into the output root (`fq` is its qualified id)."""
+        if isinstance(rule, LookupRule):
+            return
+        if isinstance(rule, FieldRule):
+            self._top_field(rule, fq)
+        elif isinstance(rule, ObjectRule) and is_group(rule):
+            self._top_group(rule, fq)
+        elif isinstance(rule, ObjectRule):
+            self._top_object(rule, fq)
+        elif rule.first:
+            self._top_first(rule, fq)
+        else:
+            self._top_loop(rule, fq)
+
+    def _top_group(self, rule: ObjectRule, fq: str) -> None:
+        """`output: $`: a group of rules that write into the root, all of them or none (its
+        `guard`). The mapping has no notion of alternative shapes: whoever writes it guards the
+        rules of each shape, and the rules of the other shapes are not run."""
+        start = len(self.flow)
+        for child in rule.rules:
+            assert child.id is not None
+            self._top(child, f"{fq}.{child.id}")
+        body = self.flow[start:] or self._stmts("pass")
+        del self.flow[start:]
+        if not rule.guard:
+            self.flow += body
+            return
+        where = f"rule '{fq}' guard"
+        picks = _Picks()
+        text = self._extract(rule.guard, _Frame(), where, picks)
+        g = parse_block(
+            picks.prefix(resolve_anchors(text, self._scope(_Frame()), where).text),
+            f"{ident_of(fq)}_guard",
+            where,
+        )
+        if not g.is_simple or g.pre:
+            raise FnYamlError(f"{where}: must be a single boolean expression")
+        self.flow.append(ast.If(test=g.value, body=body, orelse=[]))
+
+    def _top_field(self, rule: FieldRule, fq: str) -> None:
+        ident = ident_of(fq)
         block = self._field_block(rule, fq, self._scope(_Frame()), _Frame())
         ret = _annotation(rule.type, not rule.required, block.returns_null)
         fn = ast.parse(f"def {ident}({self._params(_Frame(), set())}) -> {ret}:\n    pass").body[0]
@@ -590,17 +662,15 @@ class _Builder:
         self.functions.append(fn)
         self.flow += self._stmts(f"out.{rule.field} = {ident}(root)")
 
-    def _top_object(self, rule: ObjectRule) -> None:
-        assert rule.id is not None
-        out_field = _output_field(rule.output, f"rule '{rule.id}'")
-        comp = self._composite(rule, rule.id, _Frame(), _pascal(out_field), rule.guard)
+    def _top_object(self, rule: ObjectRule, fq: str) -> None:
+        out_field = _output_field(rule.output, f"rule '{fq}'")
+        comp = self._composite(rule, fq, _Frame(), _pascal(out_field), rule.guard)
         self.flow += self._stmts(f"out.{out_field} = {comp.ident}(root)")
 
-    def _top_first(self, rule: LoopRule) -> None:
-        assert rule.id is not None
-        where = f"rule '{rule.id}'"
+    def _top_first(self, rule: LoopRule, fq: str) -> None:
+        where = f"rule '{fq}'"
         out_field = _output_field(rule.output, where)
-        wrapper = self._first_match(rule, rule.id, _Frame(), where)
+        wrapper = self._first_match(rule, fq, _Frame(), where)
         self.flow += self._stmts(f"out.{out_field} = {wrapper.ident}(root)")
 
     def _first_match(self, rule: LoopRule, fq: str, frame: _Frame, where: str) -> _Composite:
@@ -623,9 +693,7 @@ class _Builder:
         self.functions.append(fn)
         return _Composite(ident, sub.cls, needs)
 
-    def _top_loop(self, rule: LoopRule) -> None:
-        assert rule.id is not None
-        fq = rule.id
+    def _top_loop(self, rule: LoopRule, fq: str) -> None:
         where = f"rule '{fq}'"
         out_field = _output_field(rule.output, where)
         source = self._source_text(rule, self._scope(_Frame()), where)
@@ -697,7 +765,13 @@ class _Builder:
     # -- composites (object / loop element) --------------------------------
 
     def _composite(
-        self, node: ObjectRule | LoopRule, fq: str, frame: _Frame, cls_base: str, guard: str | None
+        self,
+        node: ObjectRule | LoopRule,
+        fq: str,
+        frame: _Frame,
+        cls_base: str,
+        guard: str | None,
+        reuse: str | None = None,
     ) -> _Composite:
         """Emit the dataclass + function for one object/loop element, children
         first. `frame` is the element's own frame (a loop's includes itself)."""
@@ -707,6 +781,8 @@ class _Builder:
         kwargs: list[ast.keyword] = []
         fields: list[tuple[str, str]] = []
         seen: set[str] = set()
+        # output list -> (its variable, its element class): loops may add to one, in order
+        lists: dict[str, tuple[str, str]] = {}
 
         def add(name: str, annotation: str, value: ast.expr, where: str) -> None:
             if name in seen:
@@ -755,14 +831,23 @@ class _Builder:
                 add(out_field, f"{wrapper.cls} | None", call, where)
             else:
                 out_field = _output_field(child.output, where)
-                stmts, list_var, sub = self._nested_loop(child, cfq, frame, where)
+                stmts, list_var, sub = self._nested_loop(
+                    child, cfq, frame, where, into=lists.get(out_field)
+                )
                 pre += stmts
-                add(out_field, f"list[{sub.cls}]", ast.Name(id=list_var, ctx=ast.Load()), where)
+                if out_field not in lists:
+                    lists[out_field] = (list_var, sub.cls)
+                    add(out_field, f"list[{sub.cls}]", ast.Name(id=list_var, ctx=ast.Load()), where)
 
         if not fields:
             raise FnYamlError(f"rule '{fq}': a {node.kind} rule needs at least one member")
 
-        cls = self._make_class(cls_base, fields)
+        # a loop adding to a list another loop started has that loop's element class when the
+        # elements have the same fields (the compiler compares the list's class)
+        if reuse and self.class_fields.get(reuse) == fields:
+            cls = reuse
+        else:
+            cls = self._make_class(cls_base, fields)
         build: list[ast.stmt] = [
             *pre,
             ast.Return(value=ast.Call(func=ast.Name(cls, ast.Load()), args=[], keywords=kwargs)),
@@ -814,15 +899,26 @@ class _Builder:
         return [ast.Name(id=a, ctx=ast.Load()) for a in args]
 
     def _nested_loop(
-        self, rule: LoopRule, fq: str, frame: _Frame, where: str
+        self,
+        rule: LoopRule,
+        fq: str,
+        frame: _Frame,
+        where: str,
+        into: tuple[str, str] | None = None,
     ) -> tuple[list[ast.stmt], str, _Composite]:
-        """`<id>_list = []` + a `for` filling it, inside the parent's function."""
+        """`<id>_list = []` + a `for` filling it, inside the parent's function; with `into`, the
+        `for` adds to a list an earlier loop of the same container started."""
         cid = ident_of(fq)
         source = self._source_text(rule, self._scope(frame), where)
         child_frame = frame.child(rule.label, self._element_type(source, frame), rule.source)
         out_field = _output_field(rule.output, where)
         sub = self._composite(
-            rule, fq, child_frame, _pascal(out_field) + ("" if rule.first else "Item"), None
+            rule,
+            fq,
+            child_frame,
+            _pascal(out_field) + ("" if rule.first else "Item"),
+            None,
+            reuse=into[1] if into else None,
         )
 
         item, index = f"{cid}_src", f"{cid}_index"
@@ -831,7 +927,7 @@ class _Builder:
             loops=(*frame.loop_refs(), LoopRef(rule.label, item, index)), lookups=self.lookups
         )
         iterable, filter_text = self._iterable(rule, source, item, loop_scope, uses_index, where)
-        list_var = f"{cid}_list"
+        list_var = into[0] if into else f"{cid}_list"
         call = ast.Call(
             func=ast.Name(id=sub.ident, ctx=ast.Load()),
             args=self._call_args(frame, (item, index), sub.needs),
@@ -853,7 +949,7 @@ class _Builder:
         ]
         if filter_text and not uses_index:
             loop.body.insert(0, self._stmts(f"if not ({filter_text}):\n    continue")[0])
-        stmts = [*self._stmts(f"{list_var} = []"), loop]
+        stmts: list[ast.stmt] = [loop] if into else [*self._stmts(f"{list_var} = []"), loop]
         return stmts, list_var, sub
 
 
@@ -879,7 +975,8 @@ def build_stage(
     b.build()
     if warnings is not None:
         warnings.extend(b.warnings)
-    header = ast.parse(f"from __mapping__ import *\n\n__id__ = {file.id!r}").body
+    directive = f"\n__validation__ = {b.validation_directive!r}" if b.validation_directive else ""
+    header = ast.parse(f"from __mapping__ import *\n\n__id__ = {file.id!r}{directive}").body
     module = ast.Module(body=[*header, *b.classes, *b.functions, *b.flow], type_ignores=[])
     ast.fix_missing_locations(module)
     return _render(module) + "\n"
@@ -935,7 +1032,9 @@ def emit_stage(text: str, options: TranspileOptions, source_name: str = "<fn.yam
 def _is_fixed(stmt: ast.stmt) -> bool:
     """Header, dataclasses and rule functions — everything before the mapping body."""
     if isinstance(stmt, ast.Assign):
-        return any(isinstance(t, ast.Name) and t.id == "__id__" for t in stmt.targets)
+        return any(
+            isinstance(t, ast.Name) and t.id in ("__id__", "__validation__") for t in stmt.targets
+        )
     return isinstance(stmt, ast.ImportFrom | ast.ClassDef | ast.FunctionDef)
 
 
