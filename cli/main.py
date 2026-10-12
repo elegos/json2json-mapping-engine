@@ -706,6 +706,52 @@ def _import_command(action: str, mapping: str, **kwargs: Any) -> None:
         raise typer.Exit(code=1)
 
 
+@import_app.command("providers")
+def import_providers() -> None:
+    """The assistants (Claude Code, Codex) found on the PATH, as JSON."""
+    from cli import import_run
+
+    typer.echo(json.dumps({"providers": import_run.providers()}))
+
+
+@import_app.command("run")
+def import_run_command(
+    document: Annotated[Path, typer.Argument(help="The functional document")],
+    provider: Annotated[str, typer.Option(help="claude or codex")] = "claude",
+    mode: Annotated[
+        str, typer.Option(help="import, resume, rerun_all, rerun_partial, revalue_version")
+    ] = "import",
+    mapping: Annotated[str | None, typer.Option(help="Mapping id (default: ask)")] = None,
+    profile: Annotated[str | None, typer.Option(help="Profile name (default: ask)")] = None,
+    rule_id: Annotated[
+        list[str] | None, typer.Option("--rule-id", help="For rerun_partial")
+    ] = None,
+    watch_stdin: Annotated[
+        bool, typer.Option(help="Cancel when stdin closes (the desktop tool)")
+    ] = False,
+) -> None:
+    """Run the import skill with an installed assistant, from the project directory.
+
+    Prints one JSON line per event; the last has `event: done` and the status of the protocol."""
+    import sys
+
+    from cli import import_run
+
+    result = import_run.run_streaming(
+        Path.cwd(),
+        document,
+        out=sys.stdout,
+        watch_stdin=watch_stdin,
+        provider=provider,
+        mode=mode,
+        mapping=mapping,
+        profile=profile,
+        rule_ids=rule_id or [],
+    )
+    if result["status"] in ("failed", "cancelled"):
+        raise typer.Exit(code=1)
+
+
 @import_app.command("assemble")
 def import_assemble(
     mapping: Annotated[str, typer.Argument(help="Mapping id (import/<mapping>/)")],

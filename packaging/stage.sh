@@ -59,6 +59,9 @@ mkdir -p "$engine"
 for pkg in cli compiler transpiler runtime; do
   cp -a "$root/$pkg" "$engine/$pkg"
 done
+# the import skill: the desktop tool hands it to the assistant that reads a functional document
+mkdir -p "$engine/skills"
+cp -a "$root/skills/import-functional-spec" "$engine/skills/import-functional-spec"
 find "$engine" -name __pycache__ -type d -prune -exec rm -rf {} +
 (cd "$root" && uv export --no-dev --no-hashes --frozen --no-emit-project -o "$stage/requirements.txt" >/dev/null)
 uv pip install --quiet --target "$engine" --python-platform "$platform" \
