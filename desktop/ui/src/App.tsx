@@ -50,6 +50,7 @@ import {
   type ConfigValues,
 } from "./projectConfig";
 import { ProjectButton } from "./ProjectButton";
+import { ImportView } from "./ImportView";
 import { Wizard } from "./Wizard";
 import { Guide } from "./Guide";
 import { HelpMenu } from "./HelpMenu";
@@ -253,6 +254,8 @@ export function App() {
   goldenDirtyRef.current = goldenDirty;
   const [recent, setRecent] = useState<string[]>(loadRecent);
   const [wizard, setWizard] = useState(false);
+  /** The project a document is being imported into (the import takes the whole screen). */
+  const [importing, setImporting] = useState<string | null>(null);
   const [guide, setGuide] = useState<string | null>(null);
   const [explorer, setExplorer] = useState(false);
   const [license, setLicense] = useState(false);
@@ -2741,6 +2744,22 @@ export function App() {
             if (properties) setPropertiesFor(dir);
           }}
           onClose={() => setWizard(false)}
+          onImport={async (dir) => {
+            if (!(await switchGuard())) return;
+            setWizard(false);
+            if (dir !== project) await openDir(dir);
+            setImporting(dir);
+          }}
+        />
+      )}
+      {importing !== null && (
+        <ImportView
+          project={importing}
+          onClose={() => setImporting(null)}
+          onApplied={async (mapping) => {
+            setImporting(null);
+            await reloadFiles(mapping);
+          }}
         />
       )}
       {tourRun && (
