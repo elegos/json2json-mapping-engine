@@ -12,12 +12,79 @@ section (see `packaging/release.py`).
 
 ### Features
 
+- Validation of the input and the output: a `validations:` section in the functional file with the
+  JSON Schema check of each side (off by default; Oracle 23ai `DBMS_JSON_SCHEMA`, Python
+  `jsonschema`; best effort: `format` is not checked) and extra checks (`expect` on `$`, `code`,
+  `message`, `reject` or `warn`). A `reject` runs no rule and gives no output; every failed check is
+  reported (`p_report` of `map_<id>_safe` / a third result, `MappingRejected` / the reserved error
+  with `rejected`). Golden cases: `<case>.expected_rejected.json`, `.expected_warnings.json`. New
+  built-in `is_digits`. The import turns "reject if..." statements into validations.
+- `mapper import extract | assemble | test | apply`: read a functional document (xlsx, docx, pdf,
+  txt, md) into a normalized form, build and check a `.fn.yaml` from an import plan, run the plan's
+  cases against it, and write it to the project (`pip install` extra `import` for the readers).
+- More built-ins, so that patterns are the last resort and not the first: `upper`, `lower`, `trim`,
+  `length`, `substring`, `left`, `right`, `pad_left`, `pad_right`, `contains`, `starts_with`,
+  `ends_with`, `abs`, `floor`, `ceil` and `format_date` (a date written in a format). Python and
+  PL/SQL backends, golden mapping `builtins_more`. Library 1.1.0.
+- A lookup table can be empty (`entries` may be left out): the import writes a table the document does
+  not give, named and empty, so the rules that read it already run. It finds nothing until filled in.
+- Groups: an `object` with `output: $` and a `guard` writes its rules into the output root when
+  the guard holds. It is how a mapping produces one of several shapes (`oneOf`): a group per shape,
+  guards written by the author; the check asks of the root only what every shape requires. The
+  import asks which shape each part of the document is and in which order the guards apply.
+- Loops: `source: $` runs over the document itself (one element: a list with a single element
+  built from the message, or, with a `filter`, a block written only when a condition holds), and
+  several loops can add to one output list in order. A list missing from the document has no
+  elements on PL/SQL too (the loop raised ORA-30625). Golden mapping `document_loop`.
+- More built-ins: `parse_timestamp` (a date and time with a month name or AM/PM), `days_between`,
+  `add_days`, `split_last` and `join` (a list, or a comprehension, in one text); `to_utc` and
+  `rfc3339_normalize` take the number of fraction digits (milliseconds). Python and PL/SQL,
+  golden mapping `builtins_dates`.
+- Aggregates over some elements or a computed value: `count(i for i in $.items if i.ok)`,
+  `sum(abs(i.qty) for i in $.items)`, likewise `max`, `min`, `avg`. One loop on both backends,
+  the element's fields are checked against the schema. An aggregate may now be part of a larger
+  expression on PL/SQL too (`round(sum(...), 2)`). Golden mapping `aggregate_by`.
 - The check suggests the closest name ("did you mean 'x'?") for a field, reference, alias or
   function that does not exist.
 - Expression syntax errors say what to write instead (`&&` → `and`, `cond ? a : b` → `a if cond
   else b`, …) and where the expression stopped.
 - The check reports an unknown function in an expression (it was found only by the build) and
   a bare `return` on a required field.
+
+### Changed
+
+- A value that is `None` (a missing source, a lookup that finds nothing, `max` of an empty set) is
+  no longer written as `null`: the field is left out, as a bare `return` does. `Null`, the explicit
+  null, still writes `null`. Both backends, in a rule, a direct assignment, a field of an object and
+  an element of a list. Golden cases that expected `null` for a missing value now expect no field.
+
+### Fixes
+
+- A mapping whose output schema is one of several shapes (`oneOf`) was refused by the compiler
+  (`KeyError`): the root is now the union of the shapes (a field only some have is optional).
+- Several loops inside an `object` can add to one list (the transpiler refused it: "duplicate
+  output field"). `count` of a missing list is 0, and `sum`, `max`, `min`, `avg` over `(list,
+  "field")` follow the rules of the comprehension form on Oracle too (a missing value is skipped, a
+  missing list is empty).
+- The compiler's type check: a property the schema does not require may be left out (a rule that
+  can omit it was refused); a `const` or `enum` without a `type` is typed by its values (it was an
+  opaque object); `abs` of a whole number is a whole number and `floor`/`ceil` give whole numbers
+  (an integer field refused them); a field named like a keyword is typed through the schema.
+- Sums and products of decimal numbers on the Python backend are the database's
+  (`0.1 + 0.2` is `0.3`, `130.83` not `130.82999999999998`).
+- `mapper import assemble` treats a required output field that no rule writes yet (a function gap,
+  a missing lookup) as a gap, not a failure: the cases still run; `apply` asks for `--force`.
+  The Word reader no longer marks the cells of a table without merged cells as continuations.
+- A field named like a Python keyword (`$.return.number`, `i.from`) can be read, in a path, an
+  expression and a loop source, on both backends (it was a syntax error in the generated code).
+- `parse_date` of a missing text gives nothing on the Python backend (it failed; Oracle gave null).
+- `mapper import test` no longer ends in a traceback when the working copy checks but does not
+  compile: the cases are reported as not run, with the cause.
+- `max`, `min`, `sum`, `avg` skip a missing value (as SQL does) instead of failing on the Python
+  backend, and `max`, `min`, `avg` of nothing are null on both; `round`, `trunc`, `abs`, `floor`,
+  `ceil` of a missing value are null on the Python backend too (they were an error there).
+- The check no longer rejects `@index` as a source or in an expression, and a loop that numbers
+  its elements (`index_start`) now runs on the Python backend.
 
 ## [0.2.0] - 2026-10-07
 

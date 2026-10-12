@@ -1192,6 +1192,73 @@ match); `lookup` and `if_else` cover the rest. The limits of `to_number` (a plai
 before the dot and 18 after; no exponent, separators or decimal comma) are in its description, which the
 explorer and the guide show.
 
+### ✅ Built-ins without patterns (library 1.1.0)
+
+`upper`, `lower`, `trim`, `length`, `substring`, `left`, `right`, `pad_left`, `pad_right`, `contains`,
+`starts_with`, `ends_with`, `abs`, `floor`, `ceil`, `format_date`: reference implementations in
+`compiler/builtins.py`, PL/SQL in `compiler/backends/plsql/builtins.py` (inline; `format_date` in the
+functions package), golden mapping `builtins_more` (the Python backend runs it offline; run on a real
+Oracle with `mapper test --integration`, which found that `format_date` did not reject a format
+such as `MON`: an empty text is NULL in Oracle, so the length test never fired). Rule: no pattern where a function does the job. Left out on purpose:
+`initcap` and month names in `format_date` (language-dependent).
+
+### ✅ Aggregates over a condition or a computed value
+
+`count`, `sum`, `max`, `min`, `avg` take a comprehension: `sum(abs(x.qty) for x in $.items if x.ok)`.
+Chosen over a family of `*_where` functions (one mechanism, the language's own conditions) and over a
+`filter` returning a list (on PL/SQL it would build an intermediate array: a second pass and an
+allocation). One loop on each backend, the condition first so that the value of a skipped element is
+never computed, one read of the element object per iteration. The check types the element from the
+list's schema; the validator already let a generator expression through. A rule's PL/SQL aggregate
+may now sit inside a larger expression: `_AggregateHoister` computes each into a local first (it
+had to be the direct value of the rule). Golden mapping `aggregate_by`, run on Oracle and offline.
+Not done: aggregating the lines already written to the output (`totalQty` is the same expression over
+the input list instead); several aggregates over one list are as many loops (could be fused if
+measured to matter).
+
+## ✅ Alternative output shapes: groups
+
+No `oneOf` in a mapping (decided): an `object` with `output: $` and a `guard` writes into the root,
+and the author guards each shape (WB3: POST and DELETE). The import asks which shape each part of
+the document is and the order of the guards. When validations exist, "no shape matches" is a
+rejection. Done: model, check (a field only some shapes require is not required), transpiler (flow
+`if`), both backends (golden `groups`).
+
+## ✅ Validation of the input and the output (CLI done, desktop tab to do)
+
+A mapping has a **Validation** section with two sides, input (before any rule) and output (after the
+last). Each side has a **JSON Schema** check (off by default: the host may validate upstream or
+downstream) and **extra checks** written in the expression language on `$` (`id`, `expect`, `code`,
+`message`, `action` = `reject` | `warn`). Reference: `docs/ARCHITECTURE.md`, §Validations of the input and
+the output.
+
+**Done.**
+- `.fn.yaml`: the `validations:` section (`transpiler/model.py`, written back by `serialize.py`,
+  checked by `check.py` against the input or the output schema, transpiled to a `__validation__`
+  directive plus one `check_<side>_<id>(root) -> bool` function each).
+- Compiler: `compiler/validation.py` reads the directive and `Backend.compile_module` gets the
+  `Validation`; the JSON Schema text of the mapping is embedded (canonical form, hash in the
+  generated code). PL/SQL: `p_report OUT CLOB` on `_safe`, `DBMS_JSON_SCHEMA.IS_VALID` (23ai), the
+  reserved error with `{rejected, checks}` on the raising twin. Python: a third result, `MappingRejected`,
+  `jsonschema`.
+- Semantics fixed so that the backends agree: only a **true** condition passes (a comparison with a
+  missing value is not true), a check that raises fails (unless the schema check already failed), the
+  report lists every failed check, a rejected message runs no rule and has no output.
+- Built-in `is_digits(s)`.
+- Golden mapping `validation` (7 cases: rejected by a check, by the schema, by both, by the output;
+  a warning; a missing value) with `<case>.expected_rejected.json` / `.expected_warnings.json`.
+- Import: the IR's `validations` / `schema_validation`, the plan's cases `expected_rejected` /
+  `expected_warnings`, `mapper import assemble | test` build and run them; the skill proposes a
+  rejection statement as a validation (WB7 REQ-16) instead of a function gap.
+- The desktop's golden ops (`golden_run`, `golden_record`, `golden_read` / `golden_write`) carry the
+  report and the two new case files.
+
+**To do.** The desktop tab (Input / Output tables, test cases that expect `rejected: [codes]`), see
+*Desktop tool*. The schema check is best effort and not the same on every backend: Oracle's validator
+does not look at `format` (a `date-time` string is checked to be a string, not a date); the extra
+checks are the way to be exact. Older Oracle databases lack `DBMS_JSON_SCHEMA`: a mapping that asks
+for the schema check does not compile there.
+
 ## ✅ Python backend (done)
 
 A backend of its own (`compiler/backends/python/`, `[project] target = "python"`), lightweight:
