@@ -1,0 +1,28 @@
+{
+  "msgId": "MSG-20260316-000200",
+  "sentAt": "20260316235959",
+  "reservation": {
+    "status": "NEW",
+    "hotelCode": null,
+    "cleaningLevel": null,
+    "ref": {
+      "channel": "DESK",
+      "number": "7"
+    },
+    "stay": {
+      "arrival": "2026-04-01T09:30:00Z",
+      "departure": null
+    },
+    "guest": {
+      "givenName": "Mia",
+      "familyName": null
+    },
+    "rooms": [
+      {
+        "number": null,
+        "type": null
+      }
+    ],
+    "notes": []
+  }
+}

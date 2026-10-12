@@ -1,0 +1,27 @@
+{
+  "norm_version": 1,
+  "file": "Interface_Specification_v3.xlsx",
+  "sha256": "0000",
+  "format": "xlsx",
+  "text_layer": "full",
+  "metadata": { "title": "Interface specification (synthetic)" },
+  "blocks": [
+    { "id": "b1", "kind": "sheet_title", "text": "Mapping: return -> credit note", "location": { "sheet": "Map_Returns", "cells": "A1" }, "format": { "bold": true } },
+    { "id": "b2", "kind": "table_ref", "text": "", "table": "t1", "location": { "sheet": "Map_Returns" } }
+  ],
+  "tables": [
+    {
+      "id": "t1",
+      "location": { "sheet": "Map_Returns", "cells": "A3:E11" },
+      "header_rows": [0],
+      "rows": [
+        { "cells": [ { "text": "Target field" }, { "text": "Source field" }, { "text": "Rule" }, { "text": "Mandatory (Y/N)" }, { "text": "Notes" } ] },
+        { "cells": [ { "text": "creditNote.lines[]", "location": { "cells": "A6" } }, { "text": "return.items[]", "location": { "cells": "B6" } },
+                     { "text": "One output line for each return item, in the same order", "location": { "cells": "C6" } }, { "text": "Y" }, { "text": "" } ] },
+        { "cells": [ { "text": "  .reasonText", "location": { "cells": "A10" } }, { "text": "items.reason" },
+                     { "text": "Decode with the REASONS table; if not found or absent: Other", "location": { "cells": "C10" }, "format": { "fill": "F4B183" } }, { "text": "N" }, { "text": "" } ] }
+      ]
+    }
+  ],
+  "warnings": []
+}

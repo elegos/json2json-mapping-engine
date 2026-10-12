@@ -1,0 +1,27 @@
+{
+  "movement": {
+    "id": "MV-1003",
+    "type": "ADJUST",
+    "postedAt": "2026-06-02T08:00:00Z",
+    "warehouse": {
+      "code": "WH2",
+      "zone": "A1"
+    },
+    "item": {
+      "sku": "LMP-RED-S"
+    },
+    "quantity": {
+      "value": -3.5,
+      "unit": "KGM"
+    },
+    "lot": null,
+    "reasons": [
+      {
+        "code": "CNT",
+        "text": "Cycle count"
+      }
+    ],
+    "user": "operator2",
+    "linkedDocs": []
+  }
+}

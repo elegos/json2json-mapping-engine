@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Readings",
+  "type": "object",
+  "required": [
+    "readings"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "readings": {
+      "type": "object",
+      "required": [
+        "meterId",
+        "site",
+        "samples"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "meterId": {
+          "type": "string"
+        },
+        "unit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "site": {
+          "type": "object",
+          "required": [
+            "code",
+            "name"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          }
+        },
+        "samples": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "ts",
+              "value",
+              "quality"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "ts": {
+                "type": "string"
+              },
+              "value": {
+                "type": "number"
+              },
+              "quality": {
+                "enum": [
+                  "OK",
+                  "EST",
+                  "BAD"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

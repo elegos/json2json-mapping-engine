@@ -1,0 +1,40 @@
+{
+  "workbook": "Mapping_ReservationToTask_v02.xlsx",
+  "family": "A",
+  "language": "en",
+  "index_base": {
+    "code_expressions": 0,
+    "prose": 1,
+    "positional_segment_rows": 1
+  },
+  "array_notation": {
+    "[]": "every element",
+    "[*]": "every element",
+    "no_brackets": "every element (implicit loop)",
+    "[0]": "first element only"
+  },
+  "mandatory_vocabulary": {
+    "Y": "mandatory",
+    "Y<trailing blank>": "mandatory",
+    "N": "optional"
+  },
+  "date_dialect": {
+    "YYYYMMDDHH24MISS": "yyyyMMddHHmmss (source format)",
+    "UTC": "convert to UTC, print yyyy-MM-ddTHH:mm:ssZ"
+  },
+  "null_rule": "null, empty string and missing key are equivalent; target never contains null; optional target field without value is omitted",
+  "concatenation": "|| is plain concatenation; optional trailing part is dropped together with its separator",
+  "lookup_tables": {
+    "roomtypelist": {
+      "STD": "10",
+      "DLX": "20",
+      "STE": "30",
+      "_not_found": "omit target field"
+    }
+  },
+  "intentionally_unresolvable_in_workbook": [
+    "extra15 (source path does not exist)",
+    "roomtypelist content",
+    "default for unknown room type"
+  ]
+}

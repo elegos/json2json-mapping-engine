@@ -1,0 +1,23 @@
+{
+  "order": {
+    "orderNo": "ORD-Q-2026-018",
+    "orderDate": "2026-07-01",
+    "customerId": "C-91",
+    "customerName": "Birch Co",
+    "currency": "USD",
+    "leadSku": "ZZ-9",
+    "items": [
+      {
+        "pos": 1,
+        "sku": "ZZ-9",
+        "qty": 2,
+        "netPrice": 5.25,
+        "lineTotal": 10.5
+      }
+    ],
+    "totalNet": 10.5,
+    "paymentDue": "2026-07-31",
+    "incoterm": "EXW",
+    "status": "NEW"
+  }
+}

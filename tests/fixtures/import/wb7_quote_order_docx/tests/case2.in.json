@@ -1,0 +1,19 @@
+{
+  "quote": {
+    "number": "Q-2026-018",
+    "issuedAt": "2026-07-01T08:00:00Z",
+    "currency": "USD",
+    "customer": {
+      "id": "C-91",
+      "name": "Birch Co",
+      "vatId": null
+    },
+    "lines": [
+      {
+        "sku": "ZZ-9",
+        "qty": 2,
+        "unitPrice": 5.25
+      }
+    ]
+  }
+}

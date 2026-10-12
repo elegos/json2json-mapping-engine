@@ -1,0 +1,32 @@
+{
+  "shipment": {
+    "code": "SP-1003",
+    "carrier": {
+      "code": "zz-9",
+      "name": "ZZ Couriers"
+    },
+    "plannedDate": "2026-07-30",
+    "destination": {
+      "street": "12 Lime Street",
+      "zip": "BS1 4DJ",
+      "city": "Bristol"
+    },
+    "orders": [
+      {
+        "ref": "OR-5",
+        "customer": {
+          "name": "Paul Blue",
+          "phone": "111"
+        },
+        "priority": "H"
+      },
+      {
+        "ref": "OR-6",
+        "customer": {
+          "name": "Gina Rose"
+        },
+        "priority": "N"
+      }
+    ]
+  }
+}

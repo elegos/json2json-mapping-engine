@@ -1,0 +1,40 @@
+{
+  "workbook": "RentalContract_to_BillingRequest_Mapping_v1.xlsx",
+  "family": "K+L",
+  "language": "en",
+  "index_base": {
+    "code_expressions": 0,
+    "comment_ordinals": 1,
+    "note": "'Pipe index [3]' = ordinal of split(...)[2]"
+  },
+  "array_notation": {
+    "[]": "every element",
+    "[*]": "every element",
+    "no_brackets": "every element",
+    "[qualifier=='X']": "filter, every match; first match where a single value is needed"
+  },
+  "mandatory_vocabulary": {
+    "YES": "mandatory",
+    "NO": "optional"
+  },
+  "date_dialect": {
+    "date part as written": "first 10 chars, no conversion",
+    "yyyyMMdd (UTC)": "convert to UTC then format"
+  },
+  "null_rule": "null, empty and missing are equivalent; optional target field without value is omitted; booleans always present",
+  "composite_id_rules": {
+    "customer.partyRef": "split on '-' (all separators); parts 0,1,2; remove prefix 'C.' from part 0; parts beyond index 2 are dropped"
+  },
+  "packed_field": {
+    "attribute": "BILLING DATA",
+    "delimiter": "|",
+    "indexes": "0-based"
+  },
+  "lookup_tables": {
+    "uomlist": {
+      "DAY": "per day",
+      "WEEK": "per week",
+      "_not_found": "omit unitLabel"
+    }
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "delivery notices (HIDDEN: not in the document)",
+  "type": "object",
+  "required": [
+    "notices"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "notices": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "recipient",
+          "address",
+          "totalWeightGrams",
+          "urgent",
+          "deliveryDate",
+          "carrierCode"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "recipient": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "totalWeightGrams": {
+            "type": "integer"
+          },
+          "urgent": {
+            "type": "boolean"
+          },
+          "deliveryDate": {
+            "type": "string"
+          },
+          "carrierCode": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

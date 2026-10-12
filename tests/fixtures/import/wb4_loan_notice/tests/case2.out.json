@@ -1,0 +1,12 @@
+{
+  "messageId": "LN|R-20260326-02",
+  "queueId": "NOTICE_QUEUE",
+  "priority": 0,
+  "keepOrder": true,
+  "body": {
+    "channel": "MAIL",
+    "reportTime": "2026-03-26T00:05:00Z",
+    "printStamp": "26-03-2026 00:05:00.00",
+    "patronCard": "C0002"
+  }
+}

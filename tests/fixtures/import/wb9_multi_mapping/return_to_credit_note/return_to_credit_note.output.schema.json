@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "creditNote",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "creditNote"
+  ],
+  "properties": {
+    "creditNote": {
+      "type": "object",
+      "required": [
+        "noteNo",
+        "date",
+        "lines",
+        "totalQty"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "noteNo": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string"
+        },
+        "totalQty": {
+          "type": "integer"
+        },
+        "lines": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "row",
+              "sku",
+              "qty"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "row": {
+                "type": "integer"
+              },
+              "sku": {
+                "type": "string"
+              },
+              "qty": {
+                "type": "integer"
+              },
+              "reasonText": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

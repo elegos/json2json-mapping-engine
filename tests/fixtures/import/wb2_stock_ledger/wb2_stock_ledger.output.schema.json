@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Ledger entry (synthetic)",
+  "type": "object",
+  "required": [
+    "senderId",
+    "queueId",
+    "priority",
+    "keepOrder",
+    "haltOnFailure",
+    "body"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "senderId": {
+      "type": "string"
+    },
+    "queueId": {
+      "const": "LQ.STOCK"
+    },
+    "priority": {
+      "const": 0
+    },
+    "keepOrder": {
+      "const": true
+    },
+    "haltOnFailure": {
+      "const": false
+    },
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "domain",
+        "entryLevel",
+        "entryCode",
+        "postingDate",
+        "locationRef",
+        "itemFamily",
+        "itemVariant",
+        "itemSize",
+        "quantity"
+      ],
+      "properties": {
+        "domain": {
+          "const": "W"
+        },
+        "entryLevel": {
+          "const": "ITEM"
+        },
+        "entryCode": {
+          "type": "string"
+        },
+        "postingDate": {
+          "type": "object",
+          "required": [
+            "value"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "value": {
+              "type": "string"
+            }
+          }
+        },
+        "locationRef": {
+          "type": "string"
+        },
+        "itemFamily": {
+          "type": "string"
+        },
+        "itemVariant": {
+          "type": "string"
+        },
+        "itemSize": {
+          "type": "string"
+        },
+        "quantity": {
+          "type": "object",
+          "required": [
+            "value",
+            "unit"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "value": {
+              "type": "number"
+            },
+            "unit": {
+              "type": "string"
+            }
+          }
+        },
+        "lotId": {
+          "type": "string"
+        },
+        "lotExpiry": {
+          "type": "object",
+          "required": [
+            "value"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "value": {
+              "type": "string"
+            }
+          }
+        },
+        "reasonText": {
+          "type": "string"
+        },
+        "userName": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

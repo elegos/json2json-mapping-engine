@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "shipment (HIDDEN: not in the document)",
+  "type": "object",
+  "required": [
+    "shipment"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "shipment": {
+      "type": "object",
+      "required": [
+        "code",
+        "carrier",
+        "plannedDate",
+        "orders",
+        "destination"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "carrier": {
+          "type": "object",
+          "required": [
+            "code",
+            "name"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          }
+        },
+        "plannedDate": {
+          "type": "string",
+          "format": "date"
+        },
+        "destination": {
+          "type": "object",
+          "required": [
+            "street",
+            "zip",
+            "city"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "street": {
+              "type": "string"
+            },
+            "zip": {
+              "type": "string"
+            },
+            "city": {
+              "type": "string"
+            }
+          }
+        },
+        "orders": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "ref",
+              "customer",
+              "priority"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "ref": {
+                "type": "string"
+              },
+              "customer": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "phone": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              },
+              "weightKg": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "priority": {
+                "enum": [
+                  "H",
+                  "N"
+                ]
+              },
+              "notes": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

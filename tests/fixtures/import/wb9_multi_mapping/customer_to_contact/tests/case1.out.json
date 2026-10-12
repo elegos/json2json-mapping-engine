@@ -1,0 +1,11 @@
+{
+  "contact": {
+    "contactId": "C-001",
+    "fullName": "DE ROSSI Mark",
+    "birthDate": "1980-11-05",
+    "primaryEmail": "m.reed@work.example.test",
+    "countryCode": "GB",
+    "isCompany": true,
+    "segment": "A"
+  }
+}

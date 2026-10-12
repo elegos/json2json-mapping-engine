@@ -1,0 +1,43 @@
+{
+  "senderMessageId": "MSG-20260315",
+  "queueId": "Q.HOUSEKEEPING",
+  "priority": 0,
+  "keepOrder": true,
+  "batch": {
+    "entries": [
+      {
+        "content": {
+          "domain": "D",
+          "level": "ROOM",
+          "statusCode": "S.CHANGED-R",
+          "occurredAt": {
+            "value": "2026-03-15T10:15:00Z"
+          },
+          "locationId": "L.HX01-214",
+          "contactName": "Roe, Ana",
+          "extra1": "WEB-88231|HX01",
+          "extra3": "20",
+          "extra10": "RSV_EVENT",
+          "extra20": "WEB-88231",
+          "extraDate1": {
+            "value": "2026-03-20T13:00:00Z"
+          },
+          "memos": {
+            "items": [
+              {
+                "memoNo": 1,
+                "memoKind": "R.HK NOTE",
+                "memoText": "Extra towels"
+              },
+              {
+                "memoNo": 2,
+                "memoKind": "R.HK NOTE",
+                "memoText": "Baby cot"
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

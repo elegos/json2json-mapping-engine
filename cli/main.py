@@ -14,6 +14,7 @@ from typing import Annotated, Any
 import typer
 
 from cli import engine_version, shared, synced
+from cli import functions as functions_catalogue
 from cli.build import (
     BuildError,
     assemble,
@@ -157,6 +158,30 @@ def stubs() -> None:
         f"generated {result['input_stubs']} input stub(s), "
         f"{result['output_dataclasses']} output dataclass module(s)"
     )
+
+
+@app.command(name="functions")
+def functions_cmd(
+    json_output: bool = typer.Option(
+        False, "--json", help='Print {"ok", "functions": [...]} (what the tool\'s explorer reads)'
+    ),
+) -> None:
+    """List the functions a mapping can call: the built-ins and the project's `fn/*.fn`,
+    with signature, return type, origin and doc. Always the current list (nothing to keep
+    in step by hand)."""
+    found = functions_catalogue.function_list(Path.cwd())
+    if json_output:
+        typer.echo(json.dumps({"ok": True, "functions": found}, ensure_ascii=False))
+        return
+    for f in found:
+        ret = f" -> {f['returns']}" if f["returns"] else ""
+        origin = (
+            ""
+            if f["builtin"]
+            else f"  [{f['origin']}{', replaces built-in' if f['replaces_builtin'] else ''}]"
+        )
+        first = " ".join(f["doc"].split())
+        typer.echo(f"{f['signature']}{ret}{origin}" + (f"\n    {first}" if first else ""))
 
 
 _allow_older_engine = False
@@ -624,6 +649,86 @@ def fn_write(file: str = typer.Argument(..., help=".fn.yaml file to write")) -> 
         typer.echo(json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"}))
         raise typer.Exit(code=1) from exc
     typer.echo(json.dumps({"ok": True, "decayed": decayed}))
+
+
+import_app = typer.Typer(
+    no_args_is_help=True,
+    help="Import a functional document (the import-functional-spec skill reads what these commands produce).",
+)
+app.add_typer(import_app, name="import")
+
+
+@import_app.command("extract")
+def import_extract(
+    document: Annotated[Path, typer.Argument(help="xlsx, docx, pdf, txt or md file")],
+    out: Annotated[
+        Path | None, typer.Option("--out", "-o", help="Write the JSON here instead of stdout")
+    ] = None,
+) -> None:
+    """Read a document into the normalized form (blocks, resolved tables, formatting, noise flags)."""
+    from cli.docread import ExtractError, extract
+
+    try:
+        normalized = extract(document)
+    except ExtractError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    text = json.dumps(normalized, ensure_ascii=False, indent=2)
+    if out is None:
+        typer.echo(text)
+        return
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(text + "\n", encoding="utf-8")
+    typer.echo(
+        json.dumps(
+            {
+                "ok": True,
+                "out": str(out),
+                "blocks": len(normalized["blocks"]),
+                "tables": len(normalized.get("tables", [])),
+                "text_layer": normalized.get("text_layer"),
+            }
+        )
+    )
+
+
+def _import_command(action: str, mapping: str, **kwargs: Any) -> None:
+    """Run one of the plan commands from the project directory and print its result as JSON."""
+    from cli import import_plan
+
+    try:
+        result = getattr(import_plan, action)(Path.cwd(), mapping, **kwargs)
+    except (import_plan.PlanError, FnYamlError, OSError) as exc:
+        typer.echo(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False))
+        raise typer.Exit(code=1) from exc
+    typer.echo(json.dumps(result, ensure_ascii=False))
+    if not result.get("ok", True):
+        raise typer.Exit(code=1)
+
+
+@import_app.command("assemble")
+def import_assemble(
+    mapping: Annotated[str, typer.Argument(help="Mapping id (import/<mapping>/)")],
+) -> None:
+    """Build the working .fn.yaml from the plan's rules, check it, and record each rule's check."""
+    _import_command("assemble", mapping)
+
+
+@import_app.command("test")
+def import_test(
+    mapping: Annotated[str, typer.Argument(help="Mapping id (import/<mapping>/)")],
+) -> None:
+    """Run the plan's cases (Python backend) against the working copy and record the results."""
+    _import_command("run_cases", mapping)
+
+
+@import_app.command("apply")
+def import_apply(
+    mapping: Annotated[str, typer.Argument(help="Mapping id (import/<mapping>/)")],
+    force: Annotated[bool, typer.Option("--force", help="Replace an existing .fn.yaml")] = False,
+) -> None:
+    """Write the checked working copy to mappings/functional/ and mark its rules applied."""
+    _import_command("apply", mapping, force=force)
 
 
 artifacts_app = typer.Typer(

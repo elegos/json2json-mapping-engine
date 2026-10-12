@@ -1,0 +1,37 @@
+{
+  "senderMessageId": "MSG-20260317",
+  "queueId": "Q.HOUSEKEEPING",
+  "priority": 0,
+  "keepOrder": true,
+  "batch": {
+    "entries": [
+      {
+        "content": {
+          "domain": "D",
+          "level": "ROOM",
+          "statusCode": "S.CANCELLED-X",
+          "occurredAt": {
+            "value": "2026-03-17T08:00:00Z"
+          },
+          "locationId": "L.HX02-9",
+          "extra1": "WEB-90011|HX02",
+          "extra5": "CXL",
+          "extra10": "RSV_EVENT",
+          "extra20": "WEB-90011",
+          "extraDate1": {
+            "value": "2026-05-02T23:45:00Z"
+          },
+          "memos": {
+            "items": [
+              {
+                "memoNo": 1,
+                "memoKind": "R.HK NOTE",
+                "memoText": "Strip bed"
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

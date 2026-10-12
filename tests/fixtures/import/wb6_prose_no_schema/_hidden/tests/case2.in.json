@@ -1,0 +1,25 @@
+{
+  "shipment": {
+    "code": "SP-1002",
+    "carrier": {
+      "code": "ab",
+      "name": "AB Couriers"
+    },
+    "plannedDate": "2026-12-01",
+    "destination": {
+      "street": "3 High Road",
+      "zip": "LS1 2AB",
+      "city": "Leeds"
+    },
+    "orders": [
+      {
+        "ref": "OR-9",
+        "customer": {
+          "name": "Ellen Yellow"
+        },
+        "priority": "N",
+        "weightKg": 0.75
+      }
+    ]
+  }
+}

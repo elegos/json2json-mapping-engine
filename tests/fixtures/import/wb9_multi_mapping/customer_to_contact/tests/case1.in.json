@@ -1,0 +1,25 @@
+{
+  "customer": {
+    "code": " C-001 ",
+    "surname": "de Rossi ",
+    "firstName": "Mark",
+    "country": "UNITED KINGDOM",
+    "birthDate": "05/11/1980",
+    "vatNumber": "01234567890",
+    "revenue": 250000,
+    "emails": [
+      {
+        "type": "P",
+        "address": "mark@example.test"
+      },
+      {
+        "type": "W",
+        "address": " m.reed@work.example.test "
+      },
+      {
+        "type": "W",
+        "address": "other@work.example.test"
+      }
+    ]
+  }
+}

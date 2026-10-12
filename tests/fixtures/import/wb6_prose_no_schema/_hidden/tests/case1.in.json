@@ -1,0 +1,54 @@
+{
+  "shipment": {
+    "code": "SP-1001",
+    "carrier": {
+      "code": "tnt-ex",
+      "name": "Northern Haulage"
+    },
+    "plannedDate": "2026-03-14",
+    "destination": {
+      "street": "12 Lime Street",
+      "zip": "BS1 4DJ",
+      "city": "Bristol"
+    },
+    "orders": [
+      {
+        "ref": "OR-1",
+        "customer": {
+          "name": "Mark Reed",
+          "phone": "333 123 4567"
+        },
+        "priority": "H",
+        "weightKg": 12.5,
+        "notes": "Doorbell broken"
+      },
+      {
+        "ref": "OR-2",
+        "customer": {
+          "name": "Anna White",
+          "phone": "02 555 0101"
+        },
+        "priority": "N",
+        "weightKg": 34
+      },
+      {
+        "ref": "OR-3",
+        "customer": {
+          "name": "Luke Green"
+        },
+        "priority": "N",
+        "notes": "No weight yet"
+      },
+      {
+        "ref": "OR-4",
+        "customer": {
+          "name": "Sara Black",
+          "phone": ""
+        },
+        "priority": "N",
+        "weightKg": 30,
+        "notes": "Fragile"
+      }
+    ]
+  }
+}

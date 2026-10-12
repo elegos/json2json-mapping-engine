@@ -1,0 +1,23 @@
+{
+  "originCode": "RNT002",
+  "billingId": "RC-20260410-0042",
+  "currencyCode": "SEK",
+  "ruleDate": "2026-04-10",
+  "bypassRun": "N",
+  "bypassFlag": "N",
+  "createdDate": "20260410",
+  "hasDeposit": false,
+  "customer": {
+    "code": "SUD",
+    "type": "COM",
+    "seq": "1"
+  },
+  "lineItems": [
+    {
+      "seqNo": 1,
+      "assetCode": "5-BB-2",
+      "chargeNet": 8,
+      "isDeposit": false
+    }
+  ]
+}

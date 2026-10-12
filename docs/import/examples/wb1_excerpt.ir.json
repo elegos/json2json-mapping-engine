@@ -1,0 +1,261 @@
+{
+  "ir_version": 1,
+  "mapping": {
+    "id": "reservation_task",
+    "unit_in_document": {
+      "sheet": "Mapping"
+    }
+  },
+  "document": {
+    "file": "Mapping_ReservationToTask_v02.xlsx",
+    "sha256": "0000",
+    "format": "xlsx",
+    "language": "en",
+    "version": {
+      "resolved": "0.2",
+      "origin": "version_sheet",
+      "candidates": [
+        {
+          "origin": "file_name",
+          "value": "0.2"
+        },
+        {
+          "origin": "version_sheet",
+          "value": "0.2"
+        }
+      ]
+    }
+  },
+  "profile": {
+    "name": "style_a_hotel",
+    "sha256": "0000",
+    "origin": "new"
+  },
+  "schemas": {
+    "input": {
+      "origin": "provided",
+      "path": "schemas/reservation_task_input.schema.json",
+      "confirmed": true
+    },
+    "output": {
+      "origin": "provided",
+      "path": "schemas/reservation_task_output.schema.json",
+      "confirmed": true
+    }
+  },
+  "lookups": [
+    {
+      "name": "roomtypelist",
+      "status": "missing",
+      "location": {
+        "sheet": "Mapping",
+        "cells": "F21"
+      }
+    }
+  ],
+  "rules": [
+    {
+      "id": "senderMessageId",
+      "evidence": {
+        "locations": [
+          {
+            "sheet": "Mapping",
+            "cells": "A4:E4"
+          }
+        ],
+        "text": "senderMessageId | Y | msgId - Cut to 12 chars",
+        "sha256": "0000"
+      },
+      "target": {
+        "path": "$.senderMessageId",
+        "in_schema": true
+      },
+      "sources": [
+        {
+          "path": "$.msgId",
+          "in_schema": true
+        }
+      ],
+      "intent": "expression",
+      "interpretation": "First 12 characters of msgId; shorter values are kept whole.",
+      "assumptions": [
+        {
+          "topic": "truncation_side",
+          "assumed": "keep the first 12 (cut on the right)",
+          "basis": "guess"
+        }
+      ],
+      "proposal": {
+        "functions_missing": [
+          {
+            "needed": "first N characters of a text",
+            "suggestion": "a built-in or project function `left(s, n)`; regexp_group could do it but hides the intent"
+          }
+        ]
+      },
+      "confidence": {
+        "level": "medium",
+        "reasons": [
+          "the side of the cut is not stated",
+          "no function for taking the first N characters in the catalogue"
+        ],
+        "flags": [
+          "ambiguous",
+          "function_gap"
+        ]
+      },
+      "review": {
+        "state": "pending"
+      }
+    },
+    {
+      "id": "extra3",
+      "evidence": {
+        "locations": [
+          {
+            "sheet": "Mapping",
+            "cells": "A21:F21"
+          }
+        ],
+        "text": "extra3 | N | lookup roomtypelist on rooms[0].type",
+        "sha256": "0000",
+        "review_thread": [
+          {
+            "author": "reviewer",
+            "date": "05/03/26",
+            "text": "what if the type is not in the list?",
+            "kind": "question"
+          }
+        ],
+        "markers": [
+          {
+            "marker": "font:red",
+            "meaning": "unanswered question",
+            "meaning_origin": "guess"
+          }
+        ]
+      },
+      "target": {
+        "path": "$.extra3",
+        "in_schema": true
+      },
+      "sources": [
+        {
+          "path": "$.rooms[0].type",
+          "as_written": "rooms[0].type",
+          "in_schema": true
+        }
+      ],
+      "intent": "lookup",
+      "interpretation": "Look up the first room's type in roomtypelist; when the key is absent or null the field is omitted.",
+      "assumptions": [
+        {
+          "topic": "index_base",
+          "assumed": "[0] is the first element (code-like expression)",
+          "basis": "profile"
+        },
+        {
+          "topic": "lookup_not_found",
+          "assumed": "omit the target field",
+          "basis": "guess",
+          "question_id": "q3"
+        }
+      ],
+      "confidence": {
+        "level": "low",
+        "reasons": [
+          "lookup table not in the document",
+          "open question without reply"
+        ],
+        "flags": [
+          "missing_lookup",
+          "open_question_in_document"
+        ]
+      },
+      "review": {
+        "state": "pending"
+      }
+    },
+    {
+      "id": "extra15",
+      "evidence": {
+        "locations": [
+          {
+            "sheet": "Mapping",
+            "cells": "A26:F26"
+          }
+        ],
+        "text": "extra15 | N | Map reservation.loyalty.number",
+        "sha256": "0000"
+      },
+      "target": {
+        "path": "$.extra15",
+        "in_schema": false
+      },
+      "sources": [
+        {
+          "path": "$.reservation.loyalty.number",
+          "in_schema": false
+        }
+      ],
+      "intent": "not_mapped",
+      "interpretation": "Neither the source path nor the target field exist in the schemas; not generated.",
+      "confidence": {
+        "level": "high",
+        "flags": [
+          "unknown_field",
+          "schema_mismatch"
+        ]
+      },
+      "review": {
+        "state": "pending"
+      }
+    }
+  ],
+  "questions": [
+    {
+      "id": "q3",
+      "topic": "lookup_not_found",
+      "scope": "mapping",
+      "text": "roomtypelist is not in the document. Load its content, and what should happen for an unknown key?",
+      "proposal": "omit the target field",
+      "rule_ids": [
+        "extra3"
+      ],
+      "status": "open"
+    }
+  ],
+  "discrepancies": [
+    {
+      "kind": "field_not_in_schema",
+      "severity": "warning",
+      "detail": "extra15 and its source are in neither schema.",
+      "rule_ids": [
+        "extra15"
+      ]
+    },
+    {
+      "kind": "lookup_missing",
+      "severity": "warning",
+      "detail": "roomtypelist referenced, no content.",
+      "rule_ids": [
+        "extra3"
+      ]
+    }
+  ],
+  "coverage": {
+    "units_total": 3,
+    "imported": 1,
+    "imported_with_doubt": 1,
+    "not_imported": [
+      {
+        "location": {
+          "sheet": "Mapping",
+          "cells": "A26"
+        },
+        "reason": "needs_user_input",
+        "detail": "unknown field"
+      }
+    ]
+  }
+}

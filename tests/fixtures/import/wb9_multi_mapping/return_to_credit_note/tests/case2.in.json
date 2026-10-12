@@ -1,0 +1,13 @@
+{
+  "return": {
+    "number": "5002",
+    "date": "31/12/2026",
+    "items": [
+      {
+        "code": "DD-4",
+        "quantity": -10,
+        "reason": "R"
+      }
+    ]
+  }
+}

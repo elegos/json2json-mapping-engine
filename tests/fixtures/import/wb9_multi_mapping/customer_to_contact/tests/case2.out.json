@@ -1,0 +1,10 @@
+{
+  "contact": {
+    "contactId": "C-002",
+    "fullName": "MUELLER Anna",
+    "primaryEmail": "anna@example.test",
+    "countryCode": "ZZ",
+    "isCompany": false,
+    "segment": "B"
+  }
+}

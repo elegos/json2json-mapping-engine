@@ -1,0 +1,28 @@
+{
+  "loanReport": {
+    "reportId": "R-20260327-03",
+    "generatedAt": "Mar 27, 2026, 9:00:01 AM",
+    "patron": {
+      "cardNo": "C0003",
+      "tier": "STD"
+    },
+    "loan": {
+      "reference": "LN-9",
+      "dueDate": "2026-04-01",
+      "returnedDate": null
+    },
+    "items": [
+      {
+        "barcode": "B4",
+        "title": "Maps",
+        "status": "OUT"
+      }
+    ],
+    "fines": [],
+    "processingErrors": {
+      "code": "E42",
+      "httpCode": null,
+      "message": "Lookup failed"
+    }
+  }
+}

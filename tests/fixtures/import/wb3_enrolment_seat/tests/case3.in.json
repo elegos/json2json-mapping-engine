@@ -1,0 +1,14 @@
+{
+  "operation": "DELETE",
+  "enrolment": {
+    "enrolmentId": "E-5001",
+    "messageId": "MSG-20260402-0031",
+    "createdAt": "2026-04-02T07:15:00+02:00",
+    "mode": "FULL",
+    "status": "DROPPED",
+    "withdrawnAt": "2026-04-02T23:50:00-04:00",
+    "student": {
+      "id": "NORTH-UG-2024-0042"
+    }
+  }
+}

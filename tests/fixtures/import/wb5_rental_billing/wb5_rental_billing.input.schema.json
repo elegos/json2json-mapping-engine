@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Rental contract (synthetic)",
+  "type": "object",
+  "required": [
+    "rental"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "rental": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contractId",
+        "category",
+        "currency",
+        "createdAt",
+        "attributes",
+        "lines",
+        "customer"
+      ],
+      "properties": {
+        "contractId": {
+          "type": "string"
+        },
+        "category": {
+          "enum": [
+            "LONG",
+            "LONG-EXT",
+            "SHORT"
+          ]
+        },
+        "currency": {
+          "type": "object",
+          "required": [
+            "code"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string"
+            }
+          }
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "attributes": {
+          "type": "object",
+          "required": [
+            "items"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "qualifier",
+                  "value"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "qualifier": {
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "lines": {
+          "type": "object",
+          "required": [
+            "items"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "lineNo",
+                  "equipmentCode",
+                  "amount",
+                  "kind"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "lineNo": {
+                    "type": "integer"
+                  },
+                  "equipmentCode": {
+                    "type": "string"
+                  },
+                  "amount": {
+                    "type": "object",
+                    "required": [
+                      "value"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "value": {
+                        "type": "number"
+                      }
+                    }
+                  },
+                  "kind": {
+                    "enum": [
+                      "RENT",
+                      "DEP"
+                    ]
+                  },
+                  "unit": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "customer": {
+          "type": "object",
+          "required": [
+            "partyRef"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "partyRef": {
+              "type": "string",
+              "pattern": "^C\\.[^-]+-[^-]+-.+$"
+            },
+            "country": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "state": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}

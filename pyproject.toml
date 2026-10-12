@@ -17,6 +17,13 @@ dependencies = [
 [project.scripts]
 mapper = "cli.main:app"
 
+[project.optional-dependencies]
+import = [
+    "openpyxl>=3.1.5",
+    "pdfminer-six>=20260107",
+    "python-docx>=1.2.0",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

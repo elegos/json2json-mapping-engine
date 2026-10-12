@@ -1,0 +1,22 @@
+{
+  "return": {
+    "number": " 5001",
+    "date": "02/03/2026",
+    "items": [
+      {
+        "code": "AA-1",
+        "quantity": -2,
+        "reason": "D"
+      },
+      {
+        "code": " BB-2 ",
+        "quantity": 3,
+        "reason": "X"
+      },
+      {
+        "code": "CC-3",
+        "quantity": 1
+      }
+    ]
+  }
+}

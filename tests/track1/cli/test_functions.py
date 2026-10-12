@@ -35,3 +35,28 @@ def test_a_project_function_says_whether_python_can_run_it(tmp_path: Path) -> No
     found = {f["name"]: f for f in function_list(tmp_path)}
     assert [found[n]["python_code"] for n in ("only_plsql", "both", "plain")] == [False, True, True]
     assert all(f["python_code"] for f in function_list(None))  # the built-ins run everywhere
+
+
+def test_the_functions_command_lists_the_project_and_the_builtins_as_json(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import json
+
+    from typer.testing import CliRunner
+
+    from cli.main import app
+
+    (tmp_path / "fn").mkdir()
+    (tmp_path / "fn/text.fn").write_text(
+        'def word(s: str, n: int) -> str:\n    """The n-th word."""\n    return s\n'
+    )
+    monkeypatch.chdir(tmp_path)
+    runner = CliRunner()
+    answer = json.loads(runner.invoke(app, ["functions", "--json"]).output)
+    names = {f["name"]: f for f in answer["functions"]}
+    assert (
+        answer["ok"] and names["word"]["origin"] == "fn/text.fn" and names["split_first"]["builtin"]
+    )
+    text = runner.invoke(app, ["functions"]).output
+    assert "word(s, n) -> str  [fn/text.fn]\n    The n-th word." in text
+    assert "split_first(" in text

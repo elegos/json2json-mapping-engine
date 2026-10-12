@@ -1,0 +1,24 @@
+{
+  "originCode": "RNT001",
+  "billingId": "RC-20260501-0043",
+  "currencyCode": "EUR",
+  "ruleDate": "2026-05-01",
+  "bypassRun": "N",
+  "bypassFlag": "N",
+  "createdDate": "20260430",
+  "hasDeposit": true,
+  "customer": {
+    "code": "EAST",
+    "type": "RES",
+    "seq": "9"
+  },
+  "lineItems": [
+    {
+      "seqNo": 1,
+      "assetCode": "7-CC-3",
+      "chargeNet": 55.5,
+      "isDeposit": true,
+      "unitLabel": "per week"
+    }
+  ]
+}

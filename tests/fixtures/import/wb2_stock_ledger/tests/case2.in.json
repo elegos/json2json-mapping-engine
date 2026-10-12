@@ -1,0 +1,25 @@
+{
+  "movement": {
+    "id": "MV-1002",
+    "type": "RECEIPT",
+    "postedAt": "2026-06-01T23:59:59-03:00",
+    "warehouse": {
+      "code": "WH1",
+      "zone": null
+    },
+    "item": {
+      "sku": "TBL-PINE-XL-LONG"
+    },
+    "quantity": {
+      "value": 4.25,
+      "unit": "BOX"
+    },
+    "lot": {
+      "id": null,
+      "expiry": "2027-05-01"
+    },
+    "reasons": [],
+    "user": null,
+    "linkedDocs": []
+  }
+}

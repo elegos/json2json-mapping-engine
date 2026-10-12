@@ -1,0 +1,40 @@
+{
+  "loanReport": {
+    "reportId": "R-20260325-01",
+    "generatedAt": "Mar 25, 2026, 4:08:12 PM",
+    "patron": {
+      "cardNo": "C0001",
+      "tier": "GOLD"
+    },
+    "loan": {
+      "reference": "LN-2026-0042",
+      "dueDate": "2026-03-20",
+      "returnedDate": null
+    },
+    "items": [
+      {
+        "barcode": "B1",
+        "title": "Atlas of Rivers",
+        "status": "OUT"
+      },
+      {
+        "barcode": "B2",
+        "title": null,
+        "status": null
+      }
+    ],
+    "fines": [
+      {
+        "amount": 1.5,
+        "currency": "EUR",
+        "reasonCode": "LATE"
+      },
+      {
+        "amount": 2,
+        "currency": "EUR",
+        "reasonCode": null
+      }
+    ],
+    "processingErrors": null
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "loanReport": {
+    "reportId": "R-20260326-02",
+    "generatedAt": "Mar 26, 2026, 12:05:00 AM",
+    "patron": {
+      "cardNo": "C0002",
+      "tier": null
+    },
+    "loan": {
+      "reference": null,
+      "dueDate": "2026-03-20",
+      "returnedDate": "2026-03-18"
+    },
+    "items": [
+      {
+        "barcode": "B3",
+        "title": "Birds",
+        "status": "RETURNED"
+      }
+    ],
+    "fines": []
+  }
+}

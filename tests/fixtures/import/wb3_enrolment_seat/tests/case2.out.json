@@ -1,0 +1,21 @@
+{
+  "senderMsgId": "MSG-20260302-0011",
+  "source": {
+    "name": "REG"
+  },
+  "sentAt": "2026-03-02T18:30:00.000Z",
+  "student": {
+    "campusCode": "SOUTH",
+    "studentType": "PG",
+    "studentNumber": "77"
+  },
+  "seatCount": 1,
+  "seats": [
+    {
+      "seq": 1,
+      "kind": "LECTURE",
+      "start": "2026-03-09T08:00:00.000-05:00",
+      "end": "2026-03-09T08:00:00.000-05:00"
+    }
+  ]
+}

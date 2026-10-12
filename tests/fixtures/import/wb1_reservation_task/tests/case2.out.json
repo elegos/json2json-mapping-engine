@@ -1,0 +1,27 @@
+{
+  "senderMessageId": "MSG-20260316",
+  "queueId": "Q.HOUSEKEEPING",
+  "priority": 0,
+  "keepOrder": true,
+  "batch": {
+    "entries": [
+      {
+        "content": {
+          "domain": "D",
+          "level": "ROOM",
+          "statusCode": "S.NEW",
+          "occurredAt": {
+            "value": "2026-03-16T23:59:59Z"
+          },
+          "contactName": "Mia",
+          "extra1": "DESK-7",
+          "extra10": "RSV_EVENT",
+          "extra20": "DESK-7",
+          "extraDate1": {
+            "value": "2026-04-01T09:30:00Z"
+          }
+        }
+      }
+    ]
+  }
+}

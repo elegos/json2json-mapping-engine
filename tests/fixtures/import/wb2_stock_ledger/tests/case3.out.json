@@ -1,0 +1,25 @@
+{
+  "senderId": "LDG-MV-1003",
+  "queueId": "LQ.STOCK",
+  "priority": 0,
+  "keepOrder": true,
+  "haltOnFailure": false,
+  "body": {
+    "domain": "W",
+    "entryLevel": "ITEM",
+    "entryCode": "W.ADJUST-CNT",
+    "postingDate": {
+      "value": "2026-06-02T08:00:00.000Z"
+    },
+    "locationRef": "WH2-A1",
+    "itemFamily": "LMP",
+    "itemVariant": "RED",
+    "itemSize": "S",
+    "quantity": {
+      "value": -3.5,
+      "unit": "KG"
+    },
+    "reasonText": "CNT|Cycle count",
+    "userName": "operator2"
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "rental": {
+    "contractId": "RC-20260501-0043",
+    "category": "LONG-EXT",
+    "currency": {
+      "code": "EUR"
+    },
+    "createdAt": "2026-05-01T00:30:00+02:00",
+    "attributes": {
+      "items": [
+        {
+          "qualifier": "BILLING DATA",
+          "value": "T2|Y|2026-05-01T00:30:00Z"
+        },
+        {
+          "qualifier": "DEPOSIT",
+          "value": "2"
+        }
+      ]
+    },
+    "lines": {
+      "items": [
+        {
+          "lineNo": 1,
+          "equipmentCode": "7-CC-3",
+          "amount": {
+            "value": 55.5
+          },
+          "kind": "DEP",
+          "unit": "WEEK"
+        }
+      ]
+    },
+    "customer": {
+      "partyRef": "C.EAST-RES-9",
+      "country": "FR",
+      "state": "IDF"
+    }
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "contact",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contact"
+  ],
+  "properties": {
+    "contact": {
+      "type": "object",
+      "required": [
+        "contactId",
+        "fullName",
+        "countryCode",
+        "isCompany",
+        "segment"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "contactId": {
+          "type": "string"
+        },
+        "fullName": {
+          "type": "string"
+        },
+        "birthDate": {
+          "type": "string"
+        },
+        "primaryEmail": {
+          "type": "string"
+        },
+        "countryCode": {
+          "type": "string"
+        },
+        "isCompany": {
+          "type": "boolean"
+        },
+        "segment": {
+          "enum": [
+            "A",
+            "B",
+            "C"
+          ]
+        }
+      }
+    }
+  }
+}

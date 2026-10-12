@@ -1,0 +1,23 @@
+{
+  "senderId": "LDG-MV-1002",
+  "queueId": "LQ.STOCK",
+  "priority": 0,
+  "keepOrder": true,
+  "haltOnFailure": false,
+  "body": {
+    "domain": "W",
+    "entryLevel": "ITEM",
+    "entryCode": "W.RECEIPT",
+    "postingDate": {
+      "value": "2026-06-01T23:59:59.000-03:00"
+    },
+    "locationRef": "WH1",
+    "itemFamily": "TBL",
+    "itemVariant": "PINE",
+    "itemSize": "XL-LONG",
+    "quantity": {
+      "value": 4.25,
+      "unit": "BOX"
+    }
+  }
+}
