@@ -74,6 +74,10 @@ Never wait for an answer inside a run and never assume one that matters (see *As
 ### 2. Choose the mapping
 - One document may hold several mappings (sheets, chapters, one per verb or direction). List them
   (name, rule count, probable input/output) and **ask which to import**. Never import all silently.
+  With **one** mapping (the wizard gave its id, or the document holds a single one) do not ask:
+  record it. Sheets or sections that are the shapes of one `oneOf` output (a POST and a DELETE
+  body) are **one** mapping with a group per shape: record each in `mappings_found` with
+  `imported: true`, and ask for their guards (see *Schemas*), not which one to import.
 - Record all of them in `document.mappings_found` (id, location, rule count, `imported`).
 - Rules that apply to every mapping (a general-rules sheet, a header note, a conventions section)
   are collected once and attached to each rule as `inherited_context`.
@@ -81,8 +85,8 @@ Never wait for an answer inside a run and never assume one that matters (see *As
 ### 3. Profile
 - A profile is a file `import/profiles/<name>.profile.yaml`; `<name>` is lowercase letters, digits,
   `-` and `_`. Use the name the wizard gave. If none, name it after the document's style when
-  other mappings are likely to share it (`requirements-table`, `pseudo-code`), else after the
-  mapping id.
+  other mappings are likely to share it (the document holds several, or the project already has
+  profiles of the same style: `requirements-table`, `pseudo-code`), else after the mapping id.
 - If the user did not pick one, propose the project's profiles (`description`, mappings served) or a
   new one. A reused profile is **checked against this document**: every convention the evidence
   contradicts, and every feature of the document the profile does not cover, becomes a question
@@ -153,7 +157,10 @@ For each unit of the document that holds a rule (or the whole document, when it 
    says the message "must conform to" the schema.
 
 ### 6. Translate
-- A plan rule's `id` is `<target>@<location>` (`references/ir.schema.json`); the `fn_rule.id` is an
+- A plan rule's `id` is `<target>@<location>` (`references/ir.schema.json`), where `<location>` is the
+  first place that holds the rule, written the way the document is addressed: `Sheet!A6` (a
+  spreadsheet cell), `t2:r7` (table 2, row 7, counting the header as row 0) or `p15` (a paragraph).
+  Rules from one row share the location; the target tells them apart. The `fn_rule.id` is an
   identifier of letters, digits and `_` (not starting with a digit), derived from the target path
   (`student_number`, `lines_sku`). It must be unique in the mapping.
 - A target nested in an object (`student.id`, a dotted path) or a list needs the `object` / `loop`
@@ -190,6 +197,10 @@ For each unit of the document that holds a rule (or the whole document, when it 
   entry, and give the rule a default that says so. `assemble` reports a required output field with
   no rule as a `gap`, not as a failure of the plan: the cases still run, and the missing field is
   the only difference.
+- A list that must be **left out** when it would be empty (the schema wants at least one element,
+  "only if there is a note"): a `loop` over nothing gives an empty list, so put the loop in an
+  `object` rule with a `guard` that counts what the loop reads (`count(...) > 0`); the object, and
+  the list in it, are then written only when the guard holds.
 - A sentence that writes a null on purpose ("send null") is `Null`; "not sent" / "omitted" is
   `None` (`references/expression-language.md`).
 
@@ -197,7 +208,9 @@ For each unit of the document that holds a rule (or the whole document, when it 
 - Cases found in the document (sample values, payload sheets, worked examples) go to `tests`:
   `input` is a **complete** source message and `expected` the output for it, complete or, with
   `partial: true`, only the part the document shows. Missing input fields are left out, not
-  invented. `trust`: `paired_in_document` only when input and expected output are given together; samples from
+  invented, except the ones the input schema requires and the example does not give: write the
+  least value that is valid (a placeholder of the right type), and mark the case `inferred_pairing`.
+  In a `partial` expected output a list is compared whole, so give it complete or leave it out. `trust`: `paired_in_document` only when input and expected output are given together; samples from
   different places are `inferred_pairing`; a lone value is `single_value`. A message the document
   says is refused has no output: give `expected_rejected` (the codes of the checks that reject it,
   all of them) instead of `expected`, and `expected_warnings` for the codes that must be reported. Run them with
@@ -222,7 +235,7 @@ For each unit of the document that holds a rule (or the whole document, when it 
 Write the profile first, then the plan with the profile's hash (`profile.sha256`: SHA-256 of the
 profile file's bytes), then end with the status line. If open questions remain, the status
 is `needs_answers`; otherwise `ready_for_review`. In the status line `rules` is the number of plan
-rules and `guesses` the number whose `confidence.level` is `low` or `guess`.
+rules (structure wrappers and groups included, so it can exceed the units of the document) and `guesses` the number whose `confidence.level` is `low` or `guess`.
 
 ## Asking
 

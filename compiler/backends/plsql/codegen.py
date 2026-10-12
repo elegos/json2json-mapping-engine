@@ -1569,6 +1569,12 @@ def _translate_fn_if(
 class _ListAccumulator:
     field_name: str
     var_name: str
+    guarded: bool = False  # written only under a guard: it exists only once `open_var` is TRUE
+
+    @property
+    def open_var(self) -> str:
+        """TRUE once the array has been created (`out.<array>` reached): it is written only then."""
+        return f"v_open_{self.field_name}"
 
 
 class PlsqlCodeGenerator:
@@ -1831,6 +1837,18 @@ class PlsqlCodeGenerator:
                         sink=lambda expr, v=var_name: f"{v}.append({expr});",
                     )
                 )
+            elif (
+                isinstance(stmt, ast.Expr)
+                and isinstance(stmt.value, ast.Attribute)
+                and isinstance(stmt.value.value, ast.Name)
+                and stmt.value.value.id == "out"
+            ):  # `out.<array>`: the array exists from here on (even if nothing is appended)
+                name = stmt.value.attr
+                if name not in list_accumulators:
+                    list_accumulators[name] = _ListAccumulator(name, f"v_arr_{name}")
+                if getattr(stmt, "guarded", False):
+                    list_accumulators[name].guarded = True
+                    lines.append(f"{list_accumulators[name].open_var} := TRUE;")
             elif isinstance(stmt, ast.For):
                 lines.extend(
                     self._emit_for(stmt, loop_vars, rule_signatures, dataclasses, list_accumulators)
@@ -2184,10 +2202,17 @@ class PlsqlCodeGenerator:
         validation: Validation | None = None,
     ) -> list[PlsqlSubprogram]:
         accumulator_decl_lines = [
-            f"{acc.var_name} JSON_ARRAY_T := JSON_ARRAY_T();" for acc in list_accumulators.values()
+            line
+            for acc in list_accumulators.values()
+            for line in (
+                f"{acc.var_name} JSON_ARRAY_T := JSON_ARRAY_T();",
+                *([f"{acc.open_var} BOOLEAN := FALSE;"] if acc.guarded else []),
+            )
         ]
         accumulator_put_lines = [
-            f"v_out_obj.put({_quote(acc.field_name)}, {acc.var_name});"
+            f"IF {acc.open_var} THEN v_out_obj.put({_quote(acc.field_name)}, {acc.var_name}); END IF;"
+            if acc.guarded
+            else f"v_out_obj.put({_quote(acc.field_name)}, {acc.var_name});"
             for acc in list_accumulators.values()
         ]
 

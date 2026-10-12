@@ -203,6 +203,7 @@
             "enum": [
               "in_document",
               "provided",
+              "partial",
               "missing"
             ],
             "description": "`missing`: only the name is known; the plan keeps an empty table and a flag, never invented entries."

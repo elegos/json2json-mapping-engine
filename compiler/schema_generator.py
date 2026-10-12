@@ -281,7 +281,13 @@ def generate_output_dataclasses(
     walker = _SchemaWalker(root_name)
     root_type = walker.resolve_root(schema)
     if root_type != (walker.classes[-1].name if walker.classes else None):
-        raise SchemaGeneratorError("output schema root must be a JSON object")
+        # A root that is one of several shapes (`oneOf`): the mapping writes one class, the union
+        # of their fields (see `SchemaTypes.root_class`); a root that is not an object is refused.
+        types = SchemaTypes(root_type, {c.name: c for c in walker.classes})
+        merged = types.root_class() if " | " in root_type else None
+        if merged is None or not merged.fields:
+            raise SchemaGeneratorError("output schema root must be a JSON object")
+        walker.classes.append(ClassDef(name=root_name, fields=merged.fields))
 
     header = _HEADER.format(source=source)
     used = _used_dsl_types(walker.classes)

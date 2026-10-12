@@ -61,6 +61,15 @@ section (see `packaging/release.py`).
 
 ### Fixes
 
+- Groups (`object` with `output: $` and a `guard`): a list written inside a group exists only when
+  the group's guard holds (a DELETE message no longer gets the POST group's empty `rows: []`), on
+  both backends; loops with a `filter`, `sort` or `enumerate` inside a group are lowered like the
+  ones at the top (the PL/SQL build stopped on `continue`); an output schema that is a `oneOf` at
+  the root now builds (the mapping writes the union of the shapes' fields).
+- `mapper import assemble` reports a rule that is its own parent (or part of a ring of parents) in
+  `skipped`, instead of writing a file without it; the import plan accepts the lookup status
+  `partial`, and the skill says how to number rules, write a target that is a path, get a whole
+  number from a rounded one, and leave out an empty list.
 - A mapping whose output schema is one of several shapes (`oneOf`) was refused by the compiler
   (`KeyError`): the root is now the union of the shapes (a field only some have is optional).
 - Several loops inside an `object` can add to one list (the transpiler refused it: "duplicate

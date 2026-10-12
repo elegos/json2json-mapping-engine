@@ -234,9 +234,19 @@ def fuse_loops(
     filtering comprehension untouched (not lowered, not fused): the transpiler
     uses it so its `.map.py` output stays plain, readable Python — the compiler
     lowers and fuses those loops itself."""
-    return _fuse(
-        stmts, rule_defs, parallel_conflict, fusion_enabled, itertools.count(), lower_filtered_iters
-    )
+    counter = itertools.count()
+
+    def fuse(body: list[ast.stmt]) -> list[ast.stmt]:
+        fused = _fuse(
+            body, rule_defs, parallel_conflict, fusion_enabled, counter, lower_filtered_iters
+        )
+        for stmt in fused:
+            if isinstance(stmt, ast.If):  # a group: its loops are fused among themselves
+                stmt.body = fuse(stmt.body)
+                stmt.orelse = fuse(stmt.orelse)
+        return fused
+
+    return fuse(stmts)
 
 
 def _fuse(

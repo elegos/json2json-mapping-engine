@@ -1,1 +1,1 @@
-{"operation": "POST", "id": "A", "name": "ANN"}
+{"operation": "POST", "id": "A", "name": "ANN", "rows": [{"label": "X"}, {"label": "Y"}]}

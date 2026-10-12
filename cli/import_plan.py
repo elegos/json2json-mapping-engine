@@ -123,6 +123,19 @@ def _validations_raw(plan: dict[str, Any], skipped: list[dict[str, Any]]) -> dic
     return raw
 
 
+def _in_cycle(rule_id: str, parents: dict[str, str | None]) -> bool:
+    """Whether following `parent_rule` from `rule_id` comes back to a rule already seen (a rule
+    that is its own parent, or a ring of rules): none of them would ever reach the top."""
+    seen: set[str] = set()
+    current: str | None = rule_id
+    while current is not None and current in parents:
+        if current in seen:
+            return True
+        seen.add(current)
+        current = parents[current]
+    return False
+
+
 def build_tree(plan: dict[str, Any], mapping: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """The raw `.fn.yaml` (lookups, then the rules nested under their `parent_rule`) and the plan
     rules left out, each with the reason."""
@@ -151,9 +164,12 @@ def build_tree(plan: dict[str, Any], mapping: str) -> tuple[dict[str, Any], list
                 raise PlanError(f"two rules write the fn rule id '{fn['id']}'")
             by_id[fn["id"]] = fn
             pending.append((proposal.get("parent_rule"), fn, rule["id"]))
+    parents = {fn["id"]: parent for parent, fn, _ in pending}
     for parent, fn, plan_id in pending:
         if parent is None:
             top.append(fn)
+        elif _in_cycle(fn["id"], parents):
+            skipped.append({"rule": plan_id, "reason": f"parent_rule '{parent}' makes a cycle"})
         elif parent in by_id:
             by_id[parent].setdefault("rules", []).append(fn)
         else:

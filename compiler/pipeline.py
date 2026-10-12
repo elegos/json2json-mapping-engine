@@ -24,6 +24,7 @@ from pathlib import Path
 from compiler.backends.base import Backend, CodeGenError, CompiledUnit
 from compiler.backends.registry import DEFAULT_TARGET, create_backend
 from compiler.loop_fusion import fuse_loops
+from compiler.out_arrays import open_output_arrays
 from compiler.schema_generator import SchemaTypes
 from compiler.scope_resolver import resolve_scopes
 from compiler.type_checker import check_module
@@ -84,6 +85,7 @@ def compile_unit(
 
     scope_resolution = resolve_scopes(tree)
     check_module(tree, scope_resolution, input_schema, output_schema)
+    open_output_arrays(tree)
 
     return backend.compile_module(
         tree, mapping_id, scope_resolution, validation if validation and validation.active else None

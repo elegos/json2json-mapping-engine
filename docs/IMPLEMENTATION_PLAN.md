@@ -1222,7 +1222,8 @@ No `oneOf` in a mapping (decided): an `object` with `output: $` and a `guard` wr
 and the author guards each shape (WB3: POST and DELETE). The import asks which shape each part of
 the document is and the order of the guards. When validations exist, "no shape matches" is a
 rejection. Done: model, check (a field only some shapes require is not required), transpiler (flow
-`if`), both backends (golden `groups`).
+`if`), both backends (golden `groups`, with a filtered loop inside a group: the lists a group
+writes exist only when its guard holds; `compiler/out_arrays.py`).
 
 ## ✅ Validation of the input and the output (done)
 

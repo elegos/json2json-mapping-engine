@@ -45,6 +45,13 @@ rules:
   - {id: delete, kind: object, output: $, guard: "$.operation == 'DELETE'", rules: [ ... ]}
   ```
 
+  A list written inside a group (a `loop`) exists in the output only when the group's guard
+  holds: a message the guard excludes gets neither the fields nor the empty list.
+
+  In the plan a group is a rule with `intent: structure`, `target.path: $`, and the group's
+  evidence (the band, sheet or section that opens the shape) in `evidence`; it is not a unit of
+  the coverage count, and its id is `<group id>@<location>` like any other.
+
   Groups are at the top of the file and run in order; the guards are the author's to write and
   must exclude one another (nothing checks it, a test case that matches two shows it).
 - An output list with **one element built from the whole message** (a wrapper such as `entries`
@@ -63,7 +70,14 @@ rules:
 - A function's result type must fit the field: `abs` of a whole number is a whole number (and so
   is a `sum` of them), `floor` and `ceil` give whole numbers, `round` and the other arithmetic give
   `number`. An integer field takes a whole-number expression (`type: int`); `number` does not fit
-  it. If the document needs a number there, flag a discrepancy with the output schema.
+  it. When the document wants a whole number from a computation that gives `number` (a weight in
+  grams from `kg * 1000`), make it whole with `floor` or `ceil`; for "rounded to the unit" of a
+  value that is never negative, `floor(x + 0.5)`. Never change the field's `type` to fit the
+  expression, and never leave a rule that does not pass: if no whole-number form says what the
+  document says, flag a discrepancy with the output schema and keep the rule a flagged guess.
+- A field's `field` is a name, never a path (`occurredAt.value` is not one). A target written as a
+  path (`occurredAt.value`, `student.id`) is an `object` rule (`output: occurredAt`) holding a
+  field rule (`field: value`); an `object` rule has its own plan rule (`intent: structure`).
 
 ## Paths and anchors
 

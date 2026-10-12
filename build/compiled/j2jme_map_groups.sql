@@ -13,6 +13,19 @@ END J2JME_MAP_GROUPS;
 /
 
 CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAP_GROUPS AS
+    FUNCTION fn_groups_post_row(p_root IN JSON_OBJECT_T, p_src IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN JSON_OBJECT_T IS
+        v_post_row__dc JSON_OBJECT_T;
+        v_val_post_row__v0 VARCHAR2(4000 CHAR);
+    BEGIN
+        p_omitted := FALSE;
+        v_post_row__dc := JSON_OBJECT_T();
+        v_val_post_row__v0 := UPPER(p_src.get_String('n'));
+        IF v_val_post_row__v0 IS NOT NULL THEN
+            v_post_row__dc.put('label', v_val_post_row__v0);
+        END IF;
+        RETURN v_post_row__dc;
+    END fn_groups_post_row;
+
     FUNCTION fn_groups_post_op(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
     BEGIN
         p_omitted := FALSE;
@@ -51,8 +64,11 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAP_GROUPS AS
         v_out_obj  JSON_OBJECT_T := JSON_OBJECT_T();
         TYPE t_error_map IS TABLE OF VARCHAR2(4000) INDEX BY VARCHAR2(200);
         v_errors   t_error_map;
+        v_arr_rows JSON_ARRAY_T := JSON_ARRAY_T();
+        v_open_rows BOOLEAN := FALSE;
     BEGIN
         IF (v_srcroot.get_String('operation') = 'POST') THEN
+            v_open_rows := TRUE;
             DECLARE
                 v_result_post_op VARCHAR2(4000 CHAR);
                 v_omitted_post_op BOOLEAN;
@@ -94,6 +110,34 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAP_GROUPS AS
                     IF NOT v_errors.EXISTS('post_name') THEN
                         v_errors('post_name') := SQLERRM;
                     END IF;
+            END;
+            DECLARE
+                v_forarr_0 JSON_ARRAY_T := v_srcroot.get_Array('items');
+            BEGIN
+                IF v_forarr_0 IS NOT NULL THEN
+                    FOR v_i_0 IN 0 .. v_forarr_0.get_size - 1 LOOP
+                        DECLARE
+                            v_src JSON_OBJECT_T := TREAT(v_forarr_0.get(v_i_0) AS JSON_OBJECT_T);
+                        BEGIN
+                            IF (v_src.get_String('n') <> 'skip') THEN
+                                DECLARE
+                                    v_result_post_row JSON_OBJECT_T;
+                                    v_omitted_post_row BOOLEAN;
+                                BEGIN
+                                    v_result_post_row := fn_groups_post_row(v_srcroot, v_src, v_omitted_post_row);
+                                    IF NOT v_omitted_post_row THEN
+                                        v_arr_rows.append(v_result_post_row);
+                                    END IF;
+                                EXCEPTION
+                                    WHEN OTHERS THEN
+                                        IF NOT v_errors.EXISTS('post_row') THEN
+                                            v_errors('post_row') := SQLERRM;
+                                        END IF;
+                                END;
+                            END IF;
+                        END;
+                    END LOOP;
+                END IF;
             END;
         END IF;
         IF (v_srcroot.get_String('operation') = 'DELETE') THEN
@@ -162,6 +206,7 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAP_GROUPS AS
                 RAISE_APPLICATION_ERROR(-20000, v_payload.to_string());
             END;
         END IF;
+        IF v_open_rows THEN v_out_obj.put('rows', v_arr_rows); END IF;
         p_out := v_out_obj.TO_CLOB();
     END map_groups;
 
@@ -174,8 +219,11 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAP_GROUPS AS
         v_out_obj  JSON_OBJECT_T := JSON_OBJECT_T();
         TYPE t_error_map IS TABLE OF VARCHAR2(4000) INDEX BY VARCHAR2(200);
         v_errors   t_error_map;
+        v_arr_rows JSON_ARRAY_T := JSON_ARRAY_T();
+        v_open_rows BOOLEAN := FALSE;
     BEGIN
         IF (v_srcroot.get_String('operation') = 'POST') THEN
+            v_open_rows := TRUE;
             DECLARE
                 v_result_post_op VARCHAR2(4000 CHAR);
                 v_omitted_post_op BOOLEAN;
@@ -217,6 +265,34 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAP_GROUPS AS
                     IF NOT v_errors.EXISTS('post_name') THEN
                         v_errors('post_name') := SQLERRM;
                     END IF;
+            END;
+            DECLARE
+                v_forarr_0 JSON_ARRAY_T := v_srcroot.get_Array('items');
+            BEGIN
+                IF v_forarr_0 IS NOT NULL THEN
+                    FOR v_i_0 IN 0 .. v_forarr_0.get_size - 1 LOOP
+                        DECLARE
+                            v_src JSON_OBJECT_T := TREAT(v_forarr_0.get(v_i_0) AS JSON_OBJECT_T);
+                        BEGIN
+                            IF (v_src.get_String('n') <> 'skip') THEN
+                                DECLARE
+                                    v_result_post_row JSON_OBJECT_T;
+                                    v_omitted_post_row BOOLEAN;
+                                BEGIN
+                                    v_result_post_row := fn_groups_post_row(v_srcroot, v_src, v_omitted_post_row);
+                                    IF NOT v_omitted_post_row THEN
+                                        v_arr_rows.append(v_result_post_row);
+                                    END IF;
+                                EXCEPTION
+                                    WHEN OTHERS THEN
+                                        IF NOT v_errors.EXISTS('post_row') THEN
+                                            v_errors('post_row') := SQLERRM;
+                                        END IF;
+                                END;
+                            END IF;
+                        END;
+                    END LOOP;
+                END IF;
             END;
         END IF;
         IF (v_srcroot.get_String('operation') = 'DELETE') THEN
@@ -265,6 +341,7 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAP_GROUPS AS
             END LOOP;
             p_err := v_err_arr.to_clob();
         END;
+        IF v_open_rows THEN v_out_obj.put('rows', v_arr_rows); END IF;
         p_out := v_out_obj.TO_CLOB();
     END map_groups_safe;
 END J2JME_MAP_GROUPS;

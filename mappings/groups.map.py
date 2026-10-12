@@ -5,6 +5,15 @@ from __mapping__ import *
 # Every backend must agree (tests/golden/groups).
 
 
+@dataclass
+class RowsItem:
+    label: str
+
+
+def post_row(root: Any, src: Any) -> RowsItem:
+    return RowsItem(label=upper(src.n))
+
+
 def post_op(root: Any) -> str:
     return "POST"
 
@@ -25,6 +34,10 @@ if root.operation == "POST":
     out.operation = post_op(root)
     out.id = the_id(root)
     out.name = post_name(root)
+    for src in root.items:
+        if not (src.n != "skip"):
+            continue
+        out.rows.append(post_row(root, src))
 
 if root.operation == "DELETE":
     out.operation = delete_op(root)

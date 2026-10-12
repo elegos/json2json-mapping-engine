@@ -440,24 +440,6 @@ def _parallel_degree(node: ast.FunctionDef) -> int | None:
     return None
 
 
-def _output_arrays(statements: list[ast.stmt]) -> list[str]:
-    """The fields of `out` the mapping body appends to: their arrays exist even when empty."""
-    found: list[str] = []
-    for stmt in statements:
-        for node in ast.walk(stmt):
-            if (
-                isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Attribute)
-                and node.func.attr == "append"
-                and isinstance(node.func.value, ast.Attribute)
-                and isinstance(node.func.value.value, ast.Name)
-                and node.func.value.value.id == "out"
-                and node.func.value.attr not in found
-            ):
-                found.append(node.func.value.attr)
-    return found
-
-
 def _called_names(node: ast.AST) -> set[str]:
     return {
         n.func.id
@@ -557,13 +539,9 @@ def compile_module(
     unavailable = {
         f.name: sorted(_called_names(f) & missing) for f in functions if _called_names(f) & missing
     }
-    arrays = [
-        ast.Expr(value=ast.Attribute(value=_name("out"), attr=name, ctx=ast.Load()))
-        for name in _output_arrays(body)
-    ]
     rewriter.in_run = True
     rewriter.bound = _bound_names(body)
-    run_body: list[ast.stmt] = [*arrays, *(rewriter.visit(s) for s in body)] or [ast.Pass()]
+    run_body: list[ast.stmt] = [*(rewriter.visit(s) for s in body)] or [ast.Pass()]
     rewriter.in_run = False
     run = ast.FunctionDef(
         name="_run",
