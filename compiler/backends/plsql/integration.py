@@ -18,6 +18,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
 import secrets
 import shutil
 import subprocess
@@ -233,9 +234,11 @@ def check_raising(
     safe_out: Any,
     rule_errors: list[dict[str, Any]],
     error_code: int,
+    report: list[dict[str, Any]] | None = None,
 ) -> str:
     """Run the raising twin `proc` and compare with the `_safe` result.
     Returns "" when consistent, else a description of the mismatch."""
+    rejected = sorted(i["code"] for i in report or [] if i["action"] == "reject")
     import oracledb
 
     cur = conn.cursor()
@@ -246,7 +249,7 @@ def check_raising(
     except oracledb.Error as exc:
         (err,) = exc.args
         code = getattr(err, "code", None)
-        if not rule_errors:
+        if not rule_errors and not rejected:
             return f"{proc} raised but _safe reported no rule errors: {exc}"
         if code != abs(error_code) and code != error_code:
             return f"{proc} raised ORA{code}, expected {error_code}: {exc}"
@@ -255,12 +258,19 @@ def check_raising(
             payload = json.loads(str(err.message).splitlines()[0].split(": ", 1)[-1])
         except ValueError:
             return f"{proc} error payload is not JSON: {exc}"
+        if rejected:
+            raised = sorted(c["code"] for c in payload.get("checks", []) if c["action"] == "reject")
+            if not payload.get("rejected") or raised != rejected:
+                return f"{proc} rejected by {raised}, _safe by {rejected}"
+            return ""
         if payload.get("total_errors") != len(rule_errors):
             return (
                 f"{proc} payload total_errors={payload.get('total_errors')}, "
                 f"_safe reported {len(rule_errors)}"
             )
         return ""
+    if rejected:
+        return f"{proc} did not raise but _safe rejected the input ({rejected})"
     if rule_errors:
         return f"{proc} did not raise but _safe reported {len(rule_errors)} rule error(s)"
     actual = json.loads(_lob_text(out.getvalue()) or "null")
@@ -291,30 +301,52 @@ def run_case(
     raising_proc: str | None = None,
     error_code: int = -20000,
     sql_fn: str | None = None,
+    validated: bool = False,
 ) -> CaseResult:
+    """`validated`: the mapping checks its input / output, so `_safe` has a fourth OUT parameter,
+    the report, and gives no output for a rejected document."""
     import oracledb
 
     cur = conn.cursor()
     src = conn.createlob(oracledb.DB_TYPE_CLOB, case.input_path.read_text())
     out = cur.var(oracledb.DB_TYPE_CLOB)
     err = cur.var(oracledb.DB_TYPE_CLOB)
+    rep = cur.var(oracledb.DB_TYPE_CLOB)
     try:
-        cur.execute(f"BEGIN {proc}(:s, :o, :e); END;", s=src, o=out, e=err)
+        if validated:
+            cur.execute(f"BEGIN {proc}(:s, :o, :e, :r); END;", s=src, o=out, e=err, r=rep)
+        else:
+            cur.execute(f"BEGIN {proc}(:s, :o, :e); END;", s=src, o=out, e=err)
     except oracledb.Error as exc:
         return CaseResult(case, False, message=f"procedure raised: {exc}")
     out_text, err_text = out.getvalue(), err.getvalue()
-    actual = json.loads(out_text.read() if hasattr(out_text, "read") else out_text)
+    out_raw = out_text.read() if hasattr(out_text, "read") else out_text
+    actual = json.loads(out_raw) if out_raw else None
     err_raw = err_text.read() if hasattr(err_text, "read") else err_text
     rule_errors = json.loads(err_raw) if err_raw else []
+    report = None
+    if validated:
+        rep_text = rep.getvalue()
+        rep_raw = rep_text.read() if hasattr(rep_text, "read") else rep_text
+        report = json.loads(rep_raw) if rep_raw else []
 
     twin = (
-        check_raising(conn, raising_proc, case, actual, rule_errors, error_code)
+        check_raising(conn, raising_proc, case, actual, rule_errors, error_code, report)
         if raising_proc
         else ""
     )
-    if sql_fn and not rule_errors and not twin:  # the wrapper raises on a failing document
+    rejected = any(i["action"] == "reject" for i in report or [])
+    if (
+        sql_fn and not rule_errors and not twin and not rejected
+    ):  # the wrapper raises on a failing document
         twin = check_parallel_wrapper(conn, sql_fn, case, actual)
-    return judge(case, actual, rule_errors, twin)
+    return judge(case, actual, rule_errors, twin, report)
+
+
+def _reports(package_text: str, safe_name: str) -> bool:
+    """Whether the `_safe` procedure `safe_name` has the report parameter (the mapping validates)."""
+    found = re.search(rf"PROCEDURE {re.escape(safe_name)} \(([^)]*)\)", package_text)
+    return found is not None and "p_report OUT CLOB" in found.group(1)
 
 
 def integration_unavailable() -> str | None:
@@ -359,6 +391,7 @@ def run_integration(config: Mapping[str, Any], context: IntegrationContext) -> l
                             if f"FUNCTION {naming.entry(mapping_id, '_fn')} " in package_text
                             else None
                         ),
+                        validated=_reports(package_text, naming.entry(mapping_id, "_safe")),
                     )
                 )
         finally:

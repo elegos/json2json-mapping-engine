@@ -211,3 +211,54 @@ def test_a_loop_inside_a_loop_gives_a_list_of_lists() -> None:
     values = output_values([outer], output)
     assert values["rules[0].rules[0].rules[0]"] == [["a", "b"], ["c"]]
     assert values["rules[0].rules[0]"] == [[{"N": "a"}, {"N": "b"}], [{"N": "c"}]]
+
+
+def _validating(project: Path) -> None:
+    """The tutorial's orders, refusing an order without items and warning of a long id."""
+    path = project / "mappings/functional/orders.fn.yaml"
+    path.write_text(
+        path.read_text().replace(
+            "rules:\n",
+            "validations:\n"
+            "  input:\n"
+            "    checks:\n"
+            "    - {id: has_items, expect: 'count($.items) > 0', code: NO_ITEMS, message: No items}\n"
+            "    - {id: short_id, expect: 'length($.id) <= 1', code: LONG_ID, action: warn}\n"
+            "rules:\n",
+            1,
+        )
+    )
+
+
+def test_a_mapping_that_validates_reports_the_checks_with_each_case(project: Path) -> None:
+    _validating(project)
+    folder = project / "tests/golden/orders"
+    (folder / "none.input.json").write_text('{"id": "Z", "items": []}')
+    (folder / "none.expected_rejected.json").write_text('["NO_ITEMS"]')
+    (folder / "two_lines.expected_warnings.json").write_text('["LONG_ID"]')
+    by_name = {r["name"]: r for r in run_cases(project, "orders", ["none", "two_lines"])}
+    assert by_name["none"]["passed"] is True and by_name["none"]["output"] is None
+    assert by_name["none"]["expected_rejected"] == ["NO_ITEMS"]
+    assert [i["code"] for i in by_name["none"]["report"]] == ["NO_ITEMS"]
+    assert by_name["two_lines"]["passed"] is True
+    assert [(i["code"], i["action"]) for i in by_name["two_lines"]["report"]] == [
+        ("LONG_ID", "warn")
+    ]
+    (folder / "none.expected_rejected.json").write_text("[]")
+    wrong = run_cases(project, "orders", ["none"])[0]
+    assert wrong["passed"] is False and "rejected by ['NO_ITEMS']" in wrong["message"]
+
+
+def test_recording_a_rejected_case_keeps_the_codes_and_no_output(project: Path) -> None:
+    _validating(project)
+    folder = project / "tests/golden/orders"
+    (folder / "none.input.json").write_text('{"id": "Z", "items": []}')
+    (folder / "none.expected.json").write_text("{}")
+    recorded = record_case(project, "orders", "none")
+    assert recorded["rejected"] == ["NO_ITEMS"] and recorded["output"] is None
+    assert not (folder / "none.expected.json").exists()
+    assert json.loads((folder / "none.expected_rejected.json").read_text()) == ["NO_ITEMS"]
+    assert run_cases(project, "orders", ["none"])[0]["passed"] is True
+    record_case(project, "orders", "two_lines")
+    assert json.loads((folder / "two_lines.expected_warnings.json").read_text()) == ["LONG_ID"]
+    assert json.loads((folder / "two_lines.expected.json").read_text())["OrderId"] == "A1"

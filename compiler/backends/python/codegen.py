@@ -15,6 +15,7 @@ from typing import Any
 
 from compiler.backends.base import CodeGenError, CompiledUnit
 from compiler.function_registry import FunctionInfo
+from compiler.validation import Validation
 
 _ARITH = {
     ast.Add: "_add",
@@ -38,6 +39,8 @@ class PythonUnit(CompiledUnit):
     # rule function -> the project functions it calls that have no code for Python: the rule
     # cannot run here, and says so instead of failing for a reason of its own
     unavailable: dict[str, list[str]] = field(default_factory=dict)
+    # the mapping checks its input and/or output (its `_safe` gives a third result, the report)
+    validated: bool = False
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -46,6 +49,7 @@ class PythonUnit(CompiledUnit):
             "rules": self.rules,
             "parallel": self.parallel,
             "unavailable": self.unavailable,
+            "validated": self.validated,
         }
 
     @classmethod
@@ -56,6 +60,7 @@ class PythonUnit(CompiledUnit):
             data["rules"],
             data["parallel"],
             data.get("unavailable", {}),
+            data.get("validated", False),
         )
 
 
@@ -104,7 +109,7 @@ class _Rewriter(ast.NodeTransformer):
 
     def visit_Name(self, node: ast.Name) -> ast.expr:
         if node.id == "Null":
-            return ast.Constant(value=None)
+            return _name("NULL")
         return node
 
     # -- reading the input -------------------------------------------------------------
@@ -137,6 +142,25 @@ class _Rewriter(ast.NodeTransformer):
 
     def visit_Subscript(self, node: ast.Subscript) -> ast.expr:
         return self._path(node)
+
+    # -- aggregating comprehensions ----------------------------------------------------
+    def visit_GeneratorExp(self, node: ast.GeneratorExp) -> ast.expr:
+        """`sum(x.v for x in root.items if x.ok)`: the aggregate gets the list of the values of
+        the elements that pass (a missing list has none)."""
+        if len(node.generators) != 1 or node.generators[0].is_async:
+            raise CodeGenError("an aggregate takes one `for` and optional `if`s")
+        gen = node.generators[0]
+        return ast.ListComp(
+            elt=self.visit(node.elt),
+            generators=[
+                ast.comprehension(
+                    target=gen.target,
+                    iter=_call("_each", self.visit(gen.iter)),
+                    ifs=[self.visit(c) for c in gen.ifs],
+                    is_async=0,
+                )
+            ],
+        )
 
     # -- operators ---------------------------------------------------------------------
     def visit_BinOp(self, node: ast.BinOp) -> ast.expr:
@@ -340,10 +364,29 @@ class _Rewriter(ast.NodeTransformer):
         threaded = self._parallel_loop(node) or self._fused_loop(node)
         if threaded is not None:
             return threaded
-        node.iter = _call("_each", self.visit(node.iter))
+        node.iter = self._iterable(node.iter)
         node.body = [self.visit(s) for s in node.body]
         node.orelse = [self.visit(s) for s in node.orelse]
         return node
+
+    def _iterable(self, node: ast.expr) -> ast.expr:
+        """What a `for` runs over. `enumerate(x, start=1)` (a loop that numbers its elements) and
+        `sorted(x, ...)` keep their call, around the elements of `x`."""
+        return _elements(self.visit(node))
+
+
+def _elements(node: ast.expr) -> ast.expr:
+    """`node` (already visited) as what a `for` can run over: `_each(...)`, inside a call to
+    `enumerate` or `sorted`."""
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id in ("enumerate", "sorted")
+        and node.args
+    ):
+        node.args = [_elements(node.args[0]), *node.args[1:]]
+        return node
+    return _call("_each", node)
 
 
 def _is_out_array(node: ast.expr) -> bool:
@@ -478,9 +521,10 @@ def compile_module(
     mapping_id: str,
     project: dict[str, FunctionInfo] | None = None,
     parallel_mode: str = "thread",
+    validation: Validation | None = None,
 ) -> PythonUnit:
     """`parallel_mode`: a loop whose element rule is `@parallel` runs in `thread`s or `process`es
-    (`none`: in order)."""
+    (`none`: in order). `validation`: what the entry points check before and after the rules."""
     functions: list[ast.FunctionDef] = []
     body: list[ast.stmt] = []
     dataclasses: set[str] = set()
@@ -535,11 +579,16 @@ def compile_module(
         returns=None,
         type_params=[],
     )
+    extra = ""
+    tail = ""
+    if validation is not None:
+        extra = f"_VALIDATION = {_validation_literal(validation)}\n\n\n"
+        tail = ", _VALIDATION"
     entry = ast.parse(
-        f"def map_{mapping_id}(source):\n"
-        f"    return _execute({mapping_id!r}, _run, source, True)[0]\n\n\n"
+        extra + f"def map_{mapping_id}(source):\n"
+        f"    return _execute({mapping_id!r}, _run, source, True{tail})[0]\n\n\n"
         f"def map_{mapping_id}_safe(source):\n"
-        f"    return _execute({mapping_id!r}, _run, source, False)\n"
+        f"    return _execute({mapping_id!r}, _run, source, False{tail})\n"
     ).body
     module = ast.Module(body=[*new_functions, *rewriter.fused, run, *entry], type_ignores=[])
     ast.fix_missing_locations(module)
@@ -548,5 +597,24 @@ def compile_module(
         "from j2jme_runtime import *\n\n\n"
     )
     return PythonUnit(
-        mapping_id, header + ast.unparse(module) + "\n", sorted(rules), parallel, unavailable
+        mapping_id,
+        header + ast.unparse(module) + "\n",
+        sorted(rules),
+        parallel,
+        unavailable,
+        validation is not None,
     )
+
+
+def _validation_literal(validation: Validation) -> str:
+    """The `_VALIDATION` table of the module: for each side, its embedded JSON Schema (or None)
+    and the checks as (function, code, message, action)."""
+    sides = []
+    for name in ("input", "output"):
+        schema = validation.schemas.get(name) if validation.side(name).schema else None
+        checks = ", ".join(
+            f"({c.fn}, {c.code!r}, {c.message!r}, {c.action!r})"
+            for c in validation.side(name).checks
+        )
+        sides.append(f"{name!r}: ({schema!r}, [{checks}])")
+    return "{" + ", ".join(sides) + "}"

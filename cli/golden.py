@@ -1,7 +1,8 @@
 """The golden cases of a mapping (`tests/golden/<mapping>/`), managed from the desktop tool
 (ops of `mapper serve`). A case is `<case>.input.json` (it exists when that file does) with an
-optional `<case>.expected.json` and `<case>.expected_errors.json` (a list of rule ids): the
-names every backend and CI read (`compiler/backends/integration.py`). Loading a case copies
+optional `<case>.expected.json` and `<case>.expected_errors.json` (a list of rule ids), and for a
+mapping that validates `<case>.expected_rejected.json` / `<case>.expected_warnings.json` (lists of
+check codes): the names every backend and CI read (`compiler/backends/integration.py`). Loading a case copies
 the user's files under those names, so that the role of a file is its name."""
 
 from __future__ import annotations
@@ -12,11 +13,18 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from compiler.backends.integration import ERRORS_SUFFIX, EXPECTED_SUFFIX, GOLDEN_DIR, INPUT_SUFFIX
+from compiler.backends.integration import (
+    ERRORS_SUFFIX,
+    EXPECTED_SUFFIX,
+    GOLDEN_DIR,
+    INPUT_SUFFIX,
+    REJECTED_SUFFIX,
+    WARNINGS_SUFFIX,
+)
 from transpiler.model import FnYamlError
 
 _NAME = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_-]*$")
-_SUFFIXES = (INPUT_SUFFIX, EXPECTED_SUFFIX, ERRORS_SUFFIX)
+_SUFFIXES = (INPUT_SUFFIX, EXPECTED_SUFFIX, ERRORS_SUFFIX, REJECTED_SUFFIX, WARNINGS_SUFFIX)
 
 
 def _folder(project: Path, mapping: str) -> Path:
@@ -42,6 +50,8 @@ def list_cases(project: Path, mapping: str) -> list[dict[str, Any]]:
             "name": n,
             "expected": (folder / f"{n}{EXPECTED_SUFFIX}").is_file(),
             "errors": (folder / f"{n}{ERRORS_SUFFIX}").is_file(),
+            "rejected": (folder / f"{n}{REJECTED_SUFFIX}").is_file(),
+            "warnings": (folder / f"{n}{WARNINGS_SUFFIX}").is_file(),
         }
         for n in names
     ]
@@ -113,8 +123,14 @@ def delete_case(project: Path, mapping: str, name: str) -> list[str]:
     return [str(p.relative_to(project)) for p in files]
 
 
-# the three files of a case, by the role the editor names them
-ROLES = {"input": INPUT_SUFFIX, "expected": EXPECTED_SUFFIX, "errors": ERRORS_SUFFIX}
+# the files of a case, by the role the editor names them
+ROLES = {
+    "input": INPUT_SUFFIX,
+    "expected": EXPECTED_SUFFIX,
+    "errors": ERRORS_SUFFIX,
+    "rejected": REJECTED_SUFFIX,
+    "warnings": WARNINGS_SUFFIX,
+}
 
 
 def _role_path(project: Path, mapping: str, case: str, role: str) -> Path:
@@ -124,15 +140,17 @@ def _role_path(project: Path, mapping: str, case: str, role: str) -> Path:
 
 
 def _check_text(role: str, text: str) -> None:
-    """The text a role's file may hold: JSON, and for the errors a list of rule ids."""
+    """The text a role's file may hold: JSON, and for the errors a list of rule ids, for the
+    rejected and warnings a list of check codes."""
     try:
         value = json.loads(text)
     except ValueError as exc:
         raise FnYamlError(f"{role}: not valid JSON ({exc})") from exc
-    if role == "errors" and not (
+    if role in ("errors", "rejected", "warnings") and not (
         isinstance(value, list) and all(isinstance(e, str) for e in value)
     ):
-        raise FnYamlError("expected errors: must be a list of rule ids")
+        what = "rule ids" if role == "errors" else "check codes"
+        raise FnYamlError(f"expected {role}: must be a list of {what}")
 
 
 def read_case(project: Path, mapping: str, case: str) -> dict[str, str | None]:

@@ -28,10 +28,10 @@ def test_aggregates_matches_golden_sql():
     assert sql == (GOLDEN / "aggregates.sql").read_text()
 
 
-def test_max_uses_compare_to_and_sum_uses_running_number_accumulator():
+def test_max_compares_the_values_and_sum_uses_running_number_accumulator():
     sql = compile_file(FIXTURES / "aggregates.map.py")
-    assert "compare_to(v_aggacc_0) > 0" in sql  # max
-    assert "v_aggacc_1 := v_aggacc_1 + " in sql  # sum
+    assert "v_aggval_0 > v_aggacc_0" in sql  # max: a missing value is skipped, as in SQL
+    assert "v_aggacc_1 := v_aggacc_1 + v_aggval_1" in sql  # sum
 
 
 def test_count_is_a_trivial_get_size_expression():

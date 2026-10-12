@@ -14,21 +14,30 @@ END SIMPLE_OBJECT;
 
 CREATE OR REPLACE PACKAGE BODY SIMPLE_OBJECT AS
     FUNCTION fn_simple_object_order_id(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_order_id__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN p_root.get_String('id');
+        v_order_id__ret := p_root.get_String('id');
+        IF v_order_id__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_order_id__ret;
     END fn_simple_object_order_id;
 
     FUNCTION fn_simple_object_amount(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN NUMBER IS
+        v_amount__ret NUMBER;
     BEGIN
         p_omitted := FALSE;
-        RETURN (p_root.get_Number('price') * p_root.get_Number('qty'));
+        v_amount__ret := (p_root.get_Number('price') * p_root.get_Number('qty'));
+        IF v_amount__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_amount__ret;
     END fn_simple_object_amount;
 
     FUNCTION fn_simple_object_discount_code(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_discount_code__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN COALESCE(p_root.get_String('discountCode'), 'NONE');
+        v_discount_code__ret := COALESCE(p_root.get_String('discountCode'), 'NONE');
+        IF v_discount_code__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_discount_code__ret;
     END fn_simple_object_discount_code;
 
     PROCEDURE map_simple_object (

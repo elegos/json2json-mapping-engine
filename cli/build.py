@@ -246,6 +246,11 @@ def _compile_fresh(
     refs = schema_refs(path)
     input_schema = resolve_schema_for(stem, "input", refs)
     output_schema = resolve_schema_for(stem, "output", refs)
+    schema_texts = {
+        kind: schema_file(stem, kind, refs).read_text()
+        for kind in ("input", "output")
+        if schema_file(stem, kind, refs).is_file()
+    }
     unit = compile_unit(
         source,
         default_mapping_id=stem,
@@ -254,6 +259,7 @@ def _compile_fresh(
         output_schema=output_schema,
         loop_fusion=config.optimizer.loop_fusion,
         parallel_conflict=config.optimizer.parallel_conflict,
+        schema_texts=schema_texts,
     )
     warnings.extend(backend.unit_warnings(unit))
     return unit

@@ -26,6 +26,8 @@ from compiler.backends.integration import (
     ERRORS_SUFFIX,
     EXPECTED_SUFFIX,
     GOLDEN_DIR,
+    REJECTED_SUFFIX,
+    WARNINGS_SUFFIX,
     CaseResult,
     IntegrationContext,
     TestCase,
@@ -140,6 +142,11 @@ def _result_json(
         "output": result.output,
         "errors": errors,
         "expected_errors": case.expected_errors,
+        # the checks of a mapping that validates (None for one that does not): the failed ones,
+        # and the codes the case expects to reject / warn
+        "report": result.report,
+        "expected_rejected": case.expected_rejected,
+        "expected_warnings": case.expected_warnings,
         "target": target,
         # some rule could not run on Python: the verdict says nothing about the mapping
         "inconclusive": any(e["unavailable"] for e in errors),
@@ -191,6 +198,8 @@ def _run(
                     project / c.input_path,
                     project / c.expected_path if c.expected_path else None,
                     c.expected_errors,
+                    c.expected_rejected,
+                    c.expected_warnings,
                 )
                 for c in cases
             ]
@@ -229,13 +238,24 @@ def record_case(project: Path, mapping: str, name: str) -> dict[str, Any]:
             "so what they would give is missing from the output"
         )
     folder = _folder(project, mapping)
-    (folder / f"{name}{EXPECTED_SUFFIX}").write_text(
-        json.dumps(result.output, indent=2, ensure_ascii=False) + "\n"
-    )
+    report = result.report or []
+    rejected = sorted(i["code"] for i in report if i["action"] == "reject")
+    warned = sorted(i["code"] for i in report if i["action"] == "warn")
+    expected_file = folder / f"{name}{EXPECTED_SUFFIX}"
+    if rejected:  # a rejected document has no output
+        expected_file.unlink(missing_ok=True)
+    else:
+        expected_file.write_text(json.dumps(result.output, indent=2, ensure_ascii=False) + "\n")
+    for suffix, codes in ((REJECTED_SUFFIX, rejected), (WARNINGS_SUFFIX, warned)):
+        path = folder / f"{name}{suffix}"
+        if codes:
+            path.write_text(json.dumps(codes, indent=2) + "\n")
+        else:
+            path.unlink(missing_ok=True)
     errors_file = folder / f"{name}{ERRORS_SUFFIX}"
     failed = sorted(e["rule"] for e in result.rule_errors)
     if failed:
         errors_file.write_text(json.dumps(failed, indent=2) + "\n")
     else:
         errors_file.unlink(missing_ok=True)
-    return {"output": result.output, "errors": failed}
+    return {"output": result.output, "errors": failed, "rejected": rejected, "warnings": warned}

@@ -25,6 +25,7 @@ from typing import Any, ClassVar, Literal
 
 from compiler.backends.integration import CaseResult, IntegrationContext
 from compiler.scope_resolver import ScopeResolution
+from compiler.validation import Validation
 
 
 class CodeGenError(Exception):
@@ -179,9 +180,14 @@ class Backend(ABC):
 
     @abstractmethod
     def compile_module(
-        self, tree: ast.Module, mapping_id: str, scope_resolution: ScopeResolution | None = None
+        self,
+        tree: ast.Module,
+        mapping_id: str,
+        scope_resolution: ScopeResolution | None = None,
+        validation: Validation | None = None,
     ) -> CompiledUnit:
-        """Compile one checked mapping. Raises `CodeGenError`."""
+        """Compile one checked mapping. Raises `CodeGenError`. `validation`: the checks of the
+        input and the output the entry points run (None when the mapping has none)."""
 
     @abstractmethod
     def unit_from_json(self, data: dict[str, Any]) -> CompiledUnit:

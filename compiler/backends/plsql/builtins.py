@@ -26,7 +26,7 @@ from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal
 
 from compiler.function_linker import FunctionImpl
 
-BUILTIN_LIBRARY_VERSION = "1.0.0"
+BUILTIN_LIBRARY_VERSION = "1.1.0"
 
 
 def _quote(s: str) -> str:
@@ -171,6 +171,45 @@ def _remove_prefix_plsql(arg_exprs: list[str]) -> str:
     )
 
 
+# -- text without patterns, numbers, dates (library 1.1.0) -----------------------------------
+# An empty text is NULL in Oracle: the empty results of the reference implementation are NULL here
+# with no extra code. Each rendering says what the reference does for a missing value.
+
+
+def _right_plsql(arg_exprs: list[str]) -> str:
+    s, n = arg_exprs
+    return f"(CASE WHEN {n} < 1 THEN NULL ELSE SUBSTR({s}, GREATEST(LENGTH({s}) - {n} + 1, 1)) END)"
+
+
+def _substring_plsql(arg_exprs: list[str]) -> str:
+    s, start = arg_exprs[:2]
+    if len(arg_exprs) == 2:
+        return f"SUBSTR({s}, GREATEST({start}, 1))"
+    return f"SUBSTR({s}, GREATEST({start}, 1), {arg_exprs[2]})"  # a length below 1 is NULL
+
+
+def _pad_plsql(function: str) -> Callable[[list[str]], str]:
+    def render(arg_exprs: list[str]) -> str:
+        s, width = arg_exprs[:2]
+        fill = arg_exprs[2] if len(arg_exprs) == 3 else "' '"
+        # LPAD / RPAD cut a longer text; the reference leaves it as it is
+        return (
+            f"(CASE WHEN LENGTH({s}) >= {width} THEN {s} ELSE {function}({s}, {width}, {fill}) END)"
+        )
+
+    return render
+
+
+def _starts_with_plsql(arg_exprs: list[str]) -> str:
+    s, prefix = arg_exprs
+    return f"(CASE WHEN SUBSTR({s}, 1, LENGTH({prefix})) = {prefix} THEN TRUE ELSE FALSE END)"
+
+
+def _ends_with_plsql(arg_exprs: list[str]) -> str:
+    s, suffix = arg_exprs
+    return f"(CASE WHEN SUBSTR({s}, -LENGTH({suffix})) = {suffix} THEN TRUE ELSE FALSE END)"
+
+
 _NLS_DOT = "'NLS_NUMERIC_CHARACTERS=''.,'''"
 
 
@@ -301,23 +340,74 @@ _TIMESTAMP_PIECES = r"""DECLARE
         v_date := TO_CHAR(TO_DATE(v_date, 'YYYY-MM-DD'), 'YYYY-MM-DD'); -- an invalid date raises
 """
 
+# the fraction of a second as written, or with `p_digits` digits (0: none)
+_FRAC = (
+    "(CASE WHEN p_digits IS NULL THEN v_frac WHEN p_digits < 1 THEN NULL "
+    "ELSE SUBSTR(RPAD(NVL(v_frac, '0'), 9, '0'), 1, p_digits) END)"
+)
+
 _TO_UTC_BODY = (
     _TIMESTAMP_PIECES
     + """\
         RETURN TO_CHAR(SYS_EXTRACT_UTC(TO_TIMESTAMP_TZ(v_date || 'T' || v_time || v_zone,
                 'YYYY-MM-DD"T"HH24:MI:SSTZH:TZM')), 'YYYY-MM-DD"T"HH24:MI:SS')
-            || CASE WHEN v_frac IS NOT NULL THEN '.' || v_frac END || 'Z';
+            || NVL2(_FRAC_, '.' || _FRAC_, NULL) || 'Z';
     END;"""
-)
+).replace("_FRAC_", _FRAC)
 
 _RFC3339_BODY = (
     _TIMESTAMP_PIECES
     + """\
-        RETURN v_date || 'T' || v_time || CASE WHEN v_frac IS NOT NULL THEN '.' || v_frac END
+        RETURN v_date || 'T' || v_time || NVL2(_FRAC_, '.' || _FRAC_, NULL)
             || CASE WHEN v_zone = '+00:00' THEN 'Z' ELSE v_zone END;
+    END;"""
+).replace("_FRAC_", _FRAC)
+
+# a date or a date and time, written with a format: read from its pieces (as the timestamps are),
+# the offset ignored
+_FORMAT_DATE_BODY = (
+    _TIMESTAMP_PIECES.replace(
+        "v_zone VARCHAR2(10);", "v_zone VARCHAR2(10);\n        v_fmt VARCHAR2(200);"
+    )
+    + """\
+        -- only the six tokens and separators, as the reference accepts (Oracle knows many more)
+        v_fmt := REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(p_fmt),
+            'YYYY'), 'HH24'), 'MM'), 'DD'), 'MI'), 'SS');
+        -- (an empty text is NULL in Oracle: the lengths are taken with NVL)
+        IF NVL(LENGTH(TRANSLATE(v_fmt, '#ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', '#')), 0)
+                <> NVL(LENGTH(v_fmt), 0) THEN
+            RAISE_APPLICATION_ERROR(-20999, 'not a date format: ' || p_fmt);
+        END IF;
+        RETURN TO_CHAR(TO_TIMESTAMP(v_date || ' ' || v_time, 'YYYY-MM-DD HH24:MI:SS'), p_fmt);
     END;"""
 )
 
+# a date and time written as a format, read in English, as ISO-8601 without a zone; only the tokens
+# of the reference (Oracle knows many more) and a year, a month and a day
+_PARSE_TIMESTAMP_BODY = """\
+DECLARE
+        v_fmt VARCHAR2(200);
+        v_up VARCHAR2(200);
+    BEGIN
+        IF p_s IS NULL OR p_fmt IS NULL THEN
+            RETURN NULL;
+        END IF;
+        v_up := UPPER(p_fmt);
+        v_fmt := REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(v_up,
+            'YYYY'), 'HH24'), 'HH12'), 'MON'), 'MM'), 'DD'), 'MI'), 'SS'), 'AM');
+        -- (an empty text is NULL in Oracle: the lengths are taken with NVL)
+        IF NVL(LENGTH(TRANSLATE(v_fmt, '#ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', '#')), 0)
+                <> NVL(LENGTH(v_fmt), 0) THEN
+            RAISE_APPLICATION_ERROR(-20999, 'not a date format: ' || p_fmt);
+        END IF;
+        IF INSTR(v_up, 'YYYY') = 0 OR INSTR(v_up, 'DD') = 0
+                OR (INSTR(REPLACE(v_up, 'MON'), 'MM') = 0 AND INSTR(v_up, 'MON') = 0) THEN
+            RAISE_APPLICATION_ERROR(-20999,
+                'a date format needs a year, a month and a day: ' || p_fmt);
+        END IF;
+        RETURN TO_CHAR(TO_TIMESTAMP(p_s, p_fmt, 'NLS_DATE_LANGUAGE=ENGLISH'),
+            'YYYY-MM-DD"T"HH24:MI:SS');
+    END;"""
 
 BUILTIN_FUNCTIONS: dict[str, FunctionImpl] = {
     "coalesce": FunctionImpl(
@@ -347,6 +437,34 @@ BUILTIN_FUNCTIONS: dict[str, FunctionImpl] = {
     "split_nth": FunctionImpl(
         name="split_nth",
         target_templates={"plsql": _split_nth_plsql},
+    ),
+    "split_last": FunctionImpl(
+        name="split_last",
+        target_templates={
+            "plsql": "(CASE WHEN INSTR({0}, {1}, -1) = 0 THEN {0} "
+            "ELSE SUBSTR({0}, INSTR({0}, {1}, -1) + LENGTH({1})) END)"
+        },
+    ),
+    "is_digits": FunctionImpl(
+        name="is_digits",
+        target_templates={
+            "plsql": "(CASE WHEN {0} IS NULL THEN NULL "
+            "WHEN REGEXP_LIKE({0}, '^[0-9]+$') THEN TRUE ELSE FALSE END)"
+        },
+    ),
+    "days_between": FunctionImpl(
+        name="days_between",
+        target_templates={
+            "plsql": "(TO_DATE(SUBSTR(TRIM({1}), 1, 10), 'YYYY-MM-DD') "
+            "- TO_DATE(SUBSTR(TRIM({0}), 1, 10), 'YYYY-MM-DD'))"
+        },
+    ),
+    "add_days": FunctionImpl(
+        name="add_days",
+        target_templates={
+            "plsql": "TO_CHAR(TO_DATE(SUBSTR(TRIM({0}), 1, 10), 'YYYY-MM-DD') + TRUNC({1}), "
+            "'YYYY-MM-DD')"
+        },
     ),
     "lookup": FunctionImpl(
         name="lookup",
@@ -383,12 +501,33 @@ BUILTIN_FUNCTIONS: dict[str, FunctionImpl] = {
     # these two live in the functions package only (statements, not one expression)
     "to_utc": FunctionImpl(name="to_utc", target_templates={"plsql": "NULL"}),
     "rfc3339_normalize": FunctionImpl(name="rfc3339_normalize", target_templates={"plsql": "NULL"}),
+    "upper": FunctionImpl(name="upper", target_templates={"plsql": "UPPER({0})"}),
+    "lower": FunctionImpl(name="lower", target_templates={"plsql": "LOWER({0})"}),
+    "trim": FunctionImpl(name="trim", target_templates={"plsql": "TRIM({0})"}),
+    "length": FunctionImpl(name="length", target_templates={"plsql": "LENGTH({0})"}),
+    "substring": FunctionImpl(name="substring", target_templates={"plsql": _substring_plsql}),
+    "left": FunctionImpl(name="left", target_templates={"plsql": "SUBSTR({0}, 1, {1})"}),
+    "right": FunctionImpl(name="right", target_templates={"plsql": _right_plsql}),
+    "pad_left": FunctionImpl(name="pad_left", target_templates={"plsql": _pad_plsql("LPAD")}),
+    "pad_right": FunctionImpl(name="pad_right", target_templates={"plsql": _pad_plsql("RPAD")}),
+    "contains": FunctionImpl(
+        name="contains",
+        target_templates={"plsql": "(CASE WHEN INSTR({0}, {1}) > 0 THEN TRUE ELSE FALSE END)"},
+    ),
+    "starts_with": FunctionImpl(name="starts_with", target_templates={"plsql": _starts_with_plsql}),
+    "ends_with": FunctionImpl(name="ends_with", target_templates={"plsql": _ends_with_plsql}),
+    "abs": FunctionImpl(name="abs", target_templates={"plsql": "ABS({0})"}),
+    "floor": FunctionImpl(name="floor", target_templates={"plsql": "FLOOR({0})"}),
+    "ceil": FunctionImpl(name="ceil", target_templates={"plsql": "CEIL({0})"}),
+    # lives in the functions package only (statements, not one expression)
+    "format_date": FunctionImpl(name="format_date", target_templates={"plsql": "NULL"}),
+    "parse_timestamp": FunctionImpl(name="parse_timestamp", target_templates={"plsql": "NULL"}),
     "count": FunctionImpl(
         # Trivial (no accumulator needed) — max/min/sum/avg need a native
         # loop and are lowered specially by the Code Generator
         # (`_materialize_aggregate`), not routed through here.
         name="count",
-        target_templates={"plsql": "{0}.get_size"},
+        target_templates={"plsql": "(CASE WHEN {0} IS NULL THEN 0 ELSE {0}.get_size END)"},
     ),
 }
 
@@ -505,11 +644,34 @@ LIBRARY_FUNCTIONS: dict[str, LibraryFunction] = {
     "to_number": LibraryFunction(
         "p_el IN JSON_ELEMENT_T", "NUMBER", ["p_el"], lambda a: "NULL", body=_TO_NUMBER_BODY
     ),
+    # the second argument may be left out: the fraction of a second as written
     "to_utc": LibraryFunction(
-        "p_s IN VARCHAR2", "VARCHAR2", ["p_s"], lambda a: "NULL", body=_TO_UTC_BODY
+        "p_s IN VARCHAR2, p_digits IN NUMBER DEFAULT NULL",
+        "VARCHAR2",
+        ["p_s", "p_digits"],
+        lambda a: "NULL",
+        body=_TO_UTC_BODY,
     ),
     "rfc3339_normalize": LibraryFunction(
-        "p_s IN VARCHAR2", "VARCHAR2", ["p_s"], lambda a: "NULL", body=_RFC3339_BODY
+        "p_s IN VARCHAR2, p_digits IN NUMBER DEFAULT NULL",
+        "VARCHAR2",
+        ["p_s", "p_digits"],
+        lambda a: "NULL",
+        body=_RFC3339_BODY,
+    ),
+    "parse_timestamp": LibraryFunction(
+        "p_s IN VARCHAR2, p_fmt IN VARCHAR2",
+        "VARCHAR2",
+        ["p_s", "p_fmt"],
+        lambda a: "NULL",
+        body=_PARSE_TIMESTAMP_BODY,
+    ),
+    "format_date": LibraryFunction(
+        "p_s IN VARCHAR2, p_fmt IN VARCHAR2",
+        "VARCHAR2",
+        ["p_s", "p_fmt"],
+        lambda a: "NULL",
+        body=_FORMAT_DATE_BODY,
     ),
     # 2 or 3 arguments: the default is the third, NULL when absent
     "lookup": LibraryFunction(

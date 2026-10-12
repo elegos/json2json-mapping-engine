@@ -15,12 +15,24 @@ END ENUMERATE_SORTED;
 CREATE OR REPLACE PACKAGE BODY ENUMERATE_SORTED AS
     FUNCTION fn_enumerate_sorted_line_rule(p_idx IN NUMBER, p_itm IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN JSON_OBJECT_T IS
         v_line_rule__dc JSON_OBJECT_T;
+        v_val_line_rule__v0 NUMBER;
+        v_val_line_rule__v1 VARCHAR2(4000 CHAR);
+        v_val_line_rule__v2 NUMBER;
     BEGIN
         p_omitted := FALSE;
         v_line_rule__dc := JSON_OBJECT_T();
-        v_line_rule__dc.put('Position', p_idx);
-        v_line_rule__dc.put('LineId', p_itm.get_String('id'));
-        v_line_rule__dc.put('Price', p_itm.get_Number('price'));
+        v_val_line_rule__v0 := p_idx;
+        IF v_val_line_rule__v0 IS NOT NULL THEN
+            v_line_rule__dc.put('Position', v_val_line_rule__v0);
+        END IF;
+        v_val_line_rule__v1 := p_itm.get_String('id');
+        IF v_val_line_rule__v1 IS NOT NULL THEN
+            v_line_rule__dc.put('LineId', v_val_line_rule__v1);
+        END IF;
+        v_val_line_rule__v2 := p_itm.get_Number('price');
+        IF v_val_line_rule__v2 IS NOT NULL THEN
+            v_line_rule__dc.put('Price', v_val_line_rule__v2);
+        END IF;
         RETURN v_line_rule__dc;
     END fn_enumerate_sorted_line_rule;
 
@@ -35,45 +47,48 @@ CREATE OR REPLACE PACKAGE BODY ENUMERATE_SORTED AS
         v_arr_Lines JSON_ARRAY_T := JSON_ARRAY_T();
     BEGIN
         DECLARE
-            v_forarr_0 JSON_ARRAY_T := TREAT(v_srcroot.get_Array('items').clone AS JSON_ARRAY_T);
+            v_forarr_0 JSON_ARRAY_T := v_srcroot.get_Array('items');
         BEGIN
-            DECLARE
-                v_sortj_0 PLS_INTEGER;
-                v_sorttmp_0 JSON_ELEMENT_T;
-                v_sorttmpkey_0 JSON_ELEMENT_T;
-            BEGIN
-                FOR v_sortk_0 IN 1 .. v_forarr_0.get_size - 1 LOOP
-                    v_sorttmp_0 := v_forarr_0.get(v_sortk_0);
-                    v_sorttmpkey_0 := TREAT(v_sorttmp_0 AS JSON_OBJECT_T).get('price');
-                    v_sortj_0 := v_sortk_0 - 1;
-                    WHILE v_sortj_0 >= 0 AND TREAT(v_forarr_0.get(v_sortj_0) AS JSON_OBJECT_T).get('price').compare_to(v_sorttmpkey_0) > 0 LOOP
-                        v_forarr_0.put(v_sortj_0 + 1, v_forarr_0.get(v_sortj_0), TRUE);
-                        v_sortj_0 := v_sortj_0 - 1;
-                    END LOOP;
-                    v_forarr_0.put(v_sortj_0 + 1, v_sorttmp_0, TRUE);
-                END LOOP;
-            END;
-            FOR v_i_0 IN 0 .. v_forarr_0.get_size - 1 LOOP
+            IF v_forarr_0 IS NOT NULL THEN
+                v_forarr_0 := TREAT(v_forarr_0.clone AS JSON_ARRAY_T);
                 DECLARE
-                    v_itm JSON_OBJECT_T := TREAT(v_forarr_0.get(v_i_0) AS JSON_OBJECT_T);
-                    v_i NUMBER := v_i_0 + 1;
+                    v_sortj_0 PLS_INTEGER;
+                    v_sorttmp_0 JSON_ELEMENT_T;
+                    v_sorttmpkey_0 JSON_ELEMENT_T;
                 BEGIN
-                    DECLARE
-                        v_result_line_rule JSON_OBJECT_T;
-                        v_omitted_line_rule BOOLEAN;
-                    BEGIN
-                        v_result_line_rule := fn_enumerate_sorted_line_rule(v_i, v_itm, v_omitted_line_rule);
-                        IF NOT v_omitted_line_rule THEN
-                            v_arr_Lines.append(v_result_line_rule);
-                        END IF;
-                    EXCEPTION
-                        WHEN OTHERS THEN
-                            IF NOT v_errors.EXISTS('line_rule') THEN
-                                v_errors('line_rule') := SQLERRM;
-                            END IF;
-                    END;
+                    FOR v_sortk_0 IN 1 .. v_forarr_0.get_size - 1 LOOP
+                        v_sorttmp_0 := v_forarr_0.get(v_sortk_0);
+                        v_sorttmpkey_0 := TREAT(v_sorttmp_0 AS JSON_OBJECT_T).get('price');
+                        v_sortj_0 := v_sortk_0 - 1;
+                        WHILE v_sortj_0 >= 0 AND TREAT(v_forarr_0.get(v_sortj_0) AS JSON_OBJECT_T).get('price').compare_to(v_sorttmpkey_0) > 0 LOOP
+                            v_forarr_0.put(v_sortj_0 + 1, v_forarr_0.get(v_sortj_0), TRUE);
+                            v_sortj_0 := v_sortj_0 - 1;
+                        END LOOP;
+                        v_forarr_0.put(v_sortj_0 + 1, v_sorttmp_0, TRUE);
+                    END LOOP;
                 END;
-            END LOOP;
+                FOR v_i_0 IN 0 .. v_forarr_0.get_size - 1 LOOP
+                    DECLARE
+                        v_itm JSON_OBJECT_T := TREAT(v_forarr_0.get(v_i_0) AS JSON_OBJECT_T);
+                    v_i NUMBER := v_i_0 + 1;
+                    BEGIN
+                        DECLARE
+                            v_result_line_rule JSON_OBJECT_T;
+                            v_omitted_line_rule BOOLEAN;
+                        BEGIN
+                            v_result_line_rule := fn_enumerate_sorted_line_rule(v_i, v_itm, v_omitted_line_rule);
+                            IF NOT v_omitted_line_rule THEN
+                                v_arr_Lines.append(v_result_line_rule);
+                            END IF;
+                        EXCEPTION
+                            WHEN OTHERS THEN
+                                IF NOT v_errors.EXISTS('line_rule') THEN
+                                    v_errors('line_rule') := SQLERRM;
+                                END IF;
+                        END;
+                    END;
+                END LOOP;
+            END IF;
         END;
 
         IF v_errors.COUNT > 0 THEN
@@ -127,45 +142,48 @@ CREATE OR REPLACE PACKAGE BODY ENUMERATE_SORTED AS
         v_arr_Lines JSON_ARRAY_T := JSON_ARRAY_T();
     BEGIN
         DECLARE
-            v_forarr_0 JSON_ARRAY_T := TREAT(v_srcroot.get_Array('items').clone AS JSON_ARRAY_T);
+            v_forarr_0 JSON_ARRAY_T := v_srcroot.get_Array('items');
         BEGIN
-            DECLARE
-                v_sortj_0 PLS_INTEGER;
-                v_sorttmp_0 JSON_ELEMENT_T;
-                v_sorttmpkey_0 JSON_ELEMENT_T;
-            BEGIN
-                FOR v_sortk_0 IN 1 .. v_forarr_0.get_size - 1 LOOP
-                    v_sorttmp_0 := v_forarr_0.get(v_sortk_0);
-                    v_sorttmpkey_0 := TREAT(v_sorttmp_0 AS JSON_OBJECT_T).get('price');
-                    v_sortj_0 := v_sortk_0 - 1;
-                    WHILE v_sortj_0 >= 0 AND TREAT(v_forarr_0.get(v_sortj_0) AS JSON_OBJECT_T).get('price').compare_to(v_sorttmpkey_0) > 0 LOOP
-                        v_forarr_0.put(v_sortj_0 + 1, v_forarr_0.get(v_sortj_0), TRUE);
-                        v_sortj_0 := v_sortj_0 - 1;
-                    END LOOP;
-                    v_forarr_0.put(v_sortj_0 + 1, v_sorttmp_0, TRUE);
-                END LOOP;
-            END;
-            FOR v_i_0 IN 0 .. v_forarr_0.get_size - 1 LOOP
+            IF v_forarr_0 IS NOT NULL THEN
+                v_forarr_0 := TREAT(v_forarr_0.clone AS JSON_ARRAY_T);
                 DECLARE
-                    v_itm JSON_OBJECT_T := TREAT(v_forarr_0.get(v_i_0) AS JSON_OBJECT_T);
-                    v_i NUMBER := v_i_0 + 1;
+                    v_sortj_0 PLS_INTEGER;
+                    v_sorttmp_0 JSON_ELEMENT_T;
+                    v_sorttmpkey_0 JSON_ELEMENT_T;
                 BEGIN
-                    DECLARE
-                        v_result_line_rule JSON_OBJECT_T;
-                        v_omitted_line_rule BOOLEAN;
-                    BEGIN
-                        v_result_line_rule := fn_enumerate_sorted_line_rule(v_i, v_itm, v_omitted_line_rule);
-                        IF NOT v_omitted_line_rule THEN
-                            v_arr_Lines.append(v_result_line_rule);
-                        END IF;
-                    EXCEPTION
-                        WHEN OTHERS THEN
-                            IF NOT v_errors.EXISTS('line_rule') THEN
-                                v_errors('line_rule') := SQLERRM;
-                            END IF;
-                    END;
+                    FOR v_sortk_0 IN 1 .. v_forarr_0.get_size - 1 LOOP
+                        v_sorttmp_0 := v_forarr_0.get(v_sortk_0);
+                        v_sorttmpkey_0 := TREAT(v_sorttmp_0 AS JSON_OBJECT_T).get('price');
+                        v_sortj_0 := v_sortk_0 - 1;
+                        WHILE v_sortj_0 >= 0 AND TREAT(v_forarr_0.get(v_sortj_0) AS JSON_OBJECT_T).get('price').compare_to(v_sorttmpkey_0) > 0 LOOP
+                            v_forarr_0.put(v_sortj_0 + 1, v_forarr_0.get(v_sortj_0), TRUE);
+                            v_sortj_0 := v_sortj_0 - 1;
+                        END LOOP;
+                        v_forarr_0.put(v_sortj_0 + 1, v_sorttmp_0, TRUE);
+                    END LOOP;
                 END;
-            END LOOP;
+                FOR v_i_0 IN 0 .. v_forarr_0.get_size - 1 LOOP
+                    DECLARE
+                        v_itm JSON_OBJECT_T := TREAT(v_forarr_0.get(v_i_0) AS JSON_OBJECT_T);
+                    v_i NUMBER := v_i_0 + 1;
+                    BEGIN
+                        DECLARE
+                            v_result_line_rule JSON_OBJECT_T;
+                            v_omitted_line_rule BOOLEAN;
+                        BEGIN
+                            v_result_line_rule := fn_enumerate_sorted_line_rule(v_i, v_itm, v_omitted_line_rule);
+                            IF NOT v_omitted_line_rule THEN
+                                v_arr_Lines.append(v_result_line_rule);
+                            END IF;
+                        EXCEPTION
+                            WHEN OTHERS THEN
+                                IF NOT v_errors.EXISTS('line_rule') THEN
+                                    v_errors('line_rule') := SQLERRM;
+                                END IF;
+                        END;
+                    END;
+                END LOOP;
+            END IF;
         END;
 
         DECLARE

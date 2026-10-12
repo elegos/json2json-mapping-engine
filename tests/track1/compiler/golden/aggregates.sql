@@ -16,34 +16,51 @@ CREATE OR REPLACE PACKAGE BODY AGGREGATES AS
     FUNCTION fn_aggregates_max_price(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN NUMBER IS
         v_max_price__agg NUMBER;
         v_aggarr_0 JSON_ARRAY_T;
-        v_aggacc_0 JSON_ELEMENT_T;
-        v_aggcur_0 JSON_ELEMENT_T;
+        v_aggel_0 JSON_OBJECT_T;
+        v_aggval_0 NUMBER;
+        v_aggacc_0 NUMBER;
     BEGIN
         p_omitted := FALSE;
         v_aggarr_0 := p_root.get_Array('items');
         v_aggacc_0 := NULL;
-        FOR v_aggk_0 IN 0 .. v_aggarr_0.get_size - 1 LOOP
-            v_aggcur_0 := TREAT(v_aggarr_0.get(v_aggk_0) AS JSON_OBJECT_T).get('price');
-            IF v_aggacc_0 IS NULL OR v_aggcur_0.compare_to(v_aggacc_0) > 0 THEN
-                v_aggacc_0 := v_aggcur_0;
-            END IF;
-        END LOOP;
-        v_max_price__agg := v_aggacc_0.to_number();
+        IF v_aggarr_0 IS NOT NULL THEN
+            FOR v_aggk_0 IN 0 .. v_aggarr_0.get_size - 1 LOOP
+                v_aggel_0 := TREAT(v_aggarr_0.get(v_aggk_0) AS JSON_OBJECT_T);
+                v_aggval_0 := v_aggel_0.get_Number('price');
+                IF v_aggval_0 IS NOT NULL THEN
+                    IF v_aggacc_0 IS NULL OR v_aggval_0 > v_aggacc_0 THEN v_aggacc_0 := v_aggval_0; END IF;
+                END IF;
+            END LOOP;
+        END IF;
+        v_max_price__agg := v_aggacc_0;
+        IF v_max_price__agg IS NULL THEN p_omitted := TRUE; END IF;
         RETURN v_max_price__agg;
     END fn_aggregates_max_price;
 
     FUNCTION fn_aggregates_total_price(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN NUMBER IS
         v_total_price__agg NUMBER;
         v_aggarr_1 JSON_ARRAY_T;
+        v_aggel_1 JSON_OBJECT_T;
+        v_aggval_1 NUMBER;
         v_aggacc_1 NUMBER;
+        v_aggn_1 NUMBER;
     BEGIN
         p_omitted := FALSE;
         v_aggarr_1 := p_root.get_Array('items');
         v_aggacc_1 := 0;
-        FOR v_aggk_1 IN 0 .. v_aggarr_1.get_size - 1 LOOP
-            v_aggacc_1 := v_aggacc_1 + TREAT(v_aggarr_1.get(v_aggk_1) AS JSON_OBJECT_T).get_Number('price');
-        END LOOP;
+        v_aggn_1 := 0;
+        IF v_aggarr_1 IS NOT NULL THEN
+            FOR v_aggk_1 IN 0 .. v_aggarr_1.get_size - 1 LOOP
+                v_aggel_1 := TREAT(v_aggarr_1.get(v_aggk_1) AS JSON_OBJECT_T);
+                v_aggval_1 := v_aggel_1.get_Number('price');
+                IF v_aggval_1 IS NOT NULL THEN
+                    v_aggacc_1 := v_aggacc_1 + v_aggval_1;
+                    v_aggn_1 := v_aggn_1 + 1;
+                END IF;
+            END LOOP;
+        END IF;
         v_total_price__agg := v_aggacc_1;
+        IF v_total_price__agg IS NULL THEN p_omitted := TRUE; END IF;
         RETURN v_total_price__agg;
     END fn_aggregates_total_price;
 
@@ -84,8 +101,13 @@ CREATE OR REPLACE PACKAGE BODY AGGREGATES AS
                     v_errors('total_price') := SQLERRM;
                 END IF;
         END;
+        DECLARE
+            v_val_o_ItemCount NUMBER;
         BEGIN
-            v_out_obj.put('ItemCount', v_srcroot.get_Array('items').get_size);
+            v_val_o_ItemCount := (CASE WHEN v_srcroot.get_Array('items') IS NULL THEN 0 ELSE v_srcroot.get_Array('items').get_size END);
+            IF v_val_o_ItemCount IS NOT NULL THEN
+                v_out_obj.put('ItemCount', v_val_o_ItemCount);
+            END IF;
         EXCEPTION
             WHEN OTHERS THEN
                 IF NOT v_errors.EXISTS('ItemCount') THEN
@@ -169,8 +191,13 @@ CREATE OR REPLACE PACKAGE BODY AGGREGATES AS
                     v_errors('total_price') := SQLERRM;
                 END IF;
         END;
+        DECLARE
+            v_val_o_ItemCount NUMBER;
         BEGIN
-            v_out_obj.put('ItemCount', v_srcroot.get_Array('items').get_size);
+            v_val_o_ItemCount := (CASE WHEN v_srcroot.get_Array('items') IS NULL THEN 0 ELSE v_srcroot.get_Array('items').get_size END);
+            IF v_val_o_ItemCount IS NOT NULL THEN
+                v_out_obj.put('ItemCount', v_val_o_ItemCount);
+            END IF;
         EXCEPTION
             WHEN OTHERS THEN
                 IF NOT v_errors.EXISTS('ItemCount') THEN

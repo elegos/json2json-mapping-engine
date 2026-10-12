@@ -65,8 +65,11 @@ def test_dataclass_construction_and_array_append():
     # text — no RETURNING CLOB, no 4000-byte VARCHAR2 ceiling.
     assert "JSON_OBJECT(" not in sql
     assert "RETURNING CLOB" not in sql
-    assert "v_line_rule__dc.put('LineId', p_itm.get_String('id'));" in sql
-    assert "v_line_rule__dc.put('LineAmount', p_itm.get_Number('price'));" in sql
+    # a value that is NULL (None) is not written
+    assert "v_val_line_rule__v0 := p_itm.get_String('id');" in sql
+    assert "IF v_val_line_rule__v0 IS NOT NULL THEN" in sql
+    assert "v_line_rule__dc.put('LineId', v_val_line_rule__v0);" in sql
+    assert "v_line_rule__dc.put('LineAmount', v_val_line_rule__v1);" in sql
     assert "v_arr_Lines.append(v_result_line_rule);" in sql
     assert "v_out_obj.put('Lines', v_arr_Lines);" in sql
 

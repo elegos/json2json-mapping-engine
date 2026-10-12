@@ -124,6 +124,7 @@ from compiler.loop_fusion import (
     wrap_filter,
 )
 from compiler.loop_iter import LoopIterError, parse_for_iter, parse_for_target
+from compiler.validation import SCHEMA_CODE, Validation, schema_hash
 
 # PL/SQL requires a VARCHAR2 *variable* declaration to carry a size (unlike
 # a function RETURN type or PARAMETER type, which must NOT — see
@@ -203,8 +204,30 @@ _BUILTIN_ARG_EXPECTED: dict[str, list[str | None]] = {
     "to_number": ["VARCHAR2"],
     "to_string": ["NUMBER"],
     "is_empty": [None, "BOOLEAN"],
-    "to_utc": ["VARCHAR2"],
-    "rfc3339_normalize": ["VARCHAR2"],
+    "to_utc": ["VARCHAR2", "NUMBER"],
+    "rfc3339_normalize": ["VARCHAR2", "NUMBER"],
+    "parse_timestamp": ["VARCHAR2", "VARCHAR2"],
+    "split_last": ["VARCHAR2", "VARCHAR2"],
+    "is_digits": ["VARCHAR2"],
+    "days_between": ["VARCHAR2", "VARCHAR2"],
+    "add_days": ["VARCHAR2", "NUMBER"],
+    "join": ["ARRAY", "VARCHAR2"],
+    "upper": ["VARCHAR2"],
+    "lower": ["VARCHAR2"],
+    "trim": ["VARCHAR2"],
+    "length": ["VARCHAR2"],
+    "substring": ["VARCHAR2", "NUMBER", "NUMBER"],
+    "left": ["VARCHAR2", "NUMBER"],
+    "right": ["VARCHAR2", "NUMBER"],
+    "pad_left": ["VARCHAR2", "NUMBER", "VARCHAR2"],
+    "pad_right": ["VARCHAR2", "NUMBER", "VARCHAR2"],
+    "contains": ["VARCHAR2", "VARCHAR2"],
+    "starts_with": ["VARCHAR2", "VARCHAR2"],
+    "ends_with": ["VARCHAR2", "VARCHAR2"],
+    "format_date": ["VARCHAR2", "VARCHAR2"],
+    "abs": ["NUMBER"],
+    "floor": ["NUMBER"],
+    "ceil": ["NUMBER"],
 }
 
 # Conservative target for the *entries* JSON, leaving margin under the
@@ -233,6 +256,8 @@ class PlsqlUnit(CompiledUnit):
     entry_points: list[PlsqlSubprogram]
     # built-ins called in the shared functions package (names, sorted)
     library_functions: list[str] = field(default_factory=list)
+    # the mapping checks its input and/or output: its `_safe` has one more OUT parameter, the report
+    validated: bool = False
 
     def to_json(self) -> dict:
         return asdict(self)
@@ -244,6 +269,7 @@ class PlsqlUnit(CompiledUnit):
             rule_functions=[PlsqlSubprogram(**d) for d in data["rule_functions"]],
             entry_points=[PlsqlSubprogram(**d) for d in data["entry_points"]],
             library_functions=list(data.get("library_functions", [])),
+            validated=bool(data.get("validated", False)),
         )
 
 
@@ -258,6 +284,26 @@ def _check_identifier(name: str) -> str:
             "limit — shorten the mapping id or rule name"
         )
     return name
+
+
+# the report of the checks of a mapping that validates (shared by its two entry points)
+_REPORT_DECLS = [
+    "v_report   JSON_ARRAY_T := JSON_ARRAY_T();",
+    "v_rejected BOOLEAN := FALSE;",
+    "v_schema_failed_input  BOOLEAN := FALSE;",
+    "v_schema_failed_output BOOLEAN := FALSE;",
+    "PROCEDURE add_failed(p_side IN VARCHAR2, p_code IN VARCHAR2, p_message IN VARCHAR2,"
+    " p_action IN VARCHAR2) IS",
+    "    v_item JSON_OBJECT_T := JSON_OBJECT_T();",
+    "BEGIN",
+    "    v_item.put('side', p_side);",
+    "    v_item.put('code', p_code);",
+    "    v_item.put('message', p_message);",
+    "    v_item.put('action', p_action);",
+    "    v_report.append(v_item);",
+    "    IF p_action = 'reject' THEN v_rejected := TRUE; END IF;",
+    "END add_failed;",
+]
 
 
 def _quote(s: str) -> str:
@@ -454,8 +500,12 @@ class _FlowCtx:
     def __init__(self, loop_vars: list[str]):
         # Innermost last — used only for `src` (nearest enclosing loop).
         self.loop_vars = loop_vars
+        # the variable of an aggregate's comprehension (`x` in `sum(x.v for x in ...)`)
+        self.elements: dict[str, str] = {}
 
     def resolve_name(self, name: str) -> str | None:
+        if name in self.elements:
+            return self.elements[name]
         if name == "root":
             return "v_srcroot"
         if name == "src":
@@ -481,8 +531,12 @@ class _FnCtx:
         # locals bound from a rule-function call: name -> its `omitted` flag variable
         self.omit_flags: dict[str, str] = {}
         self.counter = itertools.count()  # temp names, loop-index counters
+        self.declared_names: set[str] = set()  # locals this code declared itself
+        self.elements: dict[str, str] = {}  # as in `_FlowCtx`
 
     def resolve_name(self, name: str) -> str | None:
+        if name in self.elements:
+            return self.elements[name]
         if name in self.params:
             return f"p_{name}"
         return None
@@ -773,6 +827,7 @@ def _materialize_dataclass(
     tmp_var: str,
     ctx: _FnCtx | None = None,
     loop_counter: itertools.count | None = None,
+    declarations: list[str] | None = None,
 ) -> list[str]:
     """Build a dataclass value **in memory**, field by field, into
     `tmp_var` — no text round-trip through `JSON_OBJECT()`/CLOB/VARCHAR2 at
@@ -802,7 +857,17 @@ def _materialize_dataclass(
         key = _quote(kw.arg)
         if ctx is None or loop_counter is None:
             value_expr = translator.translate(kw.value, expected)
-            lines.append(f"{tmp_var}.put({key}, {value_expr});")
+            if _is_explicit_null(kw.value):
+                lines.append(f"{tmp_var}.put({key}, {_TYPED_NULL});")
+            else:
+                lines.extend(
+                    _write_unless_null(
+                        value_expr, expected if declarations is not None else None,
+                        lambda e, k=key: f"{tmp_var}.put({k}, {e});",
+                        declarations.append if declarations is not None else (lambda d: None),
+                        f"{tmp_var.removeprefix('v_')}_{kw.arg}",
+                    )
+                )  # fmt: skip
         else:
             lines.extend(
                 _emit_value(
@@ -868,10 +933,16 @@ def _emit_value(
             return [f"IF NOT {ctx.omit_flags[value.id]} THEN", f"    {sink(var)}", "END IF;"]
         if ctx.locals[value.id] in ("ARRAY", "OBJECT"):
             return [sink(var)]
-    return [sink(translator.translate(value, expected))]
+    if _is_explicit_null(value):
+        return [sink(_TYPED_NULL)]
+    kind = expected or infer_type(value, ctx)
+    return _write_unless_null(
+        translator.translate(value, kind), kind, sink, ctx.declare,
+        f"{ctx.local_prefix}__v{next(ctx.counter)}",
+    )  # fmt: skip
 
 
-_AGGREGATE_FUNCS = {"max", "min", "sum", "avg"}
+_AGGREGATE_FUNCS = {"max", "min", "sum", "avg", "join"}
 
 _EXPECTED_TO_JSON_ELEMENT_EXTRACTOR = {
     "VARCHAR2": "to_string",
@@ -882,15 +953,161 @@ _EXPECTED_TO_JSON_ELEMENT_EXTRACTOR = {
 }
 
 
+# `put(key, NULL)` is ambiguous to PL/SQL (PLS-00307): an explicit null is a typed one
+_TYPED_NULL = "CAST(NULL AS NUMBER)"
+_SCALAR_KINDS = ("VARCHAR2", "NUMBER", "BOOLEAN", "DATE", "TIMESTAMP")
+
+
+def _is_explicit_null(node: ast.expr) -> bool:
+    """`Null`: the explicit null, written as a null (a `None` writes nothing)."""
+    return isinstance(node, ast.Name) and node.id == "Null"
+
+
+def _write_unless_null(
+    value_expr: str,
+    kind: str | None,
+    sink: Callable[[str], str],
+    declare: Callable[[str], None],
+    name: str,
+) -> list[str]:
+    """A plain value reaches the output only if it is not NULL (a missing value writes nothing).
+    A scalar is computed once into a local; anything else is tested where it stands."""
+    if kind not in _SCALAR_KINDS:
+        return [f"IF {value_expr} IS NOT NULL THEN", f"    {sink(value_expr)}", "END IF;"]
+    var = f"v_val_{name}"
+    declare(f"{var} {_decl_type(kind)};")
+    return [f"{var} := {value_expr};", f"IF {var} IS NOT NULL THEN", f"    {sink(var)}", "END IF;"]
+
+
 def _is_aggregate_call(node: ast.expr, linker: FunctionLinker) -> bool:
-    """A `max` / `min` / `sum` / `avg` call that the backend lowers to a loop: not one the
-    project overrides (that one is an expression, its `@override(plsql=...)` template)."""
+    """A `max` / `min` / `sum` / `avg` / `join` call, or a `count` over a comprehension, that the backend
+    lowers to a loop: not one the project overrides (that one is an expression, its
+    `@override(plsql=...)` template)."""
     return (
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)
-        and node.func.id in _AGGREGATE_FUNCS
+        and (
+            node.func.id in _AGGREGATE_FUNCS
+            or (
+                node.func.id == "count"
+                and len(node.args) == 1
+                and isinstance(node.args[0], ast.GeneratorExp)
+            )
+        )
         and not linker.overrides(node.func.id)
     )
+
+
+def _materialize_comprehension_aggregate(
+    call: ast.Call,
+    translator: _ExprTranslator,
+    tmp_var: str,
+    return_expected: str,
+    agg_idx: int,
+    declarations: list[str],
+) -> list[str]:
+    """`sum(expr for x in list if cond)` (and `max`, `min`, `avg`, `count`): one loop over the
+    list, the value computed for each element that passes the condition. A missing value is
+    skipped, as SQL does; nothing left gives 0 for `sum` and `count`, NULL for the others."""
+    assert isinstance(call.func, ast.Name)
+    fname = call.func.id
+    gen_exp = call.args[0]
+    assert isinstance(gen_exp, ast.GeneratorExp)
+    if fname == "join" and len(call.args) == 1:
+        call = ast.Call(func=call.func, args=[gen_exp, ast.Constant(value="")], keywords=[])
+    if len(call.args) != (2 if fname == "join" else 1) or call.keywords:
+        raise CodeGenError(
+            f"{fname}(... for ... in ...) takes the comprehension"
+            + (" and the separator" if fname == "join" else " alone")
+        )
+    if len(gen_exp.generators) != 1 or gen_exp.generators[0].is_async:
+        raise CodeGenError(f"{fname}(...) takes one `for` and optional `if`s")
+    gen = gen_exp.generators[0]
+    if not isinstance(gen.target, ast.Name):
+        raise CodeGenError(f"{fname}(...): the `for` variable must be a plain name")
+    ctx = translator.ctx
+    if gen.target.id in ctx.elements:
+        raise CodeGenError(
+            f"{fname}(...): '{gen.target.id}' is already the variable of an aggregate"
+        )
+
+    arr_var = f"v_aggarr_{agg_idx}"
+    k_var = f"v_aggk_{agg_idx}"
+    item_var = f"v_aggel_{agg_idx}"
+    acc_var = f"v_aggacc_{agg_idx}"
+    val_var = f"v_aggval_{agg_idx}"
+    n_var = f"v_aggn_{agg_idx}"
+    array_expr = translator.translate(gen.iter, "ARRAY")
+    separator = translator.translate(call.args[1], "VARCHAR2") if fname == "join" else ""
+    ctx.elements[gen.target.id] = item_var
+    try:
+        conditions = [translator.condition(c) for c in gen.ifs]
+        value_type = (
+            "VARCHAR2"
+            if fname == "join"
+            else "NUMBER"
+            if fname in ("sum", "avg") or return_expected not in _EXPECTED_TO_DECL_TYPE
+            else return_expected
+        )
+        value = translator.translate(gen_exp.elt, value_type) if fname != "count" else ""
+    finally:
+        del ctx.elements[gen.target.id]
+
+    declarations.extend([f"{arr_var} JSON_ARRAY_T;", f"{item_var} JSON_OBJECT_T;"])
+    if fname == "count":
+        declarations.append(f"{n_var} NUMBER;")
+        init, step = [f"{n_var} := 0;"], [f"{n_var} := {n_var} + 1;"]
+        done = [f"{tmp_var} := {n_var};"]
+    else:
+        decl = _decl_type(value_type)
+        declarations.extend([f"{val_var} {decl};"])
+        if fname == "join":
+            declarations.append(f"{acc_var} VARCHAR2(32767);")
+            init = [f"{acc_var} := NULL;"]
+            step = [
+                f"IF {acc_var} IS NULL THEN {acc_var} := {val_var}; "
+                f"ELSE {acc_var} := {acc_var} || {separator} || {val_var}; END IF;"
+            ]
+            done = [f"{tmp_var} := {acc_var};"]
+        elif fname in ("sum", "avg"):
+            declarations.extend([f"{acc_var} NUMBER;", f"{n_var} NUMBER;"])
+            init = [f"{acc_var} := 0;", f"{n_var} := 0;"]
+            step = [f"{acc_var} := {acc_var} + {val_var};", f"{n_var} := {n_var} + 1;"]
+            done = (
+                [f"{tmp_var} := {acc_var};"]
+                if fname == "sum"
+                else [f"IF {n_var} > 0 THEN {tmp_var} := {acc_var} / {n_var}; END IF;"]
+            )
+        else:
+            declarations.append(f"{acc_var} {decl};")
+            op = ">" if fname == "max" else "<"
+            init = [f"{acc_var} := NULL;"]
+            step = [
+                f"IF {acc_var} IS NULL OR {val_var} {op} {acc_var} THEN {acc_var} := {val_var}; END IF;"
+            ]
+            done = [f"{tmp_var} := {acc_var};"]
+    # the condition first: the value of an element left out is never computed
+    inner = [*step]
+    if fname != "count":
+        inner = [
+            f"{val_var} := {value};",
+            f"IF {val_var} IS NOT NULL THEN",
+            *_indent(step),
+            "END IF;",
+        ]
+    if conditions:
+        inner = [f"IF {' AND '.join(conditions)} THEN", *_indent(inner), "END IF;"]
+    loop = [f"{item_var} := TREAT({arr_var}.get({k_var}) AS JSON_OBJECT_T);", *inner]
+    return [
+        f"{arr_var} := {array_expr};",
+        *init,
+        f"IF {arr_var} IS NOT NULL THEN",
+        f"    FOR {k_var} IN 0 .. {arr_var}.get_size - 1 LOOP",
+        *_indent(loop, 2),
+        "    END LOOP;",
+        "END IF;",
+        *done,
+    ]
 
 
 def _materialize_aggregate(
@@ -914,49 +1131,65 @@ def _materialize_aggregate(
     block around a guarded `out` write)."""
     assert isinstance(call.func, ast.Name)
     fname = call.func.id
+    if call.args and isinstance(call.args[0], ast.GeneratorExp):
+        return _materialize_comprehension_aggregate(
+            call, translator, tmp_var, return_expected, agg_idx, declarations
+        )
+    if fname == "join" and len(call.args) == 1:  # no separator: the texts one after the other
+        call = ast.Call(func=call.func, args=[call.args[0], ast.Constant(value="")], keywords=[])
     if len(call.args) != 2:
         raise CodeGenError(f"{fname}(...) requires exactly 2 arguments: (list, field_name)")
-    array_expr = translator.translate(call.args[0], "ARRAY")
+    if fname == "join":  # the texts of a list
+        arr_var, k_var, acc_var = (
+            f"v_aggarr_{agg_idx}",
+            f"v_aggk_{agg_idx}",
+            f"v_aggacc_{agg_idx}",
+        )
+        val_var = f"v_aggval_{agg_idx}"
+        declarations.extend(
+            [
+                f"{arr_var} JSON_ARRAY_T;",
+                f"{acc_var} VARCHAR2(32767);",
+                f"{val_var} VARCHAR2(32767);",
+            ]
+        )
+        return [
+            f"{arr_var} := {translator.translate(call.args[0], 'ARRAY')};",
+            f"{acc_var} := NULL;",
+            f"IF {arr_var} IS NOT NULL THEN",
+            f"    FOR {k_var} IN 0 .. {arr_var}.get_size - 1 LOOP",
+            f"        {val_var} := {arr_var}.get_String({k_var});",
+            f"        IF {val_var} IS NOT NULL THEN",
+            f"            IF {acc_var} IS NULL THEN {acc_var} := {val_var}; "
+            f"ELSE {acc_var} := {acc_var} || {translator.translate(call.args[1], 'VARCHAR2')} "
+            f"|| {val_var}; END IF;",
+            "        END IF;",
+            "    END LOOP;",
+            "END IF;",
+            f"{tmp_var} := {acc_var};",
+        ]
     field_node = call.args[1]
     if not (isinstance(field_node, ast.Constant) and isinstance(field_node.value, str)):
         raise CodeGenError(f"{fname}(...)'s second argument must be a string literal field name")
-    field = field_node.value
-    arr_var = f"v_aggarr_{agg_idx}"
-    k_var = f"v_aggk_{agg_idx}"
-    acc_var = f"v_aggacc_{agg_idx}"
-
-    if fname in ("max", "min"):
-        cur_var = f"v_aggcur_{agg_idx}"
-        op = ">" if fname == "max" else "<"
-        extractor = _EXPECTED_TO_JSON_ELEMENT_EXTRACTOR.get(return_expected, "to_number")
-        declarations.extend(
-            [f"{arr_var} JSON_ARRAY_T;", f"{acc_var} JSON_ELEMENT_T;", f"{cur_var} JSON_ELEMENT_T;"]
-        )
-        return [
-            f"{arr_var} := {array_expr};",
-            f"{acc_var} := NULL;",
-            f"FOR {k_var} IN 0 .. {arr_var}.get_size - 1 LOOP",
-            f"    {cur_var} := TREAT({arr_var}.get({k_var}) AS JSON_OBJECT_T).get({_quote(field)});",
-            f"    IF {acc_var} IS NULL OR {cur_var}.compare_to({acc_var}) {op} 0 THEN",
-            f"        {acc_var} := {cur_var};",
-            "    END IF;",
-            "END LOOP;",
-            f"{tmp_var} := {acc_var}.{extractor}();",
-        ]
-
-    declarations.extend([f"{arr_var} JSON_ARRAY_T;", f"{acc_var} NUMBER;"])
-    lines = [
-        f"{arr_var} := {array_expr};",
-        f"{acc_var} := 0;",
-        f"FOR {k_var} IN 0 .. {arr_var}.get_size - 1 LOOP",
-        f"    {acc_var} := {acc_var} + TREAT({arr_var}.get({k_var}) AS JSON_OBJECT_T).get_Number({_quote(field)});",
-        "END LOOP;",
-    ]
-    if fname == "avg":
-        lines.append(f"{tmp_var} := {acc_var} / {arr_var}.get_size;")
-    else:
-        lines.append(f"{tmp_var} := {acc_var};")
-    return lines
+    # `sum(list, "f")` is `sum(e.f for e in list)`: one lowering, the same rules for a missing
+    # list, a missing value and an empty set
+    element = ast.Name(id="_e", ctx=ast.Load())
+    comprehension = ast.GeneratorExp(
+        elt=ast.Attribute(value=element, attr=field_node.value, ctx=ast.Load()),
+        generators=[
+            ast.comprehension(
+                target=ast.Name(id="_e", ctx=ast.Store()), iter=call.args[0], ifs=[], is_async=0
+            )
+        ],
+    )
+    return _materialize_comprehension_aggregate(
+        ast.Call(func=call.func, args=[comprehension], keywords=[]),
+        translator,
+        tmp_var,
+        return_expected,
+        agg_idx,
+        declarations,
+    )
 
 
 def _access_chain(node: ast.expr) -> tuple[ast.expr, list[str | int]]:
@@ -970,11 +1203,12 @@ def _access_chain(node: ast.expr) -> tuple[ast.expr, list[str | int]]:
             cur = cur.value
         elif isinstance(cur, ast.Subscript):
             index = cur.slice
-            if not (
-                isinstance(index, ast.Constant) and type(index.value) is int and index.value >= 0
-            ):
+            if isinstance(index, ast.Constant) and isinstance(index.value, str):
+                segments.append(index.value)  # a field named like a keyword: x["return"]
+            elif isinstance(index, ast.Constant) and type(index.value) is int and index.value >= 0:
+                segments.append(index.value)
+            else:
                 raise CodeGenError("an array element is read by a constant position: x[0]")
-            segments.append(index.value)
             cur = cur.value
         else:
             break
@@ -1016,9 +1250,18 @@ def infer_type(node: ast.expr, ctx: _FnCtx) -> str:
             return infer_type(node.args[0], ctx)
         if fname == "if_else":
             return infer_type(node.args[1], ctx)
-        if fname in ("round", "trunc", "to_number"):
+        if fname in (
+            "round",
+            "trunc",
+            "to_number",
+            "length",
+            "abs",
+            "floor",
+            "ceil",
+            "days_between",
+        ):
             return "NUMBER"
-        if fname == "is_empty":
+        if fname in ("is_empty", "contains", "starts_with", "ends_with", "is_digits"):
             return "BOOLEAN"
         if fname == "parse_date":
             return "DATE"
@@ -1053,6 +1296,47 @@ def _list_local_append(stmt: ast.stmt, ctx: _FnCtx) -> tuple[str, ast.expr] | No
             raise CodeGenError("`.append(...)` takes exactly one argument")
         return stmt.value.func.value.id, stmt.value.args[0]
     return None
+
+
+class _AggregateHoister(ast.NodeTransformer):
+    """An aggregate inside a larger expression (`round(sum(...), 2)`, `count(...) + 1`) is a loop,
+    not an expression: it is computed first into a local of its own, which takes its place."""
+
+    def __init__(
+        self,
+        translator: _ExprTranslator,
+        ctx: _FnCtx,
+        loop_counter: itertools.count,
+        lines: list[str],
+    ):
+        self.translator = translator
+        self.ctx = ctx
+        self.loop_counter = loop_counter
+        self.lines = lines
+
+    def visit_Call(self, node: ast.Call) -> ast.expr:
+        if not _is_aggregate_call(node, self.translator.function_linker):
+            return self.generic_visit(node)  # type: ignore[return-value]
+        idx = next(self.loop_counter)
+        name = f"agg{idx}"
+        var = self.ctx.local_var(name)
+        self.ctx.locals[name] = "NUMBER"
+        self.ctx.declare(f"{var} NUMBER;")
+        self.lines.extend(
+            _materialize_aggregate(node, self.translator, var, "NUMBER", idx, self.ctx.declarations)
+        )
+        return ast.copy_location(ast.Name(id=name, ctx=ast.Load()), node)
+
+
+def _hoisted(
+    value: ast.expr,
+    translator: _ExprTranslator,
+    ctx: _FnCtx,
+    loop_counter: itertools.count,
+    lines: list[str],
+) -> ast.expr:
+    """`value` with its aggregates computed into locals (their loops appended to `lines`)."""
+    return _AggregateHoister(translator, ctx, loop_counter, lines).visit(value)
 
 
 def _translate_fn_body(
@@ -1117,6 +1401,7 @@ def _translate_fn_body(
                 call = f"{translator.fn_name(value.func.id)}({_call_args(sig, args, _ERRORS_PARAM, om)})"
                 out.extend(_isolated_call(value.func.id, call, mangled, om))
             else:
+                value = _hoisted(value, translator, ctx, loop_counter, out)
                 inferred = infer_type(value, ctx)
                 rhs = translator.translate(value, inferred)
                 if target.id not in ctx.locals:
@@ -1156,9 +1441,24 @@ def _translate_fn_body(
                         ctx.declarations,
                     )
                 )
+                out.append(f"IF {tmp_var} IS NULL THEN p_omitted := TRUE; END IF;")
                 out.append(f"RETURN {tmp_var};")
             else:
-                out.append(f"RETURN {translator.translate(stmt.value, return_expected)};")
+                returned = _hoisted(stmt.value, translator, ctx, loop_counter, out)
+                value_sql = translator.translate(returned, return_expected)
+                if return_expected in _SCALAR_KINDS and not (
+                    isinstance(returned, ast.Constant) and returned.value is not None
+                ):
+                    # a value that is NULL is nothing to write (`Null`, above, is the explicit null)
+                    ret = ctx.local_var("_ret")
+                    if ret not in ctx.declared_names:
+                        ctx.declared_names.add(ret)
+                        ctx.declare(f"{ret} {_decl_type(return_expected)};")
+                    out.append(f"{ret} := {value_sql};")
+                    out.append(f"IF {ret} IS NULL THEN p_omitted := TRUE; END IF;")
+                    out.append(f"RETURN {ret};")
+                else:
+                    out.append(f"RETURN {value_sql};")
         elif isinstance(stmt, ast.If):
             out.extend(_translate_fn_if(stmt, ctx, return_expected, translator, loop_counter))
         elif isinstance(stmt, ast.For):
@@ -1196,11 +1496,12 @@ def _translate_fn_for(
     ctx.declare(f"{arr} JSON_ARRAY_T;")
     lines: list[str] = []
     source = translator.translate(spec.array_expr, "ARRAY")
-    if spec.sort_key is not None:
-        lines.append(f"{arr} := TREAT({source}.clone AS JSON_ARRAY_T);")
-        lines.extend(_sort_lines(arr, spec.sort_key, spec.sort_reverse, n))
-    else:
-        lines.append(f"{arr} := {source};")
+    lines.append(f"{arr} := {source};")
+    if spec.sort_key is not None:  # (a list missing from the document is NULL: no elements)
+        lines.append(f"IF {arr} IS NOT NULL THEN")
+        lines.append(f"    {arr} := TREAT({arr}.clone AS JSON_ARRAY_T);")
+        lines.extend(_indent(_sort_lines(arr, spec.sort_key, spec.sort_reverse, n)))
+        lines.append("END IF;")
 
     for name in (item_var, *([index_var] if index_var else [])):
         if name not in ctx.locals:
@@ -1226,9 +1527,11 @@ def _translate_fn_for(
         offset = spec.enumerate_start or 0
         inner.append(f"{ctx.local_var(index_var)} := {k}" + (f" + {offset};" if offset else ";"))
     inner.extend(_translate_fn_body(body, ctx, return_expected, translator, loop_counter))
-    lines.append(f"FOR {k} IN 0 .. {arr}.get_size - 1 LOOP")
-    lines.extend(_indent(inner))
-    lines.append("END LOOP;")
+    lines.append(f"IF {arr} IS NOT NULL THEN")
+    lines.append(f"    FOR {k} IN 0 .. {arr}.get_size - 1 LOOP")
+    lines.extend(_indent(inner, 2))
+    lines.append("    END LOOP;")
+    lines.append("END IF;")
     return lines
 
 
@@ -1292,7 +1595,13 @@ class PlsqlCodeGenerator:
         """How a rule function is called: by name, it lives in the same package."""
         return _check_identifier(self.naming.rule(self._mapping_id, rule_id))
 
-    def compile_module(self, tree: ast.Module, mapping_id: str, scope_resolution=None) -> PlsqlUnit:
+    def compile_module(
+        self,
+        tree: ast.Module,
+        mapping_id: str,
+        scope_resolution=None,
+        validation: Validation | None = None,
+    ) -> PlsqlUnit:
         self._mapping_id = mapping_id
         self._library_used: set[str] = set()
         self._loop_counter = itertools.count()
@@ -1330,11 +1639,14 @@ class PlsqlCodeGenerator:
             list_accumulators=list_accumulators,
         )
 
+        if validation is not None:
+            function_texts += self._schema_functions(validation)
         entry_points = self._render(
             mapping_id,
             body_lines,
             list_accumulators,
             uses_rule_errors=any(sig.records_errors for sig in rule_signatures.values()),
+            validation=validation,
         )
         parallel = {
             name: degree
@@ -1349,7 +1661,31 @@ class PlsqlCodeGenerator:
             rule_functions=function_texts,
             entry_points=entry_points,
             library_functions=sorted(self._library_used),
+            validated=validation is not None,
         )
+
+    def _schema_name(self, side: str) -> str:
+        return _check_identifier(self.naming.rule(self._mapping_id, f"validation_schema_{side}"))
+
+    def _schema_functions(self, validation: Validation) -> list[PlsqlSubprogram]:
+        """For each side that validates against its JSON Schema, a private function that gives the
+        schema as a CLOB. The text is embedded in the package (written in pieces, a literal is
+        short); its hash is in the comment, so a deployed package can be compared with the file."""
+        found: list[PlsqlSubprogram] = []
+        for side in ("input", "output"):
+            text = validation.schemas.get(side) if validation.side(side).schema else None
+            if text is None:
+                continue
+            name = self._schema_name(side)
+            pieces = [text[i : i + 1500] for i in range(0, len(text), 1500)] or [""]
+            joined = "\n        || ".join(f"TO_CLOB({_quote(piece)})" for piece in pieces)
+            spec = f"FUNCTION {name} RETURN CLOB;"
+            body = (
+                f"-- the {side} JSON Schema, sha256:{schema_hash(text)}\n"
+                f"FUNCTION {name} RETURN CLOB IS\nBEGIN\n    RETURN {joined};\nEND {name};"
+            )
+            found.append(PlsqlSubprogram(name, spec, body))
+        return found
 
     def _parallel_wrapper(self, mapping_id: str, degrees: dict[str, int]) -> PlsqlSubprogram:
         """`map_<id>_fn`: the SQL-callable, `PARALLEL_ENABLE` face of `map_<id>`.
@@ -1589,12 +1925,9 @@ class PlsqlCodeGenerator:
         if _is_dataclass_construction(value, translator.dataclasses):
             assert isinstance(value, ast.Call)
             tmp_var = f"v_dc_{field_name}"
-            setup_lines = _materialize_dataclass(value, translator, tmp_var)
-            return self._guarded(
-                field_name,
-                declare=[f"{tmp_var} JSON_OBJECT_T;"],
-                body=[*setup_lines, sink(tmp_var)],
-            )
+            declare = [f"{tmp_var} JSON_OBJECT_T;"]
+            setup_lines = _materialize_dataclass(value, translator, tmp_var, declarations=declare)
+            return self._guarded(field_name, declare=declare, body=[*setup_lines, sink(tmp_var)])
         if _is_aggregate_call(value, translator.function_linker):
             assert isinstance(value, ast.Call)
             fn_ctx_for_infer = _FnCtx(params=[], local_prefix="_")
@@ -1605,11 +1938,21 @@ class PlsqlCodeGenerator:
             setup_lines = _materialize_aggregate(
                 value, translator, tmp_var, inferred, next(self._loop_counter), declare
             )
-            return self._guarded(field_name, declare=declare, body=[*setup_lines, sink(tmp_var)])
+            body = [
+                *setup_lines,
+                f"IF {tmp_var} IS NOT NULL THEN",
+                f"    {sink(tmp_var)}",
+                "END IF;",
+            ]
+            return self._guarded(field_name, declare=declare, body=body)
         fn_ctx_for_infer = _FnCtx(params=[], local_prefix="_")
         inferred = infer_type(value, fn_ctx_for_infer)
         expr = translator.translate(value, inferred)
-        return self._guarded(field_name, declare=[], body=[sink(expr)])
+        if _is_explicit_null(value):
+            return self._guarded(field_name, declare=[], body=[sink(_TYPED_NULL)])
+        declare: list[str] = []
+        body = _write_unless_null(expr, inferred, sink, declare.append, f"o_{field_name}")
+        return self._guarded(field_name, declare=declare, body=body)
 
     def _guarded(self, rule_id: str, declare: list[str], body: list[str]) -> list[str]:
         lines = ["DECLARE"] if declare else []
@@ -1661,13 +2004,20 @@ class PlsqlCodeGenerator:
         # The in-place sort must work on a copy: `get_Array` hands back a
         # reference into the source document, so sorting it directly would
         # reorder the input under every other loop reading the same array.
-        if iter_spec.sort_key is not None:
-            setup_lines = [f"{arr_var} JSON_ARRAY_T := TREAT({source_expr}.clone AS JSON_ARRAY_T);"]
+        over_document = (
+            isinstance(iter_spec.array_expr, ast.Name) and iter_spec.array_expr.id == "root"
+        )
+        if over_document:
+            # `source: $`: the document is the one element of the loop
+            setup_lines = [f"{arr_var} JSON_ARRAY_T := JSON_ARRAY_T();"]
         else:
             setup_lines = [f"{arr_var} JSON_ARRAY_T := {source_expr};"]
         sort_lines: list[str] = []
         if iter_spec.sort_key is not None:
-            sort_lines = self._emit_sort(arr_var, iter_spec.sort_key, iter_spec.sort_reverse, idx)
+            sort_lines = [
+                f"{arr_var} := TREAT({arr_var}.clone AS JSON_ARRAY_T);",
+                *self._emit_sort(arr_var, iter_spec.sort_key, iter_spec.sort_reverse, idx),
+            ]
 
         inner_loop_vars = [*loop_vars, item_var]
         counted = _counted_indexes(stmt.body)
@@ -1694,18 +2044,22 @@ class PlsqlCodeGenerator:
             *(f"    {ln}" for ln in setup_lines),
             "BEGIN",
         ]
-        lines.extend(_indent(sort_lines))
+        if over_document:
+            lines.append(f"    {arr_var}.append({source_expr});")
+        # a list that is missing from the document has no elements (it is NULL here)
+        lines.append(f"    IF {arr_var} IS NOT NULL THEN")
+        lines.extend(_indent(sort_lines, 2))
         lines.extend(
             [
-                f"    FOR {idx_var} IN 0 .. {arr_var}.get_size - 1 LOOP",
-                "        DECLARE",
-                f"            v_{item_var} JSON_OBJECT_T := TREAT({arr_var}.get({idx_var}) AS JSON_OBJECT_T);"
+                f"        FOR {idx_var} IN 0 .. {arr_var}.get_size - 1 LOOP",
+                "            DECLARE",
+                f"                v_{item_var} JSON_OBJECT_T := TREAT({arr_var}.get({idx_var}) AS JSON_OBJECT_T);"
                 f"{index_decl}",
-                "        BEGIN",
+                "            BEGIN",
             ]
         )
-        lines.extend(_indent(inner_lines, 3))
-        lines.extend(["        END;", "    END LOOP;", "END;"])
+        lines.extend(_indent(inner_lines, 4))
+        lines.extend(["            END;", "        END LOOP;", "    END IF;", "END;"])
         return lines
 
     def _emit_sort(self, arr_var: str, key: str, reverse: bool, idx: int) -> list[str]:
@@ -1722,6 +2076,103 @@ class PlsqlCodeGenerator:
             and base.value.id == "out"
         )
 
+    # -- validation ---------------------------------------------------------
+
+    def _check_lines(
+        self, validation: Validation | None, side: str, document_clob: str, root: str
+    ) -> list[str]:
+        """The PL/SQL that checks one side: the JSON Schema first, then each extra check.
+        `document_clob` is the document as text, `root` the JSON object the check functions
+        read."""
+        if validation is None:
+            return []
+        lines: list[str] = []
+        spec = validation.side(side)
+        failed = f"v_schema_failed_{side}"
+        if spec.schema and side in validation.schemas:
+            code = _quote(SCHEMA_CODE[side])
+            schema = self._schema_name(side)
+            lines += [
+                "DECLARE",
+                f"    v_doc    CLOB := {document_clob};",
+                f"    v_schema CLOB := {schema};",  # a SQL statement cannot call a private function
+                "    v_valid  NUMBER;",
+                "    v_paths  VARCHAR2(300);",
+                "    v_path   VARCHAR2(200);",
+                "    v_rep    VARCHAR2(4000);",
+                "    v_errs   JSON_ARRAY_T;",
+                "BEGIN",
+                "    SELECT DBMS_JSON_SCHEMA.IS_VALID(JSON(v_doc), JSON(v_schema)) "
+                "INTO v_valid FROM dual;",
+                "    IF v_valid = 0 THEN",
+                f"        {failed} := TRUE;",
+                "        BEGIN  -- where the document differs (the validator's own texts are not shipped)",
+                "            SELECT JSON_QUERY(DBMS_JSON_SCHEMA.VALIDATE_REPORT("
+                "JSON(v_doc), JSON(v_schema)), '$.errors' RETURNING VARCHAR2(4000)) INTO v_rep FROM dual;",
+                "            v_errs := JSON_ARRAY_T(v_rep);",
+                "            FOR v_j IN 0 .. LEAST(v_errs.get_size, 6) - 1 LOOP",
+                "                v_path := TREAT(v_errs.get(v_j) AS JSON_OBJECT_T).get_String('instancePath');",
+                "                IF v_path <> '$' AND NVL(INSTR(v_paths, v_path), 0) = 0"
+                " AND NVL(LENGTH(v_paths), 0) < 200 THEN",
+                "                    v_paths := v_paths || CASE WHEN v_paths IS NULL THEN '' ELSE ', ' END || v_path;",
+                "                END IF;",
+                "            END LOOP;",
+                "        EXCEPTION WHEN OTHERS THEN NULL;",
+                "        END;",
+                f"        add_failed({_quote(side)}, {code}, 'does not match the JSON Schema'"
+                " || CASE WHEN v_paths IS NULL THEN '' ELSE ': ' || v_paths END, 'reject');",
+                "    END IF;",
+                "END;",
+            ]
+        for check in spec.checks:
+            # a check that cannot run on a document the schema refused is not reported: the schema
+            # check already says it is not of the shape the check assumes
+            lines += [
+                "DECLARE",
+                "    v_verdict BOOLEAN;",
+                "    v_omitted BOOLEAN;",
+                "BEGIN",
+                f"    v_verdict := {self._fn_name(check.fn)}({root}, v_omitted);",
+                "    IF NOT COALESCE(v_verdict, FALSE) THEN",  # only a true verdict passes
+                f"        add_failed({_quote(side)}, {_quote(check.code)}, "
+                f"{_quote(check.message)}, {_quote(check.action)});",
+                "    END IF;",
+                "EXCEPTION",
+                "    WHEN OTHERS THEN",
+                f"        IF NOT {failed} THEN",
+                f"            add_failed({_quote(side)}, {_quote(check.code)}, "
+                f"{_quote(check.message)} || ' (the check could not be evaluated: ' || SQLERRM || ')', "
+                f"{_quote(check.action)});",
+                "        END IF;",
+                "END;",
+            ]
+        return lines
+
+    def _reject_lines(self, mapping_id: str) -> list[str]:
+        """Raises the reserved error for a rejected document: the payload names the failed checks
+        (side, code, action; the messages are in the report of `map_<id>_safe`)."""
+        return [
+            "DECLARE",
+            "    v_checks  JSON_ARRAY_T := JSON_ARRAY_T();",
+            "    v_check   JSON_OBJECT_T;",
+            "    v_payload JSON_OBJECT_T := JSON_OBJECT_T();",
+            "BEGIN",
+            "    FOR v_i IN 0 .. v_report.get_size - 1 LOOP",
+            "        v_check := JSON_OBJECT_T();",
+            *(
+                f"        v_check.put({_quote(k)}, "
+                f"TREAT(v_report.get(v_i) AS JSON_OBJECT_T).get_string({_quote(k)}));"
+                for k in ("side", "code", "action")
+            ),
+            "        v_checks.append(v_check);",
+            "    END LOOP;",
+            f"    v_payload.put('mapping', {_quote(mapping_id)});",
+            "    v_payload.put('rejected', TRUE);",
+            "    v_payload.put('checks', v_checks);",
+            f"    RAISE_APPLICATION_ERROR({self.error_code}, v_payload.to_string());",
+            "END;",
+        ]
+
     # -- rendering ----------------------------------------------------------
 
     def _render(
@@ -1730,6 +2181,7 @@ class PlsqlCodeGenerator:
         body_lines: list[str],
         list_accumulators: dict[str, _ListAccumulator],
         uses_rule_errors: bool = False,
+        validation: Validation | None = None,
     ) -> list[PlsqlSubprogram]:
         accumulator_decl_lines = [
             f"{acc.var_name} JSON_ARRAY_T := JSON_ARRAY_T();" for acc in list_accumulators.values()
@@ -1751,10 +2203,13 @@ class PlsqlCodeGenerator:
                     else []
                 ),
                 *accumulator_decl_lines,
+                *(_REPORT_DECLS if validation is not None else []),
             ]
         )
 
         body = "\n".join(body_lines)
+        input_checks = self._check_lines(validation, "input", "p_src", "v_srcroot")
+        output_checks = self._check_lines(validation, "output", "v_out_obj.TO_CLOB()", "v_out_obj")
 
         # Byte-budget-aware truncation (§Runtime error semantics: "20 entries,
         # or the byte budget ... whichever is hit first"). The M0.5 Oracle
@@ -1856,27 +2311,66 @@ class PlsqlCodeGenerator:
             "    p_src IN  CLOB,\n    p_out OUT CLOB,\n    p_err OUT CLOB\n)"
         )
 
+        if validation is None:
+            raising_text = f"{body}\n\n{chr(10).join(raising_tail_lines)}"
+            safe_text = f"{body}\n\n{chr(10).join(safe_tail_lines)}"
+            safe_sig_final = safe_sig
+        else:
+            reject_lines = self._reject_lines(mapping_id)
+            # a rejected input runs no rule; the output is checked once it is complete
+            raising_text = "\n".join(
+                [
+                    *input_checks,
+                    "IF v_rejected THEN",
+                    *_indent(reject_lines),
+                    "END IF;",
+                    body,
+                    "",
+                    *raising_tail_lines[:-1],
+                    *output_checks,
+                    "IF v_rejected THEN",
+                    *_indent(reject_lines),
+                    "END IF;",
+                    raising_tail_lines[-1],
+                ]
+            )
+            safe_text = "\n".join(
+                [
+                    "p_err := '[]';",
+                    *input_checks,
+                    "IF NOT v_rejected THEN",
+                    *_indent(body.split("\n")),
+                    "",
+                    *_indent(safe_tail_lines[:-1]),
+                    *_indent(output_checks),
+                    "END IF;",
+                    "p_report := v_report.to_clob();",
+                    "IF v_rejected THEN p_out := NULL; ELSE p_out := v_out_obj.TO_CLOB(); END IF;",
+                ]
+            )
+            safe_sig_final = safe_sig.replace(
+                "p_err OUT CLOB\n)", "p_err OUT CLOB,\n    p_report OUT CLOB\n)"
+            )
+
         raising_proc = (
             f"{raising_sig} AS\n"
             f"{_indent_block(shared_decls)}\n"
             "BEGIN\n"
-            f"{_indent_block(body)}\n\n"
-            f"{_indent_block(chr(10).join(raising_tail_lines))}\n"
+            f"{_indent_block(raising_text)}\n"
             f"END {raising_name};"
         )
 
         safe_proc = (
-            f"{safe_sig} AS\n"
+            f"{safe_sig_final} AS\n"
             f"{_indent_block(shared_decls)}\n"
             "BEGIN\n"
-            f"{_indent_block(body)}\n\n"
-            f"{_indent_block(chr(10).join(safe_tail_lines))}\n"
+            f"{_indent_block(safe_text)}\n"
             f"END {safe_name};"
         )
 
         return [
             PlsqlSubprogram(raising_name, f"{raising_sig};", raising_proc),
-            PlsqlSubprogram(safe_name, f"{safe_sig};", safe_proc),
+            PlsqlSubprogram(safe_name, f"{safe_sig_final};", safe_proc),
         ]
 
 

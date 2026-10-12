@@ -15,19 +15,27 @@ END FUSED_LINES;
 CREATE OR REPLACE PACKAGE BODY FUSED_LINES AS
     FUNCTION fn_fused_lines_line_id_rule(p_itm IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN JSON_OBJECT_T IS
         v_line_id_rule__dc JSON_OBJECT_T;
+        v_val_line_id_rule__v0 VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
         v_line_id_rule__dc := JSON_OBJECT_T();
-        v_line_id_rule__dc.put('LineId', p_itm.get_String('id'));
+        v_val_line_id_rule__v0 := p_itm.get_String('id');
+        IF v_val_line_id_rule__v0 IS NOT NULL THEN
+            v_line_id_rule__dc.put('LineId', v_val_line_id_rule__v0);
+        END IF;
         RETURN v_line_id_rule__dc;
     END fn_fused_lines_line_id_rule;
 
     FUNCTION fn_fused_lines_line_amount_rule(p_itm IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN JSON_OBJECT_T IS
         v_line_amount_rule__dc JSON_OBJECT_T;
+        v_val_line_amount_rule__v0 NUMBER;
     BEGIN
         p_omitted := FALSE;
         v_line_amount_rule__dc := JSON_OBJECT_T();
-        v_line_amount_rule__dc.put('LineAmount', p_itm.get_Number('price'));
+        v_val_line_amount_rule__v0 := p_itm.get_Number('price');
+        IF v_val_line_amount_rule__v0 IS NOT NULL THEN
+            v_line_amount_rule__dc.put('LineAmount', v_val_line_amount_rule__v0);
+        END IF;
         RETURN v_line_amount_rule__dc;
     END fn_fused_lines_line_amount_rule;
 
@@ -45,42 +53,44 @@ CREATE OR REPLACE PACKAGE BODY FUSED_LINES AS
         DECLARE
             v_forarr_0 JSON_ARRAY_T := v_srcroot.get_Array('items');
         BEGIN
-            FOR v_i_0 IN 0 .. v_forarr_0.get_size - 1 LOOP
-                DECLARE
-                    v_itm JSON_OBJECT_T := TREAT(v_forarr_0.get(v_i_0) AS JSON_OBJECT_T);
-                BEGIN
+            IF v_forarr_0 IS NOT NULL THEN
+                FOR v_i_0 IN 0 .. v_forarr_0.get_size - 1 LOOP
                     DECLARE
-                        v_result_line_id_rule JSON_OBJECT_T;
-                        v_omitted_line_id_rule BOOLEAN;
+                        v_itm JSON_OBJECT_T := TREAT(v_forarr_0.get(v_i_0) AS JSON_OBJECT_T);
                     BEGIN
-                        v_result_line_id_rule := fn_fused_lines_line_id_rule(v_itm, v_omitted_line_id_rule);
-                        IF NOT v_omitted_line_id_rule THEN
-                            v_arr_Ids.append(v_result_line_id_rule);
-                        END IF;
-                    EXCEPTION
-                        WHEN OTHERS THEN
-                            IF NOT v_errors.EXISTS('line_id_rule') THEN
-                                v_errors('line_id_rule') := SQLERRM;
-                            END IF;
-                    END;
-                    IF (NOT (v_itm.get_String('status') = 'INACTIVE')) THEN
                         DECLARE
-                            v_result_line_amount_rule JSON_OBJECT_T;
-                            v_omitted_line_amount_rule BOOLEAN;
+                            v_result_line_id_rule JSON_OBJECT_T;
+                            v_omitted_line_id_rule BOOLEAN;
                         BEGIN
-                            v_result_line_amount_rule := fn_fused_lines_line_amount_rule(v_itm, v_omitted_line_amount_rule);
-                            IF NOT v_omitted_line_amount_rule THEN
-                                v_arr_Amounts.append(v_result_line_amount_rule);
+                            v_result_line_id_rule := fn_fused_lines_line_id_rule(v_itm, v_omitted_line_id_rule);
+                            IF NOT v_omitted_line_id_rule THEN
+                                v_arr_Ids.append(v_result_line_id_rule);
                             END IF;
                         EXCEPTION
                             WHEN OTHERS THEN
-                                IF NOT v_errors.EXISTS('line_amount_rule') THEN
-                                    v_errors('line_amount_rule') := SQLERRM;
+                                IF NOT v_errors.EXISTS('line_id_rule') THEN
+                                    v_errors('line_id_rule') := SQLERRM;
                                 END IF;
                         END;
-                    END IF;
-                END;
-            END LOOP;
+                        IF (NOT (v_itm.get_String('status') = 'INACTIVE')) THEN
+                            DECLARE
+                                v_result_line_amount_rule JSON_OBJECT_T;
+                                v_omitted_line_amount_rule BOOLEAN;
+                            BEGIN
+                                v_result_line_amount_rule := fn_fused_lines_line_amount_rule(v_itm, v_omitted_line_amount_rule);
+                                IF NOT v_omitted_line_amount_rule THEN
+                                    v_arr_Amounts.append(v_result_line_amount_rule);
+                                END IF;
+                            EXCEPTION
+                                WHEN OTHERS THEN
+                                    IF NOT v_errors.EXISTS('line_amount_rule') THEN
+                                        v_errors('line_amount_rule') := SQLERRM;
+                                    END IF;
+                            END;
+                        END IF;
+                    END;
+                END LOOP;
+            END IF;
         END;
 
         IF v_errors.COUNT > 0 THEN
@@ -138,42 +148,44 @@ CREATE OR REPLACE PACKAGE BODY FUSED_LINES AS
         DECLARE
             v_forarr_0 JSON_ARRAY_T := v_srcroot.get_Array('items');
         BEGIN
-            FOR v_i_0 IN 0 .. v_forarr_0.get_size - 1 LOOP
-                DECLARE
-                    v_itm JSON_OBJECT_T := TREAT(v_forarr_0.get(v_i_0) AS JSON_OBJECT_T);
-                BEGIN
+            IF v_forarr_0 IS NOT NULL THEN
+                FOR v_i_0 IN 0 .. v_forarr_0.get_size - 1 LOOP
                     DECLARE
-                        v_result_line_id_rule JSON_OBJECT_T;
-                        v_omitted_line_id_rule BOOLEAN;
+                        v_itm JSON_OBJECT_T := TREAT(v_forarr_0.get(v_i_0) AS JSON_OBJECT_T);
                     BEGIN
-                        v_result_line_id_rule := fn_fused_lines_line_id_rule(v_itm, v_omitted_line_id_rule);
-                        IF NOT v_omitted_line_id_rule THEN
-                            v_arr_Ids.append(v_result_line_id_rule);
-                        END IF;
-                    EXCEPTION
-                        WHEN OTHERS THEN
-                            IF NOT v_errors.EXISTS('line_id_rule') THEN
-                                v_errors('line_id_rule') := SQLERRM;
-                            END IF;
-                    END;
-                    IF (NOT (v_itm.get_String('status') = 'INACTIVE')) THEN
                         DECLARE
-                            v_result_line_amount_rule JSON_OBJECT_T;
-                            v_omitted_line_amount_rule BOOLEAN;
+                            v_result_line_id_rule JSON_OBJECT_T;
+                            v_omitted_line_id_rule BOOLEAN;
                         BEGIN
-                            v_result_line_amount_rule := fn_fused_lines_line_amount_rule(v_itm, v_omitted_line_amount_rule);
-                            IF NOT v_omitted_line_amount_rule THEN
-                                v_arr_Amounts.append(v_result_line_amount_rule);
+                            v_result_line_id_rule := fn_fused_lines_line_id_rule(v_itm, v_omitted_line_id_rule);
+                            IF NOT v_omitted_line_id_rule THEN
+                                v_arr_Ids.append(v_result_line_id_rule);
                             END IF;
                         EXCEPTION
                             WHEN OTHERS THEN
-                                IF NOT v_errors.EXISTS('line_amount_rule') THEN
-                                    v_errors('line_amount_rule') := SQLERRM;
+                                IF NOT v_errors.EXISTS('line_id_rule') THEN
+                                    v_errors('line_id_rule') := SQLERRM;
                                 END IF;
                         END;
-                    END IF;
-                END;
-            END LOOP;
+                        IF (NOT (v_itm.get_String('status') = 'INACTIVE')) THEN
+                            DECLARE
+                                v_result_line_amount_rule JSON_OBJECT_T;
+                                v_omitted_line_amount_rule BOOLEAN;
+                            BEGIN
+                                v_result_line_amount_rule := fn_fused_lines_line_amount_rule(v_itm, v_omitted_line_amount_rule);
+                                IF NOT v_omitted_line_amount_rule THEN
+                                    v_arr_Amounts.append(v_result_line_amount_rule);
+                                END IF;
+                            EXCEPTION
+                                WHEN OTHERS THEN
+                                    IF NOT v_errors.EXISTS('line_amount_rule') THEN
+                                        v_errors('line_amount_rule') := SQLERRM;
+                                    END IF;
+                            END;
+                        END IF;
+                    END;
+                END LOOP;
+            END IF;
         END;
 
         DECLARE

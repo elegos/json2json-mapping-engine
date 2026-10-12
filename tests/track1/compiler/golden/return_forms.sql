@@ -27,9 +27,12 @@ CREATE OR REPLACE PACKAGE BODY RETURN_FORMS AS
     END fn_return_forms_status_label;
 
     FUNCTION fn_return_forms_risky_amount(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN NUMBER IS
+        v_risky_amount__ret NUMBER;
     BEGIN
         p_omitted := FALSE;
-        RETURN (p_root.get_Number('amount') / p_root.get_Number('divisor'));
+        v_risky_amount__ret := (p_root.get_Number('amount') / p_root.get_Number('divisor'));
+        IF v_risky_amount__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_risky_amount__ret;
     END fn_return_forms_risky_amount;
 
     PROCEDURE map_return_forms (

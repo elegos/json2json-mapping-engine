@@ -10,7 +10,8 @@ interpreter. The rules it keeps are the engine's, not Python's:
 - a rule that fails leaves its field out and is reported once, under its name; the others go on;
 - an empty text is null, as in Oracle: it is read as null from the input, built-ins give null for it,
   and the output never holds one;
-- a bare `return` leaves the field out, `return Null` (or a value that is null) puts a null.
+- a bare `return` leaves the field out, and so does a value that is `None` (nothing to write);
+  `Null`, the explicit null, puts a null.
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ import os
 import sys
 import threading
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from decimal import Decimal
 from typing import Any
 
 # The first Python that runs the generated modules: this text and the built-ins use `X | Y` in
@@ -48,6 +50,29 @@ class _Omit:
 
 OMIT = _Omit()
 
+
+class _Null:
+    """The explicit null (`Null` in the language): the field is written, with the value null. It
+    is what a rule gives to say "null" as opposed to `None`, "nothing", which writes nothing."""
+
+    def __repr__(self) -> str:
+        return "NULL"
+
+    def __bool__(self) -> bool:
+        return False
+
+
+NULL = _Null()
+
+
+def _written(value: Any) -> tuple[bool, Any]:
+    """Whether a value goes to the output, and what is written: `None` and OMIT write nothing,
+    NULL writes a null."""
+    if value is OMIT or value is None:
+        return False, None
+    return True, None if value is NULL else value
+
+
 _errors: contextvars.ContextVar[dict[str, str] | None] = contextvars.ContextVar(
     "j2jme_errors", default=None
 )
@@ -62,6 +87,16 @@ class MappingError(Exception):
         super().__init__(
             json.dumps({"mapping": mapping_id, "total_errors": len(errors), "errors": errors})
         )
+
+
+class MappingRejected(Exception):
+    """A validation `reject` failed: the mapping gave no output. `report` is the failed checks,
+    `[{"side", "code", "message", "action"}, ...]` (the warnings with them)."""
+
+    def __init__(self, mapping_id: str, report: list[dict[str, str]]):
+        self.mapping_id = mapping_id
+        self.report = report
+        super().__init__(json.dumps({"mapping": mapping_id, "rejected": True, "checks": report}))
 
 
 class MissingImplementation(Exception):
@@ -256,7 +291,8 @@ def _in_processes(
 
 def _emit(acc: list[tuple[int, Any]], index: int, value: Any) -> None:
     """What the body of a fused loop appends to the array `index`, for the element being mapped."""
-    if value is not OMIT:
+    put, value = _written(value)
+    if put:
         acc.append((index, value))
 
 
@@ -355,42 +391,60 @@ def _get(value: Any, *path: Any) -> Any:
 
 
 def _each(value: Any) -> Any:
-    """What a `for` runs over: the elements of an array; nothing for a missing one."""
+    """What a `for` runs over: the elements of an array; nothing for a missing one; an object
+    (the document, `source: $`) is one element."""
     if value is None:
         return []
     if isinstance(value, list):
         return value
+    if isinstance(value, dict):
+        return [value]
     raise TypeError(f"cannot iterate over {type(value).__name__}")
 
 
 def _record(**fields: Any) -> dict[str, Any]:
     """An object of the output: the fields that were left out are not in it."""
-    return {k: v for k, v in fields.items() if v is not OMIT}
+    written = {k: _written(v) for k, v in fields.items()}
+    return {k: v for k, (put, v) in written.items() if put}
 
 
 def _append(target: list[Any], value: Any) -> None:
-    if value is not OMIT:
+    put, value = _written(value)
+    if put:
         target.append(value)
 
 
 class _Out:
-    """The output being built: `out.F = v` sets a field (not when v is OMIT), and reading a name
+    """The output being built: `out.F = v` sets a field (not when v is OMIT or None), and reading a name
     that is not set yet gives the array to append to."""
 
     def __init__(self) -> None:
         object.__setattr__(self, "_fields", {})
 
     def __setattr__(self, name: str, value: Any) -> None:
-        if value is not OMIT:
+        put, value = _written(value)
+        if put:
             self._fields[name] = value
 
     def __getattr__(self, name: str) -> Any:
         return self._fields.setdefault(name, [])
 
 
+def _exact(x: Any) -> Any:
+    """A float as the decimal it is written as (`0.1`, not its binary approximation): the
+    database computes with decimal numbers, so the sums and products here must agree with it."""
+    return Decimal(repr(x)) if isinstance(x, float) else x
+
+
 def _arith(op: Any):
     def apply(a: Any, b: Any) -> Any:
-        return None if a is None or b is None else op(a, b)
+        if a is None or b is None:
+            return None
+        if isinstance(a, float) or isinstance(b, float):
+            if op is operator.truediv and b == 0:
+                raise ZeroDivisionError("division by zero")
+            return float(op(_exact(a), _exact(b)))
+        return op(a, b)
 
     return apply
 
@@ -445,13 +499,78 @@ def _plain(value: Any) -> Any:
     return value
 
 
+_schema_validators: dict[str, Any] = {}
+
+
+def _schema_problems(text: str, document: Any) -> list[str]:
+    """What is wrong with `document` for the JSON Schema `text` (empty when it is valid). Best
+    effort, like Oracle's validator: a `format` is not checked."""
+    from jsonschema.validators import validator_for  # noqa: PLC0415 - only a validating mapping
+
+    validator = _schema_validators.get(text)
+    if validator is None:
+        schema = json.loads(text)
+        validator = _schema_validators[text] = validator_for(schema)(schema)
+    found = sorted(validator.iter_errors(document), key=lambda e: [str(p) for p in e.absolute_path])
+    return [
+        f"{'.'.join(str(p) for p in e.absolute_path) or '$'}: {e.message}"[:300] for e in found[:3]
+    ]
+
+
+def _validate(validation: Any, side: str, document: Any, raw: Any, report: list) -> None:
+    """Runs the checks of one side of the mapping and adds the failed ones to `report`: the JSON
+    Schema first (on the document as it came), then each extra check (on the document the rules
+    read). A check passes when its condition is true; one that is not (false, or null because a
+    value is missing) or cannot be evaluated fails, unless the schema
+    check failed: the document is not of the shape the check assumes, which that already says."""
+    schema, checks = validation[side]
+    schema_failed = False
+    if schema is not None:
+        problems = _schema_problems(schema, raw)
+        if problems:
+            schema_failed = True
+            report.append(
+                {
+                    "side": side,
+                    "code": "SCHEMA_" + side.upper(),
+                    "message": "does not match the JSON Schema: " + "; ".join(problems),
+                    "action": "reject",
+                }
+            )
+    for check, code, message, action in checks:
+        try:
+            verdict = check(document)
+        except Exception as exc:  # noqa: BLE001
+            if schema_failed:
+                continue
+            message = f"{message} (the check could not be evaluated: {exc})"
+            verdict = False
+        if not verdict:  # only a true verdict passes: a missing value is not true
+            report.append({"side": side, "code": code, "message": message, "action": action})
+
+
+def _rejects(report: list[dict[str, str]]) -> bool:
+    return any(item["action"] == "reject" for item in report)
+
+
 def _execute(
-    mapping_id: str, run: Any, source: Any, raising: bool
-) -> tuple[Any, list[dict[str, str]]]:
+    mapping_id: str, run: Any, source: Any, raising: bool, validation: Any = None
+) -> tuple[Any, ...]:
     """Runs a mapping on `source` (JSON text, or the parsed document). Gives the output and
-    the rule errors; with `raising`, a MappingError instead when there are errors."""
-    document = json.loads(source) if isinstance(source, str | bytes | bytearray) else source
-    document = _blank(document)
+    the rule errors; with `raising`, a MappingError instead when there are errors.
+
+    A mapping with `validation` also checks its input and its output: the result then has a third
+    part, the report of the failed checks, and when one of them is a `reject` the output is None
+    (`raising`: MappingRejected instead). A rejected input runs no rule."""
+    raw = json.loads(source) if isinstance(source, str | bytes | bytearray) else source
+    document = _blank(raw)
+    report: list[dict[str, str]] = []
+    if validation is not None:
+        _validate(validation, "input", document, raw, report)
+        if _rejects(report):
+            if raising:
+                raise MappingRejected(mapping_id, report)
+            return None, [], report
     errors: dict[str, str] = {}
     token = _errors.set(errors)
     out = _Out()
@@ -463,7 +582,15 @@ def _execute(
         )
     finally:
         _errors.reset(token)
-    report = [{"rule": rule, "cause": cause} for rule, cause in errors.items()]
-    if raising and report:
-        raise MappingError(mapping_id, report)
-    return _plain(out._fields), report
+    rule_errors = [{"rule": rule, "cause": cause} for rule, cause in errors.items()]
+    if raising and rule_errors:
+        raise MappingError(mapping_id, rule_errors)
+    output = _plain(out._fields)
+    if validation is None:
+        return output, rule_errors
+    _validate(validation, "output", output, output, report)
+    if _rejects(report):
+        if raising:
+            raise MappingRejected(mapping_id, report)
+        return None, rule_errors, report
+    return output, rule_errors, report

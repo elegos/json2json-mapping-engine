@@ -26,6 +26,18 @@ GOLDEN_MAPPINGS = sorted(
 )
 
 
+def _golden_unit(name: str, backend: Any) -> Any:
+    """A golden mapping compiled as the build does: with the schema files it validates against."""
+    schemas = {
+        kind: (ROOT / "schemas" / f"{name}_{kind}.schema.json").read_text()
+        for kind in ("input", "output")
+        if (ROOT / "schemas" / f"{name}_{kind}.schema.json").is_file()
+    }
+    return compile_unit(
+        (ROOT / "mappings" / f"{name}.map.py").read_text(), name, backend, schema_texts=schemas
+    )
+
+
 def _compile(source: str, mapping_id: str = "m") -> tuple[PythonBackend, Any]:
     backend = PythonBackend({})
     return backend, compile_unit(source, mapping_id, backend)
@@ -56,7 +68,7 @@ def _load(tmp_path: Path, source: str, mapping_id: str = "m") -> Any:
 def test_every_golden_case_passes_on_the_python_backend(options: dict[str, Any]) -> None:
     backend = PythonBackend(options)
     units = [
-        compile_unit((ROOT / "mappings" / f"{name}.map.py").read_text(), name, backend)
+        _golden_unit(name, backend)
         for name in GOLDEN_MAPPINGS
     ]
     context = IntegrationContext(
@@ -133,7 +145,8 @@ def test_missing_values_are_null_and_arithmetic_and_ordering_propagate_it(tmp_pa
         "out.A = a(root)\nout.B = b(root)\nout.C = c(root)\n",
     )
     out, errors = module.map_m_safe({})
-    assert out == {"A": None, "B": None, "C": "small"} and errors == []
+    # nothing to write (None) leaves the field out
+    assert out == {"C": "small"} and errors == []
 
 
 def test_bare_return_omits_and_return_null_puts_a_null(tmp_path: Path) -> None:
@@ -145,6 +158,20 @@ def test_bare_return_omits_and_return_null_puts_a_null(tmp_path: Path) -> None:
         "out.Omitted = omitted(root)\nout.Nulled = nulled(root)\n",
     )
     assert module.map_m_safe({})[0] == {"Nulled": None}
+
+
+def test_a_value_that_is_none_writes_nothing_and_Null_writes_a_null(tmp_path: Path) -> None:
+    module = _load(
+        tmp_path,
+        "from __mapping__ import *\n"
+        "@dataclass\nclass Line:\n    A: str\n    B: str\n\n"
+        "def none(root: Any) -> str | None:\n    return root.missing\n"
+        "def explicit(root: Any) -> str | Null:\n    return Null\n"
+        "def line(root: Any) -> Line:\n    return Line(A=root.missing, B=Null)\n"
+        "out.None_ = none(root)\nout.Explicit = explicit(root)\nout.Line = line(root)\n"
+        "out.Direct = root.missing\nout.DirectNull = Null\n",
+    )
+    assert module.map_m_safe({})[0] == {"Explicit": None, "Line": {"B": None}, "DirectNull": None}
 
 
 def test_whole_numbers_are_written_as_integers(tmp_path: Path) -> None:
@@ -224,8 +251,7 @@ def test_the_text_and_timestamp_builtins_run_in_a_generated_module(tmp_path: Pat
         "G": "2.5",
         "H": "2026-10-03T07:30:00Z",
         "I": "2026-10-03T09:30:00+02:00",
-        "J": None,
-    }
+    }  # J: a missing text gives nothing, so nothing is written
     # a text that is not a number is that rule's failure, the others are not touched
     out, errors = module.map_m_safe({"s": "x", "t": "abc", "n": 1, "ts": "2026-10-03T09:30:00Z"})
     assert [e["rule"] for e in errors] == ["f"] and out["A"] == "x" and "F" not in out
@@ -238,7 +264,7 @@ def test_every_golden_mapping_also_compiles_to_plsql(name: str) -> None:
     from compiler.backends.plsql.backend import PlsqlBackend
 
     backend = PlsqlBackend({"schema": "S", "error_code": -20000, "mapping_package_prefix": "M_"})
-    unit = compile_unit((ROOT / "mappings" / f"{name}.map.py").read_text(), name, backend)
+    unit = _golden_unit(name, backend)
     assert backend.assemble([unit])
 
 
@@ -545,7 +571,7 @@ def test_what_is_generated_parses_for_the_first_supported_python(tmp_path: Path)
     on the old Python itself by `dev_scripts/python_floor.sh`)."""
     backend = PythonBackend({"parallel": "process"})
     units = [
-        compile_unit((ROOT / "mappings" / f"{name}.map.py").read_text(), name, backend)
+        _golden_unit(name, backend)
         for name in GOLDEN_MAPPINGS
     ] + [
         compile_unit(source, name, backend)
@@ -573,5 +599,35 @@ def test_the_runtime_refuses_an_older_python(
 def test_every_golden_case_states_its_expected_output() -> None:
     """The golden cases are the contract every backend is held to: a case with no expected output
     would pass on any backend, whatever it gave (and the backends could disagree unseen)."""
-    without = [f"{c.mapping}/{c.name}" for c in discover_cases() if c.expected_path is None]
+    without = [
+        f"{c.mapping}/{c.name}"
+        for c in discover_cases()
+        if c.expected_path is None and c.expected_rejected is None  # a rejected case has no output
+    ]
     assert not without, f"golden cases with no .expected.json: {without}"
+
+
+def test_parse_date_of_a_missing_text_is_nothing(tmp_path: Path) -> None:
+    module = _load(
+        tmp_path,
+        "from __mapping__ import *\n"
+        "def d(root: Any) -> str | None:\n    return parse_date(root.when, 'YYYY-MM-DD')\n"
+        "out.D = d(root)\n",
+    )
+    assert module.map_m_safe({})[0] == {}
+    assert module.map_m_safe({"when": "2026-10-03"})[0] == {"D": "2026-10-03"}
+
+
+def test_decimal_numbers_add_up_as_the_database_adds_them(tmp_path: Path) -> None:
+    module = _load(
+        tmp_path,
+        "from __mapping__ import *\n"
+        "def plus(root: Any) -> number:\n    return root.a + root.b\n"
+        "def times(root: Any) -> number:\n    return root.a * 3\n"
+        "def total(root: Any) -> number:\n    return sum(i.v for i in root.items)\n"
+        "out.Plus = plus(root)\nout.Times = times(root)\nout.Total = total(root)\n",
+    )
+    out, errors = module.map_m_safe(
+        {"a": 0.1, "b": 0.2, "items": [{"v": 0.1}, {"v": 0.2}, {"v": 0.3}]}
+    )
+    assert errors == [] and out == {"Plus": 0.3, "Times": 0.3, "Total": 0.6}
