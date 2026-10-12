@@ -156,6 +156,28 @@ pub fn run_mapper(
     })
 }
 
+/// `mapper <args>` left running, with its stdin, stdout and stderr piped: the caller follows it
+/// (a run of the import assistant lasts minutes) and cancels it by closing its stdin.
+pub fn spawn_mapper(
+    found: &Found,
+    project: &Path,
+    args: &[&str],
+    env: &[(&str, &str)],
+) -> Result<Child, String> {
+    let mut command = Command::new(&found.python);
+    prepare(&mut command, &found.engine);
+    command.envs(env.iter().copied());
+    command
+        .current_dir(project)
+        .args(["-m", "cli.main"])
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("cannot start {}: {e}", found.python.display()))
+}
+
 /// A long-lived `mapper serve` process: one JSON line in, one JSON line out. Used for
 /// the per-edit operations, which must not pay a Python start-up each.
 pub struct Worker {
