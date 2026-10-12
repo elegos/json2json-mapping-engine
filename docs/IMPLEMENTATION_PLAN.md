@@ -1108,11 +1108,32 @@ Prerequisites on the dev machine: `webkit2gtk-4.1` dev packages, `tauri-cli`.
 
 ---
 
-## ⬜ M7 — Migration & interoperability tooling
+## 🟨 M7 — Migration & interoperability tooling
 
-Not started (Excel/PDF import, reverse-import from `.map.py`,
-bootstrap→driven archival). Lowest priority per the original plan — nothing
-else in the system depends on it.
+Import of functional documents (design: `docs/import/IR.md`, `docs/import/profile.md`).
+Reverse-import from `.map.py` and bootstrap→driven archival are not started (lowest priority;
+nothing else depends on them).
+
+- [x] **The skill and the plan.** `skills/import-functional-spec/` (procedure, run protocol, the
+      schemas of the plan, the profile and the normalized document), calibrated on the fixtures in
+      `tests/fixtures/import/` (WB1–WB10: spreadsheet, Word, PDF, scan, prose, pseudo-code,
+      several mappings in one document, no schema).
+- [x] **Command line.** `mapper import extract | assemble | test | apply`: normalized document,
+      working `.fn.yaml` from the plan with its check, the plan's cases run on Python, write to the
+      project. Validations, groups (`oneOf` shapes), aggregates and empty lookups are part of what
+      the plan can say.
+- [x] **Run of an assistant.** `mapper import providers | run` (`cli/import_run.py`): Claude Code or
+      Codex, non-interactive, writes limited to `import/`, progress as JSON lines, cancellable,
+      plan validated, hashes and history written by the code.
+- [x] **Desktop wizard.** *Import a document…* from the start wizard: full-screen, five steps
+      (document, run, questions, review, apply); ops `import_*` of `mapper serve`; `import_run_start`
+      and `import_cancel` in the Tauri shell; headless check `shots/import-check.mjs`.
+      **Not tried against the real assistants yet** (the flags of Claude Code and the Codex command
+      line need a manual run).
+- [ ] Edit a rule inside the wizard; plan cases as golden cases; a second look at a new document
+      version (`revalue_version`) with the diff of the rules.
+- [ ] Excel/PDF *export* of the plan for the functional's review; reverse-import from `.map.py`;
+      bootstrap→driven archival.
 
 ---
 

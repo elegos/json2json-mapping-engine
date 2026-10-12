@@ -23,6 +23,11 @@ section (see `packaging/release.py`).
 - `mapper import extract | assemble | test | apply`: read a functional document (xlsx, docx, pdf,
   txt, md) into a normalized form, build and check a `.fn.yaml` from an import plan, run the plan's
   cases against it, and write it to the project (`pip install` extra `import` for the readers).
+- Desktop: *Import a document…* in the start wizard, full screen: pick a functional document and an
+  installed assistant (Claude Code or Codex), follow and cancel the run, answer its questions, review
+  the plan (rules with their evidence, confidence and check; validations; lookups; cases;
+  discrepancies; coverage) and apply it. `mapper import providers | run` and the `import_*` ops of
+  the worker are the same thing from the command line.
 - More built-ins, so that patterns are the last resort and not the first: `upper`, `lower`, `trim`,
   `length`, `substring`, `left`, `right`, `pad_left`, `pad_right`, `contains`, `starts_with`,
   `ends_with`, `abs`, `floor`, `ceil` and `format_date` (a date written in a format). Python and

@@ -89,4 +89,37 @@ checklist of conventions, the run protocol with the wizard, and the schemas of t
 and the normalized document that the extractors hand over). The extractors (xlsx, docx, pdf,
 txt, md -> normalized document) are `cli/docread/`, run with `mapper import extract` (optional
 libraries: `uv sync --extra import`; PDF has no table reconstruction and no OCR). The commands that apply a plan are `mapper import assemble | test | apply` (`cli/import_plan.py`).
-Not built yet: the wizard's provider detection and question screens.
+
+## The wizard (desktop tool)
+
+The *Import a document…* screen (`ImportView.tsx`, opened from the start wizard) is full screen, can
+always be closed, and a run can always be cancelled. Steps: **Document** (file, assistant, profile,
+mapping; the imports already in the project, to continue, redo or read a new version of the
+document), **Run** (progress of the assistant), **Questions** (one card per question, the ones that
+touch most rules first; options, the proposal, a free answer, or "assume the proposal"),
+**Review** (summary; rules as a list and a detail with the evidence, interpretation, assumptions,
+proposed rule, check result and a note to ask again; validations; lookups; cases; discrepancies;
+coverage; schemas and profile) and **Apply** (what goes in, what is left, `--force` only when asked).
+
+- *Run.* `mapper import run` (`cli/import_run.py`) detects Claude Code and Codex on the PATH
+  (`mapper import providers`), puts a copy of the document in `import/documents/` when it lives outside the project (the
+  assistant reads only inside the project and the skill's folder, writes only `import/**` and may
+  run only `mapper`), builds the prompt, starts the assistant non-interactively and prints one JSON
+  line per event; the last has `event: done` and the protocol's status. The desktop tool starts it
+  as a process of its own (`import_run_start`, events `import-line` / `import-exit`) and cancels it by closing its
+  stdin: it is long, and the worker `mapper serve` answers one request at a time. When it ends the
+  wizard validates `ir.json` against the schema (a plan that does not conform is kept as
+  `ir.invalid.json` and the previous plan is put back), computes `document.sha256` and
+  `profile.sha256` itself and appends the run to `history`.
+- *Operations on the plan* are ops of `mapper serve` (`cli/import_ops.py`): `import_list`, `import_plan`,
+  `import_answer` (`questions[].answer`, `status`), `import_review` (`accepted` / `rejected` / `pending`),
+  `import_note` (a remark on a rule: a question of scope `rule`, topic `user_note`, already answered, and
+  `review.note`; the next run `rerun_partial` reads it), and `import_test` / `import_apply`.
+- *State of an import* (`cli/import_ops.py::state_of`): `needs_answers` (an open question),
+  `answered` (answers given after the last run, which has not read them), `ready_for_review`, `applied`.
+  A document or profile whose hash is not the plan's marks it stale.
+- *Not in this version:* editing a rule inside the wizard (reject, ask again with a note, or edit the
+  applied rule in the grid), turning the plan's cases into golden cases, and the Codex command line
+  (written from its documentation, never run).
+- *Headless check:* `node desktop/ui/shots/import-check.mjs` walks the whole flow with a stand-in
+  for the assistant (`J2JME_IMPORT_PROVIDER`, `shots/fake_provider.py`).
