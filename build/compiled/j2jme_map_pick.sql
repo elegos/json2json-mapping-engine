@@ -21,12 +21,14 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAP_PICK AS
         p_omitted := FALSE;
         v_pick_items_found := JSON_ARRAY_T();
         v_forarr_0 := p_root.get_Array('items');
-        FOR v_i_0 IN 0 .. v_forarr_0.get_size - 1 LOOP
-            v_pick_items_item := TREAT(v_forarr_0.get(v_i_0) AS JSON_OBJECT_T);
-            IF (v_pick_items_item.get_String('marker') = 'TOTALS') THEN
-                v_pick_items_found.append(v_pick_items_item);
-            END IF;
-        END LOOP;
+        IF v_forarr_0 IS NOT NULL THEN
+            FOR v_i_0 IN 0 .. v_forarr_0.get_size - 1 LOOP
+                v_pick_items_item := TREAT(v_forarr_0.get(v_i_0) AS JSON_OBJECT_T);
+                IF (v_pick_items_item.get_String('marker') = 'TOTALS') THEN
+                    v_pick_items_found.append(v_pick_items_item);
+                END IF;
+            END LOOP;
+        END IF;
         IF (v_pick_items_found IS NOT NULL AND v_pick_items_found.get_size > 0) THEN
             RETURN TREAT(v_pick_items_found.get(0) AS JSON_OBJECT_T);
         END IF;
@@ -41,12 +43,14 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAP_PICK AS
         p_omitted := FALSE;
         v_pick_nope_found := JSON_ARRAY_T();
         v_forarr_1 := p_root.get_Array('items');
-        FOR v_i_1 IN 0 .. v_forarr_1.get_size - 1 LOOP
-            v_pick_nope_item := TREAT(v_forarr_1.get(v_i_1) AS JSON_OBJECT_T);
-            IF (v_pick_nope_item.get_String('marker') = 'NOPE') THEN
-                v_pick_nope_found.append(v_pick_nope_item);
-            END IF;
-        END LOOP;
+        IF v_forarr_1 IS NOT NULL THEN
+            FOR v_i_1 IN 0 .. v_forarr_1.get_size - 1 LOOP
+                v_pick_nope_item := TREAT(v_forarr_1.get(v_i_1) AS JSON_OBJECT_T);
+                IF (v_pick_nope_item.get_String('marker') = 'NOPE') THEN
+                    v_pick_nope_found.append(v_pick_nope_item);
+                END IF;
+            END LOOP;
+        END IF;
         IF (v_pick_nope_found IS NOT NULL AND v_pick_nope_found.get_size > 0) THEN
             RETURN TREAT(v_pick_nope_found.get(0) AS JSON_OBJECT_T);
         END IF;
@@ -61,12 +65,14 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAP_PICK AS
         p_omitted := FALSE;
         v_pick_prices_found := JSON_ARRAY_T();
         v_forarr_2 := p_root.get_Array('prices');
-        FOR v_i_2 IN 0 .. v_forarr_2.get_size - 1 LOOP
-            v_pick_prices_price := TREAT(v_forarr_2.get(v_i_2) AS JSON_OBJECT_T);
-            IF (v_pick_prices_price.get_String('sku') = p_src.get_String('sku')) THEN
-                v_pick_prices_found.append(v_pick_prices_price);
-            END IF;
-        END LOOP;
+        IF v_forarr_2 IS NOT NULL THEN
+            FOR v_i_2 IN 0 .. v_forarr_2.get_size - 1 LOOP
+                v_pick_prices_price := TREAT(v_forarr_2.get(v_i_2) AS JSON_OBJECT_T);
+                IF (v_pick_prices_price.get_String('sku') = p_src.get_String('sku')) THEN
+                    v_pick_prices_found.append(v_pick_prices_price);
+                END IF;
+            END LOOP;
+        END IF;
         IF (v_pick_prices_found IS NOT NULL AND v_pick_prices_found.get_size > 0) THEN
             RETURN TREAT(v_pick_prices_found.get(0) AS JSON_OBJECT_T);
         END IF;
@@ -76,6 +82,7 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAP_PICK AS
     FUNCTION fn_pick_total(p_root IN JSON_OBJECT_T, p__errors IN OUT NOCOPY JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN NUMBER IS
         v_total_total_items_pick JSON_OBJECT_T;
         v_total_total_items_pick__o BOOLEAN;
+        v_total__ret NUMBER;
     BEGIN
         p_omitted := FALSE;
         BEGIN
@@ -87,12 +94,15 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAP_PICK AS
                 END IF;
                 v_total_total_items_pick__o := TRUE;
         END;
-        RETURN v_total_total_items_pick.get_Number('qty');
+        v_total__ret := v_total_total_items_pick.get_Number('qty');
+        IF v_total__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_total__ret;
     END fn_pick_total;
 
     FUNCTION fn_pick_currency(p_root IN JSON_OBJECT_T, p__errors IN OUT NOCOPY JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
         v_currency_currency_items_pick JSON_OBJECT_T;
         v_currency_currency_items_pick__o BOOLEAN;
+        v_currency__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
         BEGIN
@@ -104,12 +114,15 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAP_PICK AS
                 END IF;
                 v_currency_currency_items_pick__o := TRUE;
         END;
-        RETURN v_currency_currency_items_pick.get_String('cur');
+        v_currency__ret := v_currency_currency_items_pick.get_String('cur');
+        IF v_currency__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_currency__ret;
     END fn_pick_currency;
 
     FUNCTION fn_pick_missing(p_root IN JSON_OBJECT_T, p__errors IN OUT NOCOPY JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
         v_missing_missing_items_pick JSON_OBJECT_T;
         v_missing_missing_items_pick__o BOOLEAN;
+        v_missing__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
         BEGIN
@@ -121,13 +134,17 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAP_PICK AS
                 END IF;
                 v_missing_missing_items_pick__o := TRUE;
         END;
-        RETURN v_missing_missing_items_pick.get_String('cur');
+        v_missing__ret := v_missing_missing_items_pick.get_String('cur');
+        IF v_missing__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_missing__ret;
     END fn_pick_missing;
 
     FUNCTION fn_pick_line(p_root IN JSON_OBJECT_T, p_src IN JSON_OBJECT_T, p__errors IN OUT NOCOPY JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN JSON_OBJECT_T IS
         v_line_line_prices_pick JSON_OBJECT_T;
         v_line_line_prices_pick__o BOOLEAN;
         v_line__dc JSON_OBJECT_T;
+        v_val_line__v0 VARCHAR2(4000 CHAR);
+        v_val_line__v1 NUMBER;
     BEGIN
         p_omitted := FALSE;
         BEGIN
@@ -140,8 +157,14 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAP_PICK AS
                 v_line_line_prices_pick__o := TRUE;
         END;
         v_line__dc := JSON_OBJECT_T();
-        v_line__dc.put('Sku', p_src.get_String('sku'));
-        v_line__dc.put('Price', v_line_line_prices_pick.get_Number('price'));
+        v_val_line__v0 := p_src.get_String('sku');
+        IF v_val_line__v0 IS NOT NULL THEN
+            v_line__dc.put('Sku', v_val_line__v0);
+        END IF;
+        v_val_line__v1 := v_line_line_prices_pick.get_Number('price');
+        IF v_val_line__v1 IS NOT NULL THEN
+            v_line__dc.put('Price', v_val_line__v1);
+        END IF;
         RETURN v_line__dc;
     END fn_pick_line;
 
@@ -201,26 +224,28 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAP_PICK AS
         DECLARE
             v_forarr_3 JSON_ARRAY_T := v_srcroot.get_Array('lines');
         BEGIN
-            FOR v_i_3 IN 0 .. v_forarr_3.get_size - 1 LOOP
-                DECLARE
-                    v_src JSON_OBJECT_T := TREAT(v_forarr_3.get(v_i_3) AS JSON_OBJECT_T);
-                BEGIN
+            IF v_forarr_3 IS NOT NULL THEN
+                FOR v_i_3 IN 0 .. v_forarr_3.get_size - 1 LOOP
                     DECLARE
-                        v_result_line JSON_OBJECT_T;
-                        v_omitted_line BOOLEAN;
+                        v_src JSON_OBJECT_T := TREAT(v_forarr_3.get(v_i_3) AS JSON_OBJECT_T);
                     BEGIN
-                        v_result_line := fn_pick_line(v_srcroot, v_src, v_rule_errors, v_omitted_line);
-                        IF NOT v_omitted_line THEN
-                            v_arr_Lines.append(v_result_line);
-                        END IF;
-                    EXCEPTION
-                        WHEN OTHERS THEN
-                            IF NOT v_errors.EXISTS('line') THEN
-                                v_errors('line') := SQLERRM;
+                        DECLARE
+                            v_result_line JSON_OBJECT_T;
+                            v_omitted_line BOOLEAN;
+                        BEGIN
+                            v_result_line := fn_pick_line(v_srcroot, v_src, v_rule_errors, v_omitted_line);
+                            IF NOT v_omitted_line THEN
+                                v_arr_Lines.append(v_result_line);
                             END IF;
+                        EXCEPTION
+                            WHEN OTHERS THEN
+                                IF NOT v_errors.EXISTS('line') THEN
+                                    v_errors('line') := SQLERRM;
+                                END IF;
+                        END;
                     END;
-                END;
-            END LOOP;
+                END LOOP;
+            END IF;
         END;
 
         DECLARE
@@ -328,26 +353,28 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAP_PICK AS
         DECLARE
             v_forarr_3 JSON_ARRAY_T := v_srcroot.get_Array('lines');
         BEGIN
-            FOR v_i_3 IN 0 .. v_forarr_3.get_size - 1 LOOP
-                DECLARE
-                    v_src JSON_OBJECT_T := TREAT(v_forarr_3.get(v_i_3) AS JSON_OBJECT_T);
-                BEGIN
+            IF v_forarr_3 IS NOT NULL THEN
+                FOR v_i_3 IN 0 .. v_forarr_3.get_size - 1 LOOP
                     DECLARE
-                        v_result_line JSON_OBJECT_T;
-                        v_omitted_line BOOLEAN;
+                        v_src JSON_OBJECT_T := TREAT(v_forarr_3.get(v_i_3) AS JSON_OBJECT_T);
                     BEGIN
-                        v_result_line := fn_pick_line(v_srcroot, v_src, v_rule_errors, v_omitted_line);
-                        IF NOT v_omitted_line THEN
-                            v_arr_Lines.append(v_result_line);
-                        END IF;
-                    EXCEPTION
-                        WHEN OTHERS THEN
-                            IF NOT v_errors.EXISTS('line') THEN
-                                v_errors('line') := SQLERRM;
+                        DECLARE
+                            v_result_line JSON_OBJECT_T;
+                            v_omitted_line BOOLEAN;
+                        BEGIN
+                            v_result_line := fn_pick_line(v_srcroot, v_src, v_rule_errors, v_omitted_line);
+                            IF NOT v_omitted_line THEN
+                                v_arr_Lines.append(v_result_line);
                             END IF;
+                        EXCEPTION
+                            WHEN OTHERS THEN
+                                IF NOT v_errors.EXISTS('line') THEN
+                                    v_errors('line') := SQLERRM;
+                                END IF;
+                        END;
                     END;
-                END;
-            END LOOP;
+                END LOOP;
+            END IF;
         END;
 
         DECLARE

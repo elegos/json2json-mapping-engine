@@ -14,18 +14,29 @@ END J2JME_MAP_SELECTION;
 
 CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAP_SELECTION AS
     FUNCTION fn_selection_a(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_a__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN p_root.get_String('id');
+        v_a__ret := p_root.get_String('id');
+        IF v_a__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_a__ret;
     END fn_selection_a;
 
     FUNCTION fn_selection_my_object(p_root IN JSON_OBJECT_T, p_src IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN JSON_OBJECT_T IS
         v_my_object__dc JSON_OBJECT_T;
+        v_val_my_object__v0 VARCHAR2(4000 CHAR);
+        v_val_my_object__v1 VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
         v_my_object__dc := JSON_OBJECT_T();
-        v_my_object__dc.put('Id', MAPPING_OWNER.J2JME_FUNCTIONS.split_first(p_src.get_String('remarks'), '|'));
-        v_my_object__dc.put('Name', p_src.get_String('name'));
+        v_val_my_object__v0 := MAPPING_OWNER.J2JME_FUNCTIONS.split_first(p_src.get_String('remarks'), '|');
+        IF v_val_my_object__v0 IS NOT NULL THEN
+            v_my_object__dc.put('Id', v_val_my_object__v0);
+        END IF;
+        v_val_my_object__v1 := p_src.get_String('name');
+        IF v_val_my_object__v1 IS NOT NULL THEN
+            v_my_object__dc.put('Name', v_val_my_object__v1);
+        END IF;
         RETURN v_my_object__dc;
     END fn_selection_my_object;
 
@@ -39,23 +50,25 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAP_SELECTION AS
         p_omitted := FALSE;
         v_my_object_first_matches := JSON_ARRAY_T();
         v_forarr_0 := p_root.get_Array('myList');
-        FOR v_i_0 IN 0 .. v_forarr_0.get_size - 1 LOOP
-            v_my_object_first_item := TREAT(v_forarr_0.get(v_i_0) AS JSON_OBJECT_T);
-            IF ((v_my_object_first_item.get_String('discriminator') = 'MY D') AND (v_my_object_first_item.get_String('other') = p_root.get_String('rootElement'))) THEN
-                BEGIN
-                    v_my_object_first__rc0 := fn_selection_my_object(p_root, v_my_object_first_item, v_my_object_first__ro0);
-                EXCEPTION
-                    WHEN OTHERS THEN
-                        IF NOT p__errors.has('my_object') THEN
-                            p__errors.put('my_object', SQLERRM);
-                        END IF;
-                        v_my_object_first__ro0 := TRUE;
-                END;
-                IF NOT v_my_object_first__ro0 THEN
-                    v_my_object_first_matches.append(v_my_object_first__rc0);
+        IF v_forarr_0 IS NOT NULL THEN
+            FOR v_i_0 IN 0 .. v_forarr_0.get_size - 1 LOOP
+                v_my_object_first_item := TREAT(v_forarr_0.get(v_i_0) AS JSON_OBJECT_T);
+                IF ((v_my_object_first_item.get_String('discriminator') = 'MY D') AND (v_my_object_first_item.get_String('other') = p_root.get_String('rootElement'))) THEN
+                    BEGIN
+                        v_my_object_first__rc0 := fn_selection_my_object(p_root, v_my_object_first_item, v_my_object_first__ro0);
+                    EXCEPTION
+                        WHEN OTHERS THEN
+                            IF NOT p__errors.has('my_object') THEN
+                                p__errors.put('my_object', SQLERRM);
+                            END IF;
+                            v_my_object_first__ro0 := TRUE;
+                    END;
+                    IF NOT v_my_object_first__ro0 THEN
+                        v_my_object_first_matches.append(v_my_object_first__rc0);
+                    END IF;
                 END IF;
-            END IF;
-        END LOOP;
+            END LOOP;
+        END IF;
         IF (v_my_object_first_matches IS NOT NULL AND v_my_object_first_matches.get_size > 0) THEN
             RETURN TREAT(v_my_object_first_matches.get(0) AS JSON_OBJECT_T);
         END IF;

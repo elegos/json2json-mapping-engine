@@ -1,4 +1,6 @@
 CREATE OR REPLACE PACKAGE MAPPING_OWNER.J2JME_FUNCTIONS AS
+    FUNCTION format_date(p_s IN VARCHAR2, p_fmt IN VARCHAR2) RETURN VARCHAR2;
+
     FUNCTION format_decimal(p_x IN NUMBER, p_n IN NUMBER) RETURN VARCHAR2;
 
     FUNCTION is_empty(p_el IN JSON_ELEMENT_T, p_zero IN BOOLEAN DEFAULT FALSE) RETURN BOOLEAN;
@@ -7,9 +9,11 @@ CREATE OR REPLACE PACKAGE MAPPING_OWNER.J2JME_FUNCTIONS AS
 
     FUNCTION lookup(p_key IN VARCHAR2, p_table IN JSON_OBJECT_T, p_default IN VARCHAR2 DEFAULT NULL) RETURN VARCHAR2;
 
+    FUNCTION parse_timestamp(p_s IN VARCHAR2, p_fmt IN VARCHAR2) RETURN VARCHAR2;
+
     FUNCTION remove_prefix(p_s IN VARCHAR2, p_prefix IN VARCHAR2) RETURN VARCHAR2;
 
-    FUNCTION rfc3339_normalize(p_s IN VARCHAR2) RETURN VARCHAR2;
+    FUNCTION rfc3339_normalize(p_s IN VARCHAR2, p_digits IN NUMBER DEFAULT NULL) RETURN VARCHAR2;
 
     FUNCTION split_first(p_s IN VARCHAR2, p_sep IN VARCHAR2) RETURN VARCHAR2;
 
@@ -19,13 +23,53 @@ CREATE OR REPLACE PACKAGE MAPPING_OWNER.J2JME_FUNCTIONS AS
 
     FUNCTION to_string(p_el IN JSON_ELEMENT_T) RETURN VARCHAR2;
 
-    FUNCTION to_utc(p_s IN VARCHAR2) RETURN VARCHAR2;
+    FUNCTION to_utc(p_s IN VARCHAR2, p_digits IN NUMBER DEFAULT NULL) RETURN VARCHAR2;
 
     FUNCTION truthy(p_el IN JSON_ELEMENT_T) RETURN BOOLEAN;
 END J2JME_FUNCTIONS;
 /
 
 CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_FUNCTIONS AS
+    FUNCTION format_date(p_s IN VARCHAR2, p_fmt IN VARCHAR2) RETURN VARCHAR2 IS
+    BEGIN
+        DECLARE
+            v_date VARCHAR2(10) := REGEXP_SUBSTR(p_s, '^\s*(\d{4}-\d{2}-\d{2})', 1, 1, NULL, 1);
+            v_time VARCHAR2(8);
+            v_frac VARCHAR2(9);
+            v_zone VARCHAR2(10);
+            v_fmt VARCHAR2(200);
+        BEGIN
+            IF p_s IS NULL THEN
+                RETURN NULL;
+            END IF;
+            IF v_date IS NULL THEN
+                RAISE_APPLICATION_ERROR(-20999, 'not an ISO-8601 / RFC3339 timestamp: ' || p_s);
+            END IF;
+            v_time := NVL(REGEXP_SUBSTR(p_s, '[T ](\d{2}:\d{2}(:\d{2})?)', 1, 1, 'i', 1), '00:00');
+            IF LENGTH(v_time) = 5 THEN
+                v_time := v_time || ':00';
+            END IF;
+            v_frac := REGEXP_SUBSTR(p_s, '\d{2}:\d{2}:\d{2}[.,](\d{1,9})', 1, 1, NULL, 1);
+            v_zone := REGEXP_SUBSTR(p_s,
+                '\d{2}:\d{2}(:\d{2}([.,]\d{1,9})?)?\s*(Z|[+-]\d{2}(:?\d{2})?)\s*$', 1, 1, 'i', 3);
+            v_zone := CASE
+                WHEN v_zone IS NULL OR UPPER(v_zone) = 'Z' THEN '+00:00'
+                WHEN LENGTH(v_zone) = 3 THEN v_zone || ':00'
+                WHEN LENGTH(v_zone) = 5 THEN SUBSTR(v_zone, 1, 3) || ':' || SUBSTR(v_zone, 4)
+                ELSE v_zone END;
+            v_date := TO_CHAR(TO_DATE(v_date, 'YYYY-MM-DD'), 'YYYY-MM-DD'); -- an invalid date raises
+            -- only the six tokens and separators, as the reference accepts (Oracle knows many more)
+            v_fmt := REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(p_fmt),
+                'YYYY'), 'HH24'), 'MM'), 'DD'), 'MI'), 'SS');
+            -- (an empty text is NULL in Oracle: the lengths are taken with NVL)
+            IF NVL(LENGTH(TRANSLATE(v_fmt, '#ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', '#')), 0)
+                    <> NVL(LENGTH(v_fmt), 0) THEN
+                RAISE_APPLICATION_ERROR(-20999, 'not a date format: ' || p_fmt);
+            END IF;
+            RETURN TO_CHAR(TO_TIMESTAMP(v_date || ' ' || v_time, 'YYYY-MM-DD HH24:MI:SS'), p_fmt);
+        END;
+    END format_date;
+
     FUNCTION format_decimal(p_x IN NUMBER, p_n IN NUMBER) RETURN VARCHAR2 IS
     BEGIN
         IF p_x IS NULL THEN
@@ -71,12 +115,39 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_FUNCTIONS AS
         RETURN (CASE WHEN p_table.has(p_key) THEN p_table.get_String(p_key) ELSE p_default END);
     END lookup;
 
+    FUNCTION parse_timestamp(p_s IN VARCHAR2, p_fmt IN VARCHAR2) RETURN VARCHAR2 IS
+    BEGIN
+        DECLARE
+            v_fmt VARCHAR2(200);
+            v_up VARCHAR2(200);
+        BEGIN
+            IF p_s IS NULL OR p_fmt IS NULL THEN
+                RETURN NULL;
+            END IF;
+            v_up := UPPER(p_fmt);
+            v_fmt := REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(v_up,
+                'YYYY'), 'HH24'), 'HH12'), 'MON'), 'MM'), 'DD'), 'MI'), 'SS'), 'AM');
+            -- (an empty text is NULL in Oracle: the lengths are taken with NVL)
+            IF NVL(LENGTH(TRANSLATE(v_fmt, '#ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', '#')), 0)
+                    <> NVL(LENGTH(v_fmt), 0) THEN
+                RAISE_APPLICATION_ERROR(-20999, 'not a date format: ' || p_fmt);
+            END IF;
+            IF INSTR(v_up, 'YYYY') = 0 OR INSTR(v_up, 'DD') = 0
+                    OR (INSTR(REPLACE(v_up, 'MON'), 'MM') = 0 AND INSTR(v_up, 'MON') = 0) THEN
+                RAISE_APPLICATION_ERROR(-20999,
+                    'a date format needs a year, a month and a day: ' || p_fmt);
+            END IF;
+            RETURN TO_CHAR(TO_TIMESTAMP(p_s, p_fmt, 'NLS_DATE_LANGUAGE=ENGLISH'),
+                'YYYY-MM-DD"T"HH24:MI:SS');
+        END;
+    END parse_timestamp;
+
     FUNCTION remove_prefix(p_s IN VARCHAR2, p_prefix IN VARCHAR2) RETURN VARCHAR2 IS
     BEGIN
         RETURN (CASE WHEN p_prefix IS NOT NULL AND SUBSTR(p_s, 1, LENGTH(p_prefix)) = p_prefix THEN SUBSTR(p_s, LENGTH(p_prefix) + 1) ELSE p_s END);
     END remove_prefix;
 
-    FUNCTION rfc3339_normalize(p_s IN VARCHAR2) RETURN VARCHAR2 IS
+    FUNCTION rfc3339_normalize(p_s IN VARCHAR2, p_digits IN NUMBER DEFAULT NULL) RETURN VARCHAR2 IS
     BEGIN
         DECLARE
             v_date VARCHAR2(10) := REGEXP_SUBSTR(p_s, '^\s*(\d{4}-\d{2}-\d{2})', 1, 1, NULL, 1);
@@ -103,7 +174,7 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_FUNCTIONS AS
                 WHEN LENGTH(v_zone) = 5 THEN SUBSTR(v_zone, 1, 3) || ':' || SUBSTR(v_zone, 4)
                 ELSE v_zone END;
             v_date := TO_CHAR(TO_DATE(v_date, 'YYYY-MM-DD'), 'YYYY-MM-DD'); -- an invalid date raises
-            RETURN v_date || 'T' || v_time || CASE WHEN v_frac IS NOT NULL THEN '.' || v_frac END
+            RETURN v_date || 'T' || v_time || NVL2((CASE WHEN p_digits IS NULL THEN v_frac WHEN p_digits < 1 THEN NULL ELSE SUBSTR(RPAD(NVL(v_frac, '0'), 9, '0'), 1, p_digits) END), '.' || (CASE WHEN p_digits IS NULL THEN v_frac WHEN p_digits < 1 THEN NULL ELSE SUBSTR(RPAD(NVL(v_frac, '0'), 9, '0'), 1, p_digits) END), NULL)
                 || CASE WHEN v_zone = '+00:00' THEN 'Z' ELSE v_zone END;
         END;
     END rfc3339_normalize;
@@ -144,7 +215,7 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_FUNCTIONS AS
         RETURN p_el.to_String;
     END to_string;
 
-    FUNCTION to_utc(p_s IN VARCHAR2) RETURN VARCHAR2 IS
+    FUNCTION to_utc(p_s IN VARCHAR2, p_digits IN NUMBER DEFAULT NULL) RETURN VARCHAR2 IS
     BEGIN
         DECLARE
             v_date VARCHAR2(10) := REGEXP_SUBSTR(p_s, '^\s*(\d{4}-\d{2}-\d{2})', 1, 1, NULL, 1);
@@ -173,7 +244,7 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_FUNCTIONS AS
             v_date := TO_CHAR(TO_DATE(v_date, 'YYYY-MM-DD'), 'YYYY-MM-DD'); -- an invalid date raises
             RETURN TO_CHAR(SYS_EXTRACT_UTC(TO_TIMESTAMP_TZ(v_date || 'T' || v_time || v_zone,
                     'YYYY-MM-DD"T"HH24:MI:SSTZH:TZM')), 'YYYY-MM-DD"T"HH24:MI:SS')
-                || CASE WHEN v_frac IS NOT NULL THEN '.' || v_frac END || 'Z';
+                || NVL2((CASE WHEN p_digits IS NULL THEN v_frac WHEN p_digits < 1 THEN NULL ELSE SUBSTR(RPAD(NVL(v_frac, '0'), 9, '0'), 1, p_digits) END), '.' || (CASE WHEN p_digits IS NULL THEN v_frac WHEN p_digits < 1 THEN NULL ELSE SUBSTR(RPAD(NVL(v_frac, '0'), 9, '0'), 1, p_digits) END), NULL) || 'Z';
         END;
     END to_utc;
 

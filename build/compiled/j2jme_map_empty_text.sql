@@ -14,153 +14,228 @@ END J2JME_MAP_EMPTY_TEXT;
 
 CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAP_EMPTY_TEXT AS
     FUNCTION fn_empty_text_nth_0(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_nth_0__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.split_nth(p_root.get_String('s'), '|', 0), '~');
+        v_nth_0__ret := COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.split_nth(p_root.get_String('s'), '|', 0), '~');
+        IF v_nth_0__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_nth_0__ret;
     END fn_empty_text_nth_0;
 
     FUNCTION fn_empty_text_nth_1(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_nth_1__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN MAPPING_OWNER.J2JME_FUNCTIONS.split_nth(p_root.get_String('s'), '|', 1);
+        v_nth_1__ret := MAPPING_OWNER.J2JME_FUNCTIONS.split_nth(p_root.get_String('s'), '|', 1);
+        IF v_nth_1__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_nth_1__ret;
     END fn_empty_text_nth_1;
 
     FUNCTION fn_empty_text_nth_2(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_nth_2__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN MAPPING_OWNER.J2JME_FUNCTIONS.split_nth(p_root.get_String('s'), '|', 2);
+        v_nth_2__ret := MAPPING_OWNER.J2JME_FUNCTIONS.split_nth(p_root.get_String('s'), '|', 2);
+        IF v_nth_2__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_nth_2__ret;
     END fn_empty_text_nth_2;
 
     FUNCTION fn_empty_text_nth_3(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_nth_3__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.split_nth(p_root.get_String('s'), '|', 3), '~');
+        v_nth_3__ret := COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.split_nth(p_root.get_String('s'), '|', 3), '~');
+        IF v_nth_3__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_nth_3__ret;
     END fn_empty_text_nth_3;
 
     FUNCTION fn_empty_text_nth_5(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_nth_5__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.split_nth(p_root.get_String('s'), '|', 5), '~');
+        v_nth_5__ret := COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.split_nth(p_root.get_String('s'), '|', 5), '~');
+        IF v_nth_5__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_nth_5__ret;
     END fn_empty_text_nth_5;
 
     FUNCTION fn_empty_text_nth_6(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_nth_6__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN MAPPING_OWNER.J2JME_FUNCTIONS.split_nth(p_root.get_String('s'), '|', 6);
+        v_nth_6__ret := MAPPING_OWNER.J2JME_FUNCTIONS.split_nth(p_root.get_String('s'), '|', 6);
+        IF v_nth_6__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_nth_6__ret;
     END fn_empty_text_nth_6;
 
     FUNCTION fn_empty_text_nth_7(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_nth_7__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.split_nth(p_root.get_String('s'), '|', 7), '~');
+        v_nth_7__ret := COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.split_nth(p_root.get_String('s'), '|', 7), '~');
+        IF v_nth_7__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_nth_7__ret;
     END fn_empty_text_nth_7;
 
     FUNCTION fn_empty_text_nth_8(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_nth_8__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.split_nth(p_root.get_String('s'), '|', 8), '~');
+        v_nth_8__ret := COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.split_nth(p_root.get_String('s'), '|', 8), '~');
+        IF v_nth_8__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_nth_8__ret;
     END fn_empty_text_nth_8;
 
     FUNCTION fn_empty_text_first(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_first__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN MAPPING_OWNER.J2JME_FUNCTIONS.split_first(p_root.get_String('s'), '|');
+        v_first__ret := MAPPING_OWNER.J2JME_FUNCTIONS.split_first(p_root.get_String('s'), '|');
+        IF v_first__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_first__ret;
     END fn_empty_text_first;
 
     FUNCTION fn_empty_text_first_leading_empty(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_first_leading_empty__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.split_first(p_root.get_String('s2'), '|'), '~');
+        v_first_leading_empty__ret := COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.split_first(p_root.get_String('s2'), '|'), '~');
+        IF v_first_leading_empty__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_first_leading_empty__ret;
     END fn_empty_text_first_leading_empty;
 
     FUNCTION fn_empty_text_first_of_blank(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_first_of_blank__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.split_first(p_root.get_String('blank'), '|'), '~');
+        v_first_of_blank__ret := COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.split_first(p_root.get_String('blank'), '|'), '~');
+        IF v_first_of_blank__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_first_of_blank__ret;
     END fn_empty_text_first_of_blank;
 
     FUNCTION fn_empty_text_blank(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_blank__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN COALESCE(p_root.get_String('blank'), '~');
+        v_blank__ret := COALESCE(p_root.get_String('blank'), '~');
+        IF v_blank__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_blank__ret;
     END fn_empty_text_blank;
 
     FUNCTION fn_empty_text_concat_blanks(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_concat_blanks__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN COALESCE((p_root.get_String('blank') || p_root.get_String('blank')), '~');
+        v_concat_blanks__ret := COALESCE((p_root.get_String('blank') || p_root.get_String('blank')), '~');
+        IF v_concat_blanks__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_concat_blanks__ret;
     END fn_empty_text_concat_blanks;
 
     FUNCTION fn_empty_text_replace_to_empty(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_replace_to_empty__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN COALESCE(REPLACE(p_root.get_String('word'), 'x', ''), '~');
+        v_replace_to_empty__ret := COALESCE(REPLACE(p_root.get_String('word'), 'x', ''), '~');
+        IF v_replace_to_empty__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_replace_to_empty__ret;
     END fn_empty_text_replace_to_empty;
 
     FUNCTION fn_empty_text_is_empty_blank(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_is_empty_blank__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN (CASE WHEN COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.is_empty(p_root.get('blank'), FALSE), FALSE) THEN 'T' ELSE 'F' END);
+        v_is_empty_blank__ret := (CASE WHEN COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.is_empty(p_root.get('blank'), FALSE), FALSE) THEN 'T' ELSE 'F' END);
+        IF v_is_empty_blank__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_is_empty_blank__ret;
     END fn_empty_text_is_empty_blank;
 
     FUNCTION fn_empty_text_is_empty_missing(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_is_empty_missing__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN (CASE WHEN COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.is_empty(p_root.get('missing'), FALSE), FALSE) THEN 'T' ELSE 'F' END);
+        v_is_empty_missing__ret := (CASE WHEN COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.is_empty(p_root.get('missing'), FALSE), FALSE) THEN 'T' ELSE 'F' END);
+        IF v_is_empty_missing__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_is_empty_missing__ret;
     END fn_empty_text_is_empty_missing;
 
     FUNCTION fn_empty_text_is_empty_null(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_is_empty_null__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN (CASE WHEN COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.is_empty(p_root.get('json_null'), FALSE), FALSE) THEN 'T' ELSE 'F' END);
+        v_is_empty_null__ret := (CASE WHEN COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.is_empty(p_root.get('json_null'), FALSE), FALSE) THEN 'T' ELSE 'F' END);
+        IF v_is_empty_null__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_is_empty_null__ret;
     END fn_empty_text_is_empty_null;
 
     FUNCTION fn_empty_text_is_empty_text(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_is_empty_text__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN (CASE WHEN COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.is_empty(p_root.get('word'), FALSE), FALSE) THEN 'T' ELSE 'F' END);
+        v_is_empty_text__ret := (CASE WHEN COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.is_empty(p_root.get('word'), FALSE), FALSE) THEN 'T' ELSE 'F' END);
+        IF v_is_empty_text__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_is_empty_text__ret;
     END fn_empty_text_is_empty_text;
 
     FUNCTION fn_empty_text_is_empty_zero(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_is_empty_zero__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN (CASE WHEN COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.is_empty(p_root.get('zero'), FALSE), FALSE) THEN 'T' ELSE 'F' END);
+        v_is_empty_zero__ret := (CASE WHEN COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.is_empty(p_root.get('zero'), FALSE), FALSE) THEN 'T' ELSE 'F' END);
+        IF v_is_empty_zero__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_is_empty_zero__ret;
     END fn_empty_text_is_empty_zero;
 
     FUNCTION fn_empty_text_is_empty_zero_option(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_is_empty_zero_option__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN (CASE WHEN COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.is_empty(p_root.get('zero'), TRUE), FALSE) THEN 'T' ELSE 'F' END);
+        v_is_empty_zero_option__ret := (CASE WHEN COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.is_empty(p_root.get('zero'), TRUE), FALSE) THEN 'T' ELSE 'F' END);
+        IF v_is_empty_zero_option__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_is_empty_zero_option__ret;
     END fn_empty_text_is_empty_zero_option;
 
     FUNCTION fn_empty_text_is_empty_number_option(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_is_empty_number_option__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN (CASE WHEN COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.is_empty(p_root.get('num'), TRUE), FALSE) THEN 'T' ELSE 'F' END);
+        v_is_empty_number_option__ret := (CASE WHEN COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.is_empty(p_root.get('num'), TRUE), FALSE) THEN 'T' ELSE 'F' END);
+        IF v_is_empty_number_option__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_is_empty_number_option__ret;
     END fn_empty_text_is_empty_number_option;
 
     FUNCTION fn_empty_text_is_empty_false(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_is_empty_false__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN (CASE WHEN COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.is_empty(p_root.get('flag'), TRUE), FALSE) THEN 'T' ELSE 'F' END);
+        v_is_empty_false__ret := (CASE WHEN COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.is_empty(p_root.get('flag'), TRUE), FALSE) THEN 'T' ELSE 'F' END);
+        IF v_is_empty_false__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_is_empty_false__ret;
     END fn_empty_text_is_empty_false;
 
     FUNCTION fn_empty_text_is_empty_list(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_is_empty_list__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN (CASE WHEN COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.is_empty(p_root.get('list'), FALSE), FALSE) THEN 'T' ELSE 'F' END);
+        v_is_empty_list__ret := (CASE WHEN COALESCE(MAPPING_OWNER.J2JME_FUNCTIONS.is_empty(p_root.get('list'), FALSE), FALSE) THEN 'T' ELSE 'F' END);
+        IF v_is_empty_list__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_is_empty_list__ret;
     END fn_empty_text_is_empty_list;
 
     FUNCTION fn_empty_text_is_empty_part(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_is_empty_part__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN (CASE WHEN COALESCE((MAPPING_OWNER.J2JME_FUNCTIONS.split_nth(p_root.get_String('s'), '|', 3) IS NULL), FALSE) THEN 'T' ELSE 'F' END);
+        v_is_empty_part__ret := (CASE WHEN COALESCE((MAPPING_OWNER.J2JME_FUNCTIONS.split_nth(p_root.get_String('s'), '|', 3) IS NULL), FALSE) THEN 'T' ELSE 'F' END);
+        IF v_is_empty_part__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_is_empty_part__ret;
     END fn_empty_text_is_empty_part;
 
     FUNCTION fn_empty_text_is_empty_rounded_zero(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_is_empty_rounded_zero__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN (CASE WHEN COALESCE((ROUND(p_root.get_Number('small')) IS NULL OR (TRUE AND ROUND(p_root.get_Number('small')) = 0)), FALSE) THEN 'T' ELSE 'F' END);
+        v_is_empty_rounded_zero__ret := (CASE WHEN COALESCE((ROUND(p_root.get_Number('small')) IS NULL OR (TRUE AND ROUND(p_root.get_Number('small')) = 0)), FALSE) THEN 'T' ELSE 'F' END);
+        IF v_is_empty_rounded_zero__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_is_empty_rounded_zero__ret;
     END fn_empty_text_is_empty_rounded_zero;
 
     PROCEDURE map_empty_text (
