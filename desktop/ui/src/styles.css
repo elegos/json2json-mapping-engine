@@ -445,3 +445,17 @@ span.result-badge { cursor: default; }
    important declaration beats an animation */
 @keyframes dropped { 0% { opacity: 0; animation-timing-function: ease-in; } 33.333% { opacity: 1; } 66.667% { opacity: 1; animation-timing-function: ease-out; } 100% { opacity: 0; } }
 .grid .ag-row.just-dropped::after { content: ""; position: absolute; inset: 0; z-index: 3; pointer-events: none; background: color-mix(in srgb, CanvasText 24%, transparent); animation: dropped 750ms linear var(--drop-elapsed, 0ms) 1 both; }
+.validations table { table-layout: fixed; width: 100%; min-width: 860px; }
+.validations th:nth-child(1) { width: 14%; }
+.validations th:nth-child(2) { width: 38%; }
+.validations th:nth-child(3) { width: 12%; }
+.validations th:nth-child(5) { width: 80px; }
+.validations th:nth-child(6) { width: 44px; }
+.validations td input { width: 100%; box-sizing: border-box; }
+.validations input.invalid { outline: 1px solid #ff7a75; }
+.validation-schema { display: block; margin: 6px 0; }
+.validations section { margin-bottom: 18px; }
+.paths.validations { max-width: 1100px; }
+.validations .check-expect { height: auto; min-height: 24px; border: 1px solid ButtonBorder; border-radius: 2px; padding: 2px 4px; box-sizing: border-box; background: Field; }
+.validations .check-expect .cm-editor { height: auto; }
+.validations .check-expect:focus-within { outline: 1px solid Highlight; }

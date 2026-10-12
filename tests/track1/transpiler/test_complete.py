@@ -242,3 +242,17 @@ def test_code_dialect_suggests_the_variables_assigned_above() -> None:
     own = "yadda"
     again = complete(file, "rules[0]", "code", own, len(own), None, None)
     assert "yadda" not in [i.insert for i in again.items]
+
+
+def test_a_check_reads_the_input_or_the_output_as_dollar() -> None:
+    first = "validations.input.checks[0]"
+    assert "id" in labels(first, "expect", "$.")
+    assert "OrderId" not in labels(first, "expect", "$.")
+    assert "OrderId" in labels("validations.output.checks[0]", "expect", "$.")
+    assert "id" not in labels("validations.output.checks[0]", "expect", "$.")
+
+
+def test_a_check_offers_functions_but_not_value() -> None:
+    found = labels("validations.input.checks[0]", "expect", "is_dig")
+    assert "is_digits" in found
+    assert "value" not in labels("validations.input.checks[0]", "expect", "")

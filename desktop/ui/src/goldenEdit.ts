@@ -1,7 +1,7 @@
 // The files of a golden case as the case editor treats them: text that must be JSON and, for the
 // expected errors, a list of rule ids.
 
-export type Role = "input" | "expected" | "errors";
+export type Role = "input" | "expected" | "errors" | "rejected" | "warnings";
 
 export const ROLES: { id: Role; label: string; empty: string; about: string }[] = [
   { id: "input", label: "Input", empty: "{}", about: "The JSON document the mapping reads." },
@@ -11,6 +11,18 @@ export const ROLES: { id: Role; label: string; empty: string; about: string }[] 
     label: "Expected errors",
     empty: "[]",
     about: 'The rules expected to report an error, as a list of rule ids: ["rules[0]"].',
+  },
+  {
+    id: "rejected",
+    label: "Expected rejected",
+    empty: "[]",
+    about: 'The codes of the checks that reject the case, which then has no output: ["REQ-16"].',
+  },
+  {
+    id: "warnings",
+    label: "Expected warnings",
+    empty: "[]",
+    about: 'The codes of the checks that warn: ["W-01"].',
   },
 ];
 
@@ -24,8 +36,8 @@ export function jsonProblem(role: Role, text: string): string | null {
   } catch (e) {
     return `Not valid JSON: ${e instanceof Error ? e.message : e}`;
   }
-  if (role === "errors" && !(Array.isArray(value) && value.every((v) => typeof v === "string"))) {
-    return "Must be a list of rule ids (texts).";
+  if (role !== "input" && role !== "expected" && !(Array.isArray(value) && value.every((v) => typeof v === "string"))) {
+    return `Must be a list of ${role === "errors" ? "rule ids" : "check codes"} (texts).`;
   }
   return null;
 }

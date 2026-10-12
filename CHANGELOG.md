@@ -18,7 +18,8 @@ section (see `packaging/release.py`).
   `message`, `reject` or `warn`). A `reject` runs no rule and gives no output; every failed check is
   reported (`p_report` of `map_<id>_safe` / a third result, `MappingRejected` / the reserved error
   with `rejected`). Golden cases: `<case>.expected_rejected.json`, `.expected_warnings.json`. New
-  built-in `is_digits`. The import turns "reject if..." statements into validations.
+  built-in `is_digits`. The import turns "reject if..." statements into validations. Desktop: the
+  *Validations (I: n, O: m)* tab, and the golden cases' expected rejected / warnings files.
 - `mapper import extract | assemble | test | apply`: read a functional document (xlsx, docx, pdf,
   txt, md) into a normalized form, build and check a `.fn.yaml` from an import plan, run the plan's
   cases against it, and write it to the project (`pip install` extra `import` for the readers).

@@ -7,6 +7,7 @@ import { VersionControl } from "./VersionControl";
 import { CompletingCellEditor, type GridContext } from "./CompletingCellEditor";
 import { Lookups } from "./Lookups";
 import { Paths } from "./Paths";
+import { Validations } from "./Validations";
 import { ProjectProperties } from "./ProjectProperties";
 import { Golden } from "./Golden";
 import { goldenDiagnostics } from "./goldenResult";
@@ -171,6 +172,9 @@ import {
   STATE_FILTERS,
   targetPath,
   type StateFilter,
+  validationsLabel,
+  validationsOf,
+  type ValidationsSection,
 } from "./model";
 import { MiddleEllipsis } from "./MiddleEllipsis";
 import { OverridePane } from "./OverridePane";
@@ -297,7 +301,7 @@ export function App() {
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const filterInput = useRef<HTMLInputElement>(null);
   const [lookupsVersion, setLookupsVersion] = useState(0);
-  const [view, setView] = useState<"rules" | "lookups" | "paths" | "golden" | "project">("rules");
+  const [view, setView] = useState<"rules" | "lookups" | "paths" | "validations" | "golden" | "project">("rules");
   // mapper.toml: the form's descriptors, the file's values, the draft being edited
   const [configSchema, setConfigSchema] = useState<ConfigSchema | null>(null);
   const [configSaved, setConfigSaved] = useState("");
@@ -1210,6 +1214,21 @@ export function App() {
         if (!old) return old;
         const copy = structuredClone(old);
         change(copy.paths);
+        return copy;
+      });
+    },
+    [remember],
+  );
+
+  const editValidations = useCallback(
+    (change: (section: ValidationsSection) => void) => {
+      remember(treeRef.current, "validations");
+      setTree((old) => {
+        if (!old) return old;
+        const copy = structuredClone(old);
+        const section = validationsOf(copy);
+        change(section);
+        copy.validations = section;
         return copy;
       });
     },
@@ -2387,6 +2406,12 @@ export function App() {
               <button className={view === "paths" ? "tab active" : "tab"} onClick={() => setView("paths")}>
                 Paths
               </button>
+              <button
+                className={view === "validations" ? "tab active" : "tab"}
+                onClick={() => setView("validations")}
+              >
+                {tree ? validationsLabel(tree) : "Validations"}
+              </button>
               <button className={view === "golden" ? "tab active" : "tab"} onClick={() => setView("golden")}>
                 Golden{goldenDirty ? " ●" : ""}
               </button>
@@ -2449,6 +2474,16 @@ export function App() {
               paths={tree.paths}
               issues={(diagnostics.get("") ?? []).filter((d) => d.message.startsWith("paths:"))}
               onChange={editPaths}
+            />
+          )}
+          {tree && view === "validations" && (
+            <Validations
+              validations={validationsOf(tree)}
+              diagnostics={diagnostics}
+              onChange={editValidations}
+              complete={(path, text, cursor) =>
+                gridContext.complete?.(path, "expect", text, cursor) ?? Promise.resolve({ from: cursor, items: [] })
+              }
             />
           )}
           {tree && project && view === "lookups" && (

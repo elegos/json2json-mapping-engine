@@ -3,13 +3,15 @@
 A **golden case** is an example you are sure about: an input, and the output it must give. After
 every change, the cases tell you whether the mapping still does what it should.
 
-A case is made of up to three files, in `tests/golden/<mapping>/`:
+A case is made of up to five files, in `tests/golden/<mapping>/`:
 
 | File | What it holds |
 |---|---|
 | `<case>.input.json` | The input document. |
 | `<case>.expected.json` | The output expected for it. |
 | `<case>.expected_errors.json` | The rules expected to report an error, if any. |
+| `<case>.expected_rejected.json` | The codes of the checks expected to reject the case, if any (see *Input and output checks*). A rejected case has no output. |
+| `<case>.expected_warnings.json` | The codes of the checks expected to warn, if any. |
 
 ## In the tool
 

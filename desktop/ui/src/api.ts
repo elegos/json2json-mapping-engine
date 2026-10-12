@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
+import type { Role } from "./goldenEdit";
 import type { Diagnostic, FunctionalFile, ReviewFlag } from "./model";
 import type { ConfigIssue, ConfigSchema, ConfigValues } from "./projectConfig";
 
@@ -231,6 +232,8 @@ export interface GoldenCase {
   name: string;
   expected: boolean;
   errors: boolean;
+  rejected: boolean;
+  warnings: boolean;
 }
 
 export const goldenCases = async (project: string, mapping: string) =>
@@ -277,6 +280,18 @@ export interface GoldenResult {
   values: Record<string, unknown>;
   /** The same for the case's expected output; null when it has none. */
   expected_values: Record<string, unknown> | null;
+  /** The checks of a mapping that validates and failed (null for one that does not validate),
+   * and the codes the case expects to reject / warn (null: the case says nothing). */
+  report: ValidationIssue[] | null;
+  expected_rejected: string[] | null;
+  expected_warnings: string[] | null;
+}
+
+export interface ValidationIssue {
+  side: "input" | "output";
+  code: string;
+  message: string;
+  action: "reject" | "warn";
 }
 
 /** A rule that reported an error in a run. `path` is its row in the grid (null for a `.map.py`),
@@ -407,7 +422,7 @@ export const goldenRecord = (project: string, mapping: string, name: string) =>
 /** The text of each file of a case, as on disk (null where the file is not there). */
 export const goldenRead = async (project: string, mapping: string, name: string) =>
   (
-    await reviewRequest<{ files: Record<"input" | "expected" | "errors", string | null> }>({
+    await reviewRequest<{ files: Record<Role, string | null> }>({
       op: "golden_read",
       project,
       mapping,
@@ -420,7 +435,7 @@ export const goldenWrite = (
   project: string,
   mapping: string,
   name: string,
-  role: "input" | "expected" | "errors",
+  role: Role,
   text: string | null,
 ) => reviewRequest({ op: "golden_write", project, mapping, name, role, text });
 

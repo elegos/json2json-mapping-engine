@@ -1224,7 +1224,7 @@ the document is and the order of the guards. When validations exist, "no shape m
 rejection. Done: model, check (a field only some shapes require is not required), transpiler (flow
 `if`), both backends (golden `groups`).
 
-## ✅ Validation of the input and the output (CLI done, desktop tab to do)
+## ✅ Validation of the input and the output (done)
 
 A mapping has a **Validation** section with two sides, input (before any rule) and output (after the
 last). Each side has a **JSON Schema** check (off by default: the host may validate upstream or
@@ -1253,8 +1253,12 @@ the output.
 - The desktop's golden ops (`golden_run`, `golden_record`, `golden_read` / `golden_write`) carry the
   report and the two new case files.
 
-**To do.** The desktop tab (Input / Output tables, test cases that expect `rejected: [codes]`), see
-*Desktop tool*. The schema check is best effort and not the same on every backend: Oracle's validator
+**Desktop.** The *Validations (I: n, O: m)* tab (`Validations.tsx`: per side the schema check and a table of
+checks, edited like the Paths tab); the golden case editor has the *Expected rejected* / *Expected warnings*
+files, the list shows them, and a run shows the failed checks and compares their codes with the expected
+ones. Guide page *Input and output checks*.
+
+**Note.** The schema check is best effort and not the same on every backend: Oracle's validator
 does not look at `format` (a `date-time` string is checked to be a string, not a date); the extra
 checks are the way to be exact. Older Oracle databases lack `DBMS_JSON_SCHEMA`: a mapping that asks
 for the schema check does not compile there.

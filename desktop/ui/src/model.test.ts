@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { type ConfigOption, issuesAt, setAt, shownValue, tableAt } from "./projectConfig";
 import {
+  duplicateChecks,
+  newCheck,
+  validationsLabel,
+  validationsOf,
   columnOfMessage,
   moveRule,
   pathAfterMove,
@@ -490,5 +494,28 @@ describe("moving rules among their siblings", () => {
     expect(pathAfterMove("rules[1].rules[2]", "rules[1]", 2, 0)).toBe("rules[1].rules[0]");
     expect(pathAfterMove("rules[1].rules[1]", "rules[1]", 2, 0)).toBe("rules[1].rules[2]");
     expect(pathAfterMove("rules[2]", "rules[1]", 2, 0)).toBe("rules[2]");
+  });
+});
+
+describe("validations", () => {
+  const side = (n: number, schema = false) => ({
+    schema,
+    checks: Array.from({ length: n }, (_, i) => ({
+      id: `c${i}`, expect: "$", code: `C${i}`, message: "", action: "reject" as const, description: null,
+    })),
+  });
+  it("titles the tab with the number of validations of each side", () => {
+    expect(validationsLabel({})).toBe("Validations");
+    expect(validationsLabel({ validations: { input: side(2, true), output: side(1) } })).toBe("Validations (I: 3, O: 1)");
+  });
+  it("proposes an id and a code that no check uses, on either side", () => {
+    const section = { input: { schema: false, checks: [{ ...newCheck(validationsOf({})), id: "check", code: "check" }] }, output: side(0) };
+    expect(newCheck(section)).toMatchObject({ id: "check2", code: "check2", action: "reject" });
+  });
+  it("finds the repeated ids and codes across both sides", () => {
+    const a = side(1);
+    const section = { input: a, output: { schema: false, checks: [{ ...a.checks[0], code: "X" }] } };
+    expect([...duplicateChecks(section, "id")]).toEqual(["c0"]);
+    expect([...duplicateChecks(section, "code")]).toEqual([]);
   });
 });

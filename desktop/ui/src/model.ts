@@ -74,6 +74,28 @@ export interface SchemasSection {
   output: string | null;
 }
 
+/** One extra check of the `validations:` section: `expect` (on `$`) must be true. */
+export interface CheckSpec {
+  id: string;
+  expect: string;
+  code: string;
+  message: string;
+  action: "reject" | "warn";
+  description: string | null;
+}
+
+export interface SideChecks {
+  schema: boolean;
+  checks: CheckSpec[];
+}
+
+export interface ValidationsSection {
+  input: SideChecks;
+  output: SideChecks;
+}
+
+export type ValidationSide = "input" | "output";
+
 export interface FunctionalFile {
   name: string;
   id: string;
@@ -81,6 +103,7 @@ export interface FunctionalFile {
   path: string | null;
   paths: PathsSection;
   schemas: SchemasSection;
+  validations?: ValidationsSection;
   /** The project's own lookups, read as `@label` like the mapping's (never part of its file). */
   shared: Record<string, LookupRule>;
 }
@@ -660,4 +683,47 @@ export function pathAfterMove(path: string, parent: string, from: number, to: nu
   const i = Number(rest.slice(0, end));
   const j = i === from ? to : from < to && i > from && i <= to ? i - 1 : to < from && i >= to && i < from ? i + 1 : i;
   return `${head}${j}${rest.slice(end)}`;
+}
+
+/** The section, empty when the file has none. */
+export function validationsOf(file: Pick<FunctionalFile, "validations">): ValidationsSection {
+  return {
+    input: file.validations?.input ?? { schema: false, checks: [] },
+    output: file.validations?.output ?? { schema: false, checks: [] },
+  };
+}
+
+/** How many validations a side has: its checks, and the JSON Schema check when it is on. */
+export function validationCount(side: SideChecks): number {
+  return side.checks.length + (side.schema ? 1 : 0);
+}
+
+/** The tab's title: `Validations (I: n, O: m)` once there is something, else `Validations`. */
+export function validationsLabel(file: Pick<FunctionalFile, "validations">): string {
+  const v = validationsOf(file);
+  const [i, o] = [validationCount(v.input), validationCount(v.output)];
+  return i + o === 0 ? "Validations" : `Validations (I: ${i}, O: ${o})`;
+}
+
+/** A new check with an id and a code that no other check uses (`check`, `check2`, …). */
+export function newCheck(section: ValidationsSection): CheckSpec {
+  const all = [...section.input.checks, ...section.output.checks];
+  const free = (key: "id" | "code") => {
+    const used = new Set(all.map((c) => c[key]));
+    let name = "check";
+    for (let n = 2; used.has(name); n++) name = `check${n}`;
+    return name;
+  };
+  return { id: free("id"), expect: "", code: free("code"), message: "", action: "reject", description: null };
+}
+
+/** The ids or codes used by more than one check (both sides count: they are unique in the file). */
+export function duplicateChecks(section: ValidationsSection, key: "id" | "code"): Set<string> {
+  const seen = new Set<string>();
+  const dup = new Set<string>();
+  for (const c of [...section.input.checks, ...section.output.checks]) {
+    if (seen.has(c[key])) dup.add(c[key]);
+    seen.add(c[key]);
+  }
+  return dup;
 }

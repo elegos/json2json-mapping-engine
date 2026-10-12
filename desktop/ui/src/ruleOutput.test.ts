@@ -14,6 +14,9 @@ const run = (values: Record<string, unknown>, expected: Record<string, unknown> 
   inconclusive: false,
   values,
   expected_values: expected,
+  report: null,
+  expected_rejected: null,
+  expected_warnings: null,
 });
 
 describe("the Output column", () => {

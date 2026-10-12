@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { GoldenCase, GoldenResult } from "./api";
 import {
+  codes,
   diffLines,
   falsePositiveNote,
   maybeFalsePositive,
@@ -89,8 +90,9 @@ export function Golden({
       <p className="config-help golden-help">
         Golden cases are an input and the output expected for it. They live in{" "}
         <code>tests/golden/{mapping}/</code> as <code>&lt;case&gt;.input.json</code>,{" "}
-        <code>&lt;case&gt;.expected.json</code> and <code>&lt;case&gt;.expected_errors.json</code>; the
-        tool names the files for you when you load them.
+        <code>&lt;case&gt;.expected.json</code>, <code>&lt;case&gt;.expected_errors.json</code> and, for a
+        mapping that validates, <code>&lt;case&gt;.expected_rejected.json</code> and{" "}
+        <code>&lt;case&gt;.expected_warnings.json</code>; the tool names the files for you when you load them.
       </p>
       <div className="golden-bar">
         <button onClick={onImport}>Import a case…</button>
@@ -115,6 +117,8 @@ export function Golden({
               <th>Input</th>
               <th>Expected output</th>
               <th>Expected errors</th>
+              <th>Expected rejected</th>
+              <th>Expected warnings</th>
               <th>Result</th>
               <th />
             </tr>
@@ -130,6 +134,8 @@ export function Golden({
                 <td>✓</td>
                 <td>{c.expected ? "✓" : <span className="golden-none">none</span>}</td>
                 <td>{c.errors ? "✓" : <span className="golden-none">none</span>}</td>
+                <td>{c.rejected ? "✓" : <span className="golden-none">none</span>}</td>
+                <td>{c.warnings ? "✓" : <span className="golden-none">none</span>}</td>
                 <td>
                   <ResultBadge
                     result={results[c.name]}
@@ -246,6 +252,23 @@ function ResultDetail(props: { result: GoldenResult; busy: boolean; onRecord: ()
           ))}
         </ul>
       )}
+      {r.report && r.report.length > 0 && (
+        <>
+          <h4>Checks that failed</h4>
+          <table className="golden-errors">
+            <tbody>
+              {r.report.map((i) => (
+                <tr key={`${i.side}|${i.code}`}>
+                  <td className="golden-name">{i.code}</td>
+                  <td>
+                    {i.side}: {i.message} <span className="muted">— {i.action === "reject" ? "rejects" : "warns"}</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
       {r.errors.length > 0 && (
         <>
           <h4>Rules that reported an error</h4>
@@ -280,6 +303,8 @@ function ResultDetail(props: { result: GoldenResult; busy: boolean; onRecord: ()
             ))}
           </pre>
         </>
+      ) : r.output === null && codes(r, "reject").length > 0 ? (
+        <p className="muted">Rejected: the message ran no rule and has no output.</p>
       ) : (
         <>
           <h4>Output</h4>

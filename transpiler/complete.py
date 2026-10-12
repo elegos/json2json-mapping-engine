@@ -20,6 +20,7 @@ from transpiler.model import (
     LookupRule,
     LoopRule,
     ObjectRule,
+    PathsSection,
     Rule,
 )
 from transpiler.paths import expand_paths
@@ -150,6 +151,7 @@ def _context(
     return None
 
 
+_CHECK_PATH = re.compile(r"validations\.(input|output)\.checks\[\d+\]$")
 _RUN = re.compile(r"[\w@$.\[\]*]*$")
 _ANCHOR = re.compile(r"\$|@[A-Za-z_]\w*|@\d+|@")
 
@@ -192,14 +194,25 @@ def complete(
     `column` is `target`, `source`, `expression` or `code` (a rule's `code_override`:
     the developer dialect, with `root`, `src`, `src1`... instead of anchors)."""
     inp, out = _Schemas(input_schema), _Schemas(output_schema)
+    check = _CHECK_PATH.match(path) if column == "expect" else None
     expanded = expand_paths(file)
     section = file.paths
+    if check:
+        # an extra check reads `$` as the whole document it checks (the output on the output side),
+        # with no Paths section and no loop around it, only the lookups and the functions
+        inp = out if check.group(1) == "output" else inp
+        section = PathsSection()
+        column = "expression"
     real_root: Node = inp.root if inp.root is not None else UNKNOWN
     dollar: Node = real_root
     if section.root and inp.root is not None:
         reached, _m = inp.resolve(inp.root, section.root.removeprefix("$"))
         dollar = reached if reached is not None else UNKNOWN
-    ctx = _context(expanded, path, inp, out, dollar)
+    ctx = (
+        _Context([], [], UNKNOWN, set())
+        if check
+        else _context(expanded, path, inp, out, dollar)
+    )
     if ctx is None:
         return Completion(cursor, [])
     before = text[:cursor]
@@ -284,7 +297,8 @@ def complete(
         current = items[-1] if items else dollar
         found += _fields(inp, current, "", insert_plain=True)
     if column == "expression":
-        found.append(Item("value", "value", "value", "the Source's value"))
+        if not check:
+            found.append(Item("value", "value", "value", "the Source's value"))
         registry = functions if functions is not None else builtin_functions()
         found += [
             Item(f.name, f.name + "(", "function", f.signature(), f.doc, f.origin)
