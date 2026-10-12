@@ -1,0 +1,18 @@
+{
+  "type": "object",
+  "required": [
+    "id",
+    "amount"
+  ],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "amount": {
+      "type": "number"
+    },
+    "vat": {
+      "type": "string"
+    }
+  }
+}
