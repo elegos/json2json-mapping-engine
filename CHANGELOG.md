@@ -10,6 +10,8 @@ section (see `packaging/release.py`).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-14
+
 ### Features
 
 - Validation of the input and the output: a `validations:` section in the functional file with the
