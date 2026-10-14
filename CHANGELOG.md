@@ -18,6 +18,8 @@ section (see `packaging/release.py`).
 
 ### Changed
 
+- Windows installer (NSIS): the application's icon instead of the generic one, and the version and
+  the commit in its title and welcome page (`J2JME Desktop 0.3.2 (abc1234)`).
 - Desktop: the import view fills the window in width and height (no fixed sizes), with minimum sizes
   instead.
 

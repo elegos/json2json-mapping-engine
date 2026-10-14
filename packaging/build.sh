@@ -25,6 +25,17 @@ export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$root/build/pkg-cache/target}"
 echo "== $name ($target)"
 
 "$root/packaging/stage.sh" "$target"
+
+# What the Windows installer shows: the version and the commit in its title and welcome page (the
+# product name, which the install folder and the registry are keyed on, stays without them).
+case "$version$J2JME_GIT_SHA" in *[!0-9A-Za-z.+-]*) echo "not a version or a commit: $version $J2JME_GIT_SHA" >&2; exit 1 ;; esac
+cat > "$tauri_dir/stage/installer-hooks.nsh" <<NSH
+Caption "J2JME Desktop ${version} (${J2JME_GIT_SHA}) Setup"
+!define MUI_WELCOMEPAGE_TITLE "J2JME Desktop ${version} (${J2JME_GIT_SHA})"
+!macro NSIS_HOOK_POSTINSTALL
+  WriteRegStr SHCTX "\${UNINSTKEY}" "Comments" "Build ${J2JME_GIT_SHA}"
+!macroend
+NSH
 [ -d "$root/desktop/ui/node_modules" ] || npm ci --prefix "$root/desktop/ui"
 
 bundle() { # a Tauri build; the frontend is built by its beforeBuildCommand
