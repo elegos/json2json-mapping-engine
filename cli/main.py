@@ -692,6 +692,73 @@ def import_extract(
     )
 
 
+def _view(document: Path, build: Any) -> None:
+    """Print a compact view of an extracted `document.json` (see `cli/docread/view.py`)."""
+    from cli.docread.view import ViewError
+
+    try:
+        doc = json.loads(document.read_text(encoding="utf-8"))
+        typer.echo(build(doc))
+    except (OSError, ValueError, KeyError) as exc:
+        typer.echo(f"cannot read {document} as a normalized document: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    except ViewError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+
+_DOC = Annotated[Path, typer.Argument(help="The document.json written by `import extract`")]
+
+
+@import_app.command("outline")
+def import_outline(document: _DOC) -> None:
+    """Sizes, warnings, tables with their header rows, headings: where to read next."""
+    from cli.docread import view
+
+    _view(document, view.outline)
+
+
+@import_app.command("rows")
+def import_rows(
+    document: _DOC,
+    table: Annotated[str, typer.Argument(help="Table id (t1...) from `import outline`")],
+    start: Annotated[int, typer.Option("--from", help="First row index (r<n>)")] = 0,
+    end: Annotated[int | None, typer.Option("--to", help="Last row index, included")] = None,
+    all_format: Annotated[bool, typer.Option("--all-format", help="Also bold / italic")] = False,
+) -> None:
+    """Rows of a table, one line each (60 by default): `r<n> <first cell> | cell | cell`.
+    `^` is a merged cell repeated from the one before; {fill=..,strike} is formatting that may mean something."""
+    from cli.docread import view
+
+    _view(document, lambda d: view.rows(d, table, start, end, all_format))
+
+
+@import_app.command("blocks")
+def import_blocks(
+    document: _DOC,
+    start: Annotated[int, typer.Option("--from", help="First block (#<n>)")] = 0,
+    end: Annotated[int | None, typer.Option("--to", help="Last block, included")] = None,
+    kind: Annotated[str | None, typer.Option("--kind", help="heading, paragraph, code...")] = None,
+    all_format: Annotated[bool, typer.Option("--all-format", help="Also bold / italic")] = False,
+) -> None:
+    """Blocks in reading order, one line each (60 by default)."""
+    from cli.docread import view
+
+    _view(document, lambda d: view.blocks(d, start, end, kind, all_format))
+
+
+@import_app.command("find")
+def import_find(
+    document: _DOC,
+    text: Annotated[str, typer.Argument(help="Text to look for, case-insensitive")],
+    limit: Annotated[int, typer.Option(help="Matches to show")] = 40,
+) -> None:
+    """Rows and blocks that contain the text, with where they are."""
+    from cli.docread import view
+
+    _view(document, lambda d: view.find(d, text, limit))
+
+
 def _import_command(action: str, mapping: str, **kwargs: Any) -> None:
     """Run one of the plan commands from the project directory and print its result as JSON."""
     from cli import import_plan

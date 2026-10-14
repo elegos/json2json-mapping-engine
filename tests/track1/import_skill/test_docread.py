@@ -129,3 +129,38 @@ def test_the_command_writes_the_file_and_a_status_line(tmp_path: Path) -> None:
     assert json.loads(out.read_text())["format"] == "pdf"
     bad = CliRunner().invoke(app, ["import", "extract", str(tmp_path / "nope.pdf")])
     assert bad.exit_code == 1
+
+
+def _view(tmp_path: Path, name: str, *args: str) -> tuple[int, str]:
+    document = tmp_path / "document.json"
+    document.write_text(json.dumps(_doc(name)), encoding="utf-8")
+    result = CliRunner().invoke(app, ["import", args[0], str(document), *args[1:]])
+    return result.exit_code, result.output
+
+
+def test_views_read_a_long_document_in_slices(tmp_path: Path) -> None:
+    code, out = _view(tmp_path, "Mapping_ReservationToTask", "outline")
+    assert (
+        code == 0
+        and "t2  Mapping A9:E30  22 rows" in out
+        and "header r1 A10 | Target Element" in out
+    )
+
+    code, out = _view(
+        tmp_path, "Mapping_ReservationToTask", "rows", "t2", "--from", "2", "--to", "3"
+    )
+    lines = out.strip().splitlines()
+    assert lines[0].startswith("r2 A11 | domain | Y | Fixed = D")
+    assert lines[-1] == "-- t2 r2..r3 of 22; next: --from 4"
+
+    code, out = _view(tmp_path, "Mapping_ReservationToTask", "rows", "t2", "--from", "20")
+    assert out.strip().endswith("end of table")
+
+    code, out = _view(tmp_path, "Mapping_ReservationToTask", "find", "queueId")
+    assert "t1 r4 A5 | queueId" in out and "2 match(es)" in out
+
+
+def test_views_say_what_is_missing(tmp_path: Path) -> None:
+    code, out = _view(tmp_path, "Mapping_ReservationToTask", "rows", "t99")
+    assert code == 1 and "no table 't99'" in out
+    assert _view(tmp_path, "Mapping_ReservationToTask", "rows", "t2", "--from", "500")[0] == 1

@@ -62,6 +62,15 @@ Never wait for an answer inside a run and never assume one that matters (see *As
   result (formulas shown as text, hidden sheets or columns, tracked changes, PDF tables not
   reconstructed) and carry them into the plan's flags. If the command fails because a library is
   missing, tell the wizard (`failed`, reason `extractor_unavailable`); do not read the file by other means.
+- **Read it in slices, never whole.** A long spreadsheet is tens of thousands of lines of JSON; do not
+  open `document.json` with a file read, and do not write scripts (the only program you may run is
+  `mapper`). Use the views, each one line per row or block:
+  `mapper import outline <document.json>` (sizes, warnings, tables with their header rows, headings),
+  `mapper import rows <document.json> <table> --from N --to M` (60 rows by default; the last line says
+  where to continue; `^` is a merged cell repeated, `{fill=..,strike}` the formatting that may carry
+  meaning), `mapper import blocks <document.json> [--kind heading] --from N` for prose, and
+  `mapper import find <document.json> <text>` to locate a field or a term. Go through a long table in
+  slices of about 60 rows and write the rules of each slice into the plan before the next one.
 - If the document has **no extractable text** (scan, image), stop there: write a minimal plan with
   `mapping` unknown (the mapping id given, or `unknown`), no rules, `coverage.units_total: 0`, one
   `coverage.not_imported` entry for the whole document (reason `unreadable`), an empty profile
