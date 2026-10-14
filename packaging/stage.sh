@@ -63,7 +63,7 @@ done
 mkdir -p "$engine/skills"
 cp -a "$root/skills/import-functional-spec" "$engine/skills/import-functional-spec"
 find "$engine" -name __pycache__ -type d -prune -exec rm -rf {} +
-(cd "$root" && uv export --no-dev --no-hashes --frozen --no-emit-project -o "$stage/requirements.txt" >/dev/null)
+(cd "$root" && uv export --no-dev --extra import --no-hashes --frozen --no-emit-project -o "$stage/requirements.txt" >/dev/null)
 uv pip install --quiet --target "$engine" --python-platform "$platform" \
   --python-version "${PBS_PYTHON%.*}" --only-binary :all: --no-deps -r "$stage/requirements.txt"
 rm -rf "$engine/bin" "$stage/requirements.txt"

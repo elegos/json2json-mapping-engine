@@ -10,6 +10,12 @@ section (see `packaging/release.py`).
 
 ## [Unreleased]
 
+### Fixed
+
+- Import from the installed application: the readers for xlsx, docx and pdf (`openpyxl`,
+  `python-docx`, `pdfminer-six`, the `import` extra) were not in the bundled engine, so
+  `mapper import extract` failed there. They are now staged with it.
+
 ## [0.3.1] - 2026-10-14
 
 ### Fixed
