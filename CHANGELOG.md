@@ -12,6 +12,15 @@ section (see `packaging/release.py`).
 
 ## [0.3.1] - 2026-10-14
 
+### Features
+
+- Import: the input and output JSON Schemas can be named up front (*Input / Output JSON Schema* in the
+  wizard, `mapper import run --input-schema / --output-schema`). They are copied into the project
+  (`schemas/<mapping>_input.schema.json`, else `import/schemas/`) so the assistant reads them like any
+  project file, and the skill takes them as provided.
+- Import: when the assistant is refused a call (a permission), the failed run lists the calls and
+  *Allow and run again* (`--allow <rule>`) repeats the run with them allowed.
+
 ### Fixed
 
 - Import on Windows: the assistant could not run `mapper` ("mapper isn't found in bash"), because the

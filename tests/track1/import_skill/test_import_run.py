@@ -131,3 +131,48 @@ def test_a_changed_document_marks_the_plan_stale(tmp_path: Path) -> None:
     run(root, document, fake(tmp_path, WRITES_PLAN))
     (root / "import/documents/spec.txt").write_text("changed\n", encoding="utf-8")
     assert import_ops.list_imports(root)[0]["stale"] == ["document"]
+
+
+def test_schemas_named_by_the_user_are_brought_into_the_project(tmp_path: Path) -> None:
+    root, document = project(tmp_path)
+    outside = tmp_path / "elsewhere"
+    outside.mkdir()
+    (outside / "in.json").write_text('{"type": "object"}')
+    (outside / "out.json").write_text('{"type": "object", "title": "out"}')
+    (root / "schemas").mkdir(exist_ok=True)
+    (root / "schemas/m_output.schema.json").write_text('{"type": "array"}')  # another file there
+    assert import_run.bring_schema(root, outside / "in.json", "input", "m") == (
+        "schemas/m_input.schema.json"
+    )
+    assert import_run.bring_schema(root, outside / "out.json", "output", "m") == (
+        "import/schemas/out.json"
+    )
+    assert (
+        import_run.bring_schema(root, outside / "in.json", "input", None)
+        == "import/schemas/in.json"
+    )
+    prompt = import_run.build_prompt("d.txt", "m", None, "import", [], root, "a.json", "b.json")
+    assert "- input_schema: a.json" in prompt and "- output_schema: b.json" in prompt
+    (outside / "bad.json").write_text("{nope")
+    with pytest.raises(import_run.RunError):
+        import_run.bring_schema(root, outside / "bad.json", "input", "m")
+
+
+def test_refused_calls_are_reported_with_the_rule_that_allows_them() -> None:
+    result = {
+        "type": "result",
+        "result": "stopped",
+        "permission_denials": [
+            {"tool_name": "Bash", "tool_input": {"command": "mapper functions --json > f.json"}},
+            {"tool_name": "Bash", "tool_input": {"command": "mapper functions --json > f.json"}},
+            {"tool_name": "Read", "tool_input": {"file_path": "/x/y.txt"}},
+        ],
+    }
+    denied = import_run.denied_of("claude", [json.dumps(result)])
+    assert [d["rule"] for d in denied] == [
+        "Bash(mapper functions --json > f.json)",
+        "Read(/x/y.txt)",
+    ]
+    assert import_run.denied_of("codex", [json.dumps(result)]) == []
+    command = import_run.command_for("claude", "claude", "p", Path("s"), ["Read(/x/y.txt)"])
+    assert command[-1] == "Read(/x/y.txt)"

@@ -17,8 +17,10 @@ condition, meaning of a colour...), recorded in a **profile** and asked about wh
 
 ## Inputs and outputs
 
-Given: the document path; the project directory; optionally the mapping id, a profile name, an
-existing plan (re-run), and the answers already given. Read these files if they exist:
+Given: the document path; the project directory; optionally the mapping id, a profile name, the
+`input_schema` and `output_schema` paths (files the wizard put inside the project: use them, they win
+over anything else and over the names the document gives; record each as the plan's
+`schemas.<side>.path` with `origin: provided`), an existing plan (re-run), and the answers already given. Read these files if they exist:
 
 | File | What |
 |---|---|

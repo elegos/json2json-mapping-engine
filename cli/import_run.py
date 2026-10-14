@@ -87,6 +87,31 @@ def bring_document(project: Path, document: Path) -> str:
     return target.relative_to(project).as_posix()
 
 
+def bring_schema(project: Path, schema: Path, kind: str, mapping: str | None) -> str:
+    """A JSON Schema the user names, as a path inside the project, where the assistant may read it.
+    With the mapping known it takes the name the project looks for (`schemas/<mapping>_<kind>.schema.json`),
+    unless another file is there already; else it goes to `import/schemas/`."""
+    schema = schema.resolve()
+    if not schema.is_file():
+        raise RunError(f"{schema}: not a file")
+    try:
+        json.loads(schema.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError) as exc:
+        raise RunError(f"{schema.name}: not a JSON file ({exc})") from exc
+    with contextlib.suppress(ValueError):
+        return schema.relative_to(project.resolve()).as_posix()
+    data = schema.read_bytes()
+    canonical = project / "schemas" / f"{mapping}_{kind}.schema.json" if mapping else None
+    if canonical is not None and (not canonical.exists() or canonical.read_bytes() == data):
+        target = canonical
+    else:
+        target = project / "import" / "schemas" / schema.name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if not target.exists() or target.read_bytes() != data:
+        target.write_bytes(data)
+    return target.relative_to(project).as_posix()
+
+
 def build_prompt(
     document: str,
     mapping: str | None,
@@ -94,6 +119,8 @@ def build_prompt(
     mode: str,
     rule_ids: list[str],
     skill: Path,
+    input_schema: str | None = None,
+    output_schema: str | None = None,
 ) -> str:
     lines = [
         f"Follow the skill in {skill.as_posix()}/SKILL.md (read it first, and the files in its "
@@ -105,6 +132,10 @@ def build_prompt(
         f"- profile: {profile or 'ask'}",
         f"- mode: {mode}",
     ]
+    if input_schema:
+        lines.append(f"- input_schema: {input_schema}")
+    if output_schema:
+        lines.append(f"- output_schema: {output_schema}")
     if rule_ids:
         lines.append(f"- rule_ids: {', '.join(rule_ids)}")
     lines += [
@@ -148,9 +179,12 @@ def mapper_on_path(env: dict[str, str]) -> Iterator[None]:
         shutil.rmtree(folder, ignore_errors=True)
 
 
-def command_for(provider: str, executable: str, prompt: str, skill: Path) -> list[str]:
+def command_for(
+    provider: str, executable: str, prompt: str, skill: Path, allow: list[str] | None = None
+) -> list[str]:
     """The non-interactive command line. Writes are limited to `import/`; the only program the
-    assistant may run is `mapper`."""
+    assistant may run is `mapper`, plus what the user allowed after a refusal (`allow`: Claude Code
+    permission rules, as `denied_of` builds them)."""
     if provider == "claude":
         return [
             executable,
@@ -171,6 +205,7 @@ def command_for(provider: str, executable: str, prompt: str, skill: Path) -> lis
             "Write(import/**)",
             "Edit(import/**)",
             "Bash(mapper *)",
+            *(allow or []),
         ]
     if provider == "codex":
         return [
@@ -245,6 +280,37 @@ def final_text(provider: str, lines: list[str]) -> str:
         if isinstance(item, dict) and item.get("type") == "agent_message":
             return str(item.get("text") or "")
     return ""
+
+
+def _detail(arg: dict[str, Any]) -> str:
+    return str(
+        arg.get("command") or arg.get("file_path") or arg.get("pattern") or arg.get("path") or ""
+    )
+
+
+def denied_of(provider: str, lines: list[str]) -> list[dict[str, str]]:
+    """The calls the assistant was refused (Claude Code lists them in its `result` event), each with
+    the permission `rule` that allows it, so that the user can allow them and run again."""
+    if provider != "claude":
+        return []
+    for line in reversed(lines):
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(event, dict) and event.get("type") == "result":
+            found: dict[str, dict[str, str]] = {}
+            for item in event.get("permission_denials") or []:
+                if not isinstance(item, dict):
+                    continue
+                arg = item.get("tool_input")
+                arg = arg if isinstance(arg, dict) else {}
+                tool = str(item.get("tool_name") or "")
+                detail = _detail(arg)
+                rule = f"{tool}({detail})" if detail else tool
+                found.setdefault(rule, {"tool": tool, "what": _clip(detail or tool), "rule": rule})
+            return list(found.values())
+    return []
 
 
 def status_line(text: str) -> dict[str, Any] | None:
@@ -344,9 +410,12 @@ def run(
     mapping: str | None = None,
     profile: str | None = None,
     rule_ids: list[str] | None = None,
+    input_schema: Path | None = None,
+    output_schema: Path | None = None,
     emit: Callable[[dict[str, Any]], None],
     cancelled: threading.Event | None = None,
     override: str | None = None,
+    allow: list[str] | None = None,
 ) -> dict[str, Any]:
     """One run. `override` (the `J2JME_IMPORT_PROVIDER` variable) is a program that stands in for the
     assistant: it gets the prompt as its only argument and prints lines like the assistant."""
@@ -357,8 +426,26 @@ def run(
     if executable is None:
         raise RunError(f"{PROVIDERS.get(provider, provider)} is not installed")
     relative = bring_document(project, document)
-    prompt = build_prompt(relative, mapping, profile, mode, rule_ids or [], skill)
-    command = [executable, prompt] if override else command_for(provider, executable, prompt, skill)
+    schemas = {
+        kind: bring_schema(project, path, kind, mapping)
+        for kind, path in (("input", input_schema), ("output", output_schema))
+        if path is not None
+    }
+    prompt = build_prompt(
+        relative,
+        mapping,
+        profile,
+        mode,
+        rule_ids or [],
+        skill,
+        schemas.get("input"),
+        schemas.get("output"),
+    )
+    command = (
+        [executable, prompt]
+        if override
+        else command_for(provider, executable, prompt, skill, allow)
+    )
     started = time.time() - 1
     backups: dict[Path, bytes] = {}
     for existing in (project / "import").glob("*/ir.json"):
@@ -400,6 +487,24 @@ def run(
     if cancelled is not None and cancelled.is_set():
         restore()
         return {"status": "cancelled"}
+    denied = denied_of(provider, lines)
+    result = finish(project, provider, mode, rule_ids or [], lines, code, started, restore)
+    if denied:
+        result["denied"] = denied
+    return result
+
+
+def finish(
+    project: Path,
+    provider: str,
+    mode: str,
+    rule_ids: list[str],
+    lines: list[str],
+    code: int,
+    started: float,
+    restore: Callable[[], None],
+) -> dict[str, Any]:
+    """What the run left: the plan checked, or why it failed."""
     said = status_line(final_text(provider, lines)) or status_line("\n".join(lines))
     if code != 0 and not said:
         restore()

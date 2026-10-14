@@ -726,6 +726,16 @@ def import_run_command(
     rule_id: Annotated[
         list[str] | None, typer.Option("--rule-id", help="For rerun_partial")
     ] = None,
+    input_schema: Annotated[
+        Path | None, typer.Option(help="The input JSON Schema (default: look for it, else ask)")
+    ] = None,
+    output_schema: Annotated[
+        Path | None, typer.Option(help="The output JSON Schema (default: look for it, else ask)")
+    ] = None,
+    allow: Annotated[
+        list[str] | None,
+        typer.Option(help="A permission rule to allow (Claude Code), e.g. 'Bash(python -I *)'"),
+    ] = None,
     watch_stdin: Annotated[
         bool, typer.Option(help="Cancel when stdin closes (the desktop tool)")
     ] = False,
@@ -747,6 +757,9 @@ def import_run_command(
         mapping=mapping,
         profile=profile,
         rule_ids=rule_id or [],
+        input_schema=input_schema,
+        output_schema=output_schema,
+        allow=allow or [],
     )
     if result["status"] in ("failed", "cancelled"):
         raise typer.Exit(code=1)

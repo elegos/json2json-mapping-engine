@@ -915,6 +915,8 @@ export interface RunEvent {
   status?: "needs_answers" | "ready_for_review" | "failed" | "cancelled";
   error?: string;
   details?: string[];
+  /** Calls the assistant was refused; `rule` is the permission that would allow it. */
+  denied?: { tool: string; what: string; rule: string }[];
   mapping?: string;
   ir?: string;
   rules?: number;
@@ -929,6 +931,11 @@ export interface RunArgs {
   mapping?: string;
   profile?: string;
   ruleIds?: string[];
+  /** JSON Schemas the user already has; the run copies them into the project for the assistant. */
+  inputSchema?: string;
+  outputSchema?: string;
+  /** Permission rules the user allowed after a refusal. */
+  allow?: string[];
 }
 
 export interface RunHandle {
@@ -987,6 +994,9 @@ export async function importRun(
   if (args.mapping) flags.push("--mapping", args.mapping);
   if (args.profile) flags.push("--profile", args.profile);
   for (const id of args.ruleIds ?? []) flags.push("--rule-id", id);
+  if (args.inputSchema) flags.push("--input-schema", args.inputSchema);
+  if (args.outputSchema) flags.push("--output-schema", args.outputSchema);
+  for (const rule of args.allow ?? []) flags.push("--allow", rule);
   try {
     run = await invoke<number>("import_run_start", { project, args: flags });
   } catch (e) {

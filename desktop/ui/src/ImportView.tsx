@@ -2,9 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type Provider,
   type RunArgs,
+  type RunEvent,
   type RunHandle,
   type TestReport,
   chooseDocumentFile,
+  chooseSchemaFile,
   importAnswer,
   importApply,
   importList,
@@ -55,6 +57,7 @@ interface RunState {
   phase: "running" | "failed";
   error?: string;
   details?: string[];
+  denied?: NonNullable<RunEvent["denied"]>;
 }
 
 const errorText = (e: unknown) => String(e instanceof Error ? e.message : e);
@@ -149,8 +152,8 @@ export function ImportView({ project, onClose, onApplied }: Props) {
       cancelled.current = false;
       setRun({ args, back, lines: [], started: Date.now(), phase: "running" });
       setStep("run");
-      const fail = (message: string, details?: string[]) =>
-        setRun((r) => (r ? { ...r, phase: "failed", error: message, details } : r));
+      const fail = (message: string, details?: string[], denied?: RunState["denied"]) =>
+        setRun((r) => (r ? { ...r, phase: "failed", error: message, details, denied } : r));
       try {
         const h = await importRun(project, args, (e) => {
           if (e.event === "progress" && e.text) {
@@ -168,7 +171,7 @@ export function ImportView({ project, onClose, onApplied }: Props) {
           return;
         }
         if (result.status === "failed" || !result.mapping) {
-          fail(result.error ?? "The run failed.", result.details);
+          fail(result.error ?? "The run failed.", result.details, result.denied);
           return;
         }
         await refresh();
@@ -292,9 +295,13 @@ export function ImportView({ project, onClose, onApplied }: Props) {
               const file = await chooseDocumentFile();
               if (file) mode(s, "revalue_version", file);
             }}
-            onStart={(document, profile, mapping) => {
+            onStart={(document, profile, mapping, inputSchema, outputSchema) => {
               const p = need();
-              if (p) void startRun({ document, provider: p, mode: "import", profile, mapping }, "document");
+              if (p)
+                void startRun(
+                  { document, provider: p, mode: "import", profile, mapping, inputSchema, outputSchema },
+                  "document",
+                );
             }}
           />
         )}
@@ -305,6 +312,9 @@ export function ImportView({ project, onClose, onApplied }: Props) {
             onStop={stop}
             onBack={() => setStep(run.back === "run" ? "document" : run.back)}
             onRetry={() => void startRun(run.args, run.back)}
+            onAllow={(rules) =>
+              void startRun({ ...run.args, allow: [...new Set([...(run.args.allow ?? []), ...rules])] }, run.back)
+            }
           />
         )}
         {step === "questions" && view && (
@@ -429,11 +439,19 @@ function DocumentStep(props: {
   onContinue: (s: ImportSummary) => void;
   onRedo: (s: ImportSummary) => void;
   onNewVersion: (s: ImportSummary) => void;
-  onStart: (document: string, profile?: string, mapping?: string) => void;
+  onStart: (
+    document: string,
+    profile?: string,
+    mapping?: string,
+    inputSchema?: string,
+    outputSchema?: string,
+  ) => void;
 }) {
   const [document, setDocument] = useState("");
   const [profile, setProfile] = useState("");
   const [mapping, setMapping] = useState("");
+  const [inputSchema, setInputSchema] = useState("");
+  const [outputSchema, setOutputSchema] = useState("");
   const mappingOk = mapping === "" || /^[A-Za-z0-9_][A-Za-z0-9_-]*$/.test(mapping);
   const found = props.providers ?? [];
   return (
@@ -558,6 +576,28 @@ function DocumentStep(props: {
               : "Letters, digits, _ and -."}
           </small>
         </label>
+        {(
+          [
+            ["input", inputSchema, setInputSchema],
+            ["output", outputSchema, setOutputSchema],
+          ] as const
+        ).map(([kind, value, set]) => (
+          <label key={kind} className="prompt-field">
+            <span>{kind === "input" ? "Input" : "Output"} JSON Schema (optional)</span>
+            <div className="row">
+              <input value={value} readOnly placeholder="Leave empty to have the assistant look for it, or ask" title={value} />
+              <button
+                onClick={async () => {
+                  const file = await chooseSchemaFile(kind);
+                  if (file) set(file);
+                }}
+              >
+                Choose…
+              </button>
+              {value && <button onClick={() => set("")}>Clear</button>}
+            </div>
+          </label>
+        ))}
         <p className="imp-help">
           Privacy: the text of the document is sent to the assistant you choose, under your account with it. Nothing
           else leaves this computer, and the assistant may write only inside the project's <code>import/</code> folder.
@@ -566,7 +606,13 @@ function DocumentStep(props: {
           <button
             className="primary"
             disabled={!document || !props.provider || !mappingOk}
-            onClick={() => props.onStart(document, profile || undefined, mapping || undefined)}
+            onClick={() => props.onStart(
+                document,
+                profile || undefined,
+                mapping || undefined,
+                inputSchema || undefined,
+                outputSchema || undefined,
+              )}
           >
             Start the import
           </button>
@@ -582,6 +628,7 @@ function RunStep(props: {
   onStop: () => void;
   onBack: () => void;
   onRetry: () => void;
+  onAllow: (rules: string[]) => void;
 }) {
   const { run } = props;
   const [now, setNow] = useState(Date.now());
@@ -618,6 +665,20 @@ function RunStep(props: {
               ))}
             </ul>
           )}
+          {run.denied && run.denied.length > 0 && (
+            <>
+              <p>
+                {title} was refused {run.denied.length === 1 ? "this call" : "these calls"}, which may be why it stopped:
+              </p>
+              <ul className="imp-details">
+                {run.denied.map((d) => (
+                  <li key={d.rule}>
+                    <code>{d.rule}</code>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </div>
       )}
       <div className="imp-log" aria-label="Progress">
@@ -633,6 +694,9 @@ function RunStep(props: {
         ) : (
           <>
             <button onClick={props.onBack}>Back</button>
+            {run.denied && run.denied.length > 0 && (
+              <button onClick={() => props.onAllow(run.denied!.map((d) => d.rule))}>Allow and run again</button>
+            )}
             <button className="primary" onClick={props.onRetry}>
               Try again
             </button>
