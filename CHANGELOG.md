@@ -10,23 +10,20 @@ section (see `packaging/release.py`).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-14
+
+### Changed
+
+- Windows installer (NSIS): the application's icon instead of the generic one, and the version and
+  the commit in its title and welcome page (`J2JME Desktop 0.3.1 (abc1234)`).
+- Desktop: the import view fills the window in width and height (no fixed sizes), with minimum sizes
+  instead.
+
 ### Features
 
 - `mapper import outline | rows | blocks | find`: compact, sliceable text views of an extracted
   document (one line per row or block), so that the assistant reads a spreadsheet of hundreds of rows
   in slices with no permission beyond `mapper`; the skill uses them.
-
-### Changed
-
-- Windows installer (NSIS): the application's icon instead of the generic one, and the version and
-  the commit in its title and welcome page (`J2JME Desktop 0.3.2 (abc1234)`).
-- Desktop: the import view fills the window in width and height (no fixed sizes), with minimum sizes
-  instead.
-
-## [0.3.1] - 2026-10-14
-
-### Features
-
 - Import: the input and output JSON Schemas can be named up front (*Input / Output JSON Schema* in the
   wizard, `mapper import run --input-schema / --output-schema`). They are copied into the project
   (`schemas/<mapping>_input.schema.json`, else `import/schemas/`) so the assistant reads them like any
