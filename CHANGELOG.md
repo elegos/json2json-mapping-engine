@@ -10,12 +10,6 @@ section (see `packaging/release.py`).
 
 ## [Unreleased]
 
-### Fixed
-
-- Import from the installed application: the readers for xlsx, docx and pdf (`openpyxl`,
-  `python-docx`, `pdfminer-six`, the `import` extra) were not in the bundled engine, so
-  `mapper import extract` failed there. They are now staged with it.
-
 ## [0.3.1] - 2026-10-14
 
 ### Fixed
@@ -23,6 +17,9 @@ section (see `packaging/release.py`).
 - Import on Windows: the assistant could not run `mapper` ("mapper isn't found in bash"), because the
   shim in its PATH was only `mapper.cmd`, which the Bash of Git for Windows does not run. It now
   also gets an extension-less `mapper`.
+- Import from the installed application: the readers for xlsx, docx and pdf (`openpyxl`,
+  `python-docx`, `pdfminer-six`, the `import` extra) were not in the bundled engine, so
+  `mapper import extract` failed there. They are now staged with it.
 
 ## [0.3.0] - 2026-10-14
 
