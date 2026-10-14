@@ -10,6 +10,17 @@ section (see `packaging/release.py`).
 
 ## [Unreleased]
 
+### Features
+
+- `mapper import outline | rows | blocks | find`: compact, sliceable text views of an extracted
+  document (one line per row or block), so that the assistant reads a spreadsheet of hundreds of rows
+  in slices with no permission beyond `mapper`; the skill uses them.
+
+### Changed
+
+- Desktop: the import view fills the window in width and height (no fixed sizes), with minimum sizes
+  instead.
+
 ## [0.3.1] - 2026-10-14
 
 ### Features

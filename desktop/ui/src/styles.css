@@ -461,7 +461,9 @@ span.result-badge { cursor: default; }
 .validations .check-expect:focus-within { outline: 1px solid Highlight; }
 
 /* import of a functional document: a full-screen view below the modals */
-.import-view { position: fixed; inset: 0; z-index: 90; background: Canvas; color: CanvasText; display: flex; flex-direction: column; }
+.import-view { position: fixed; inset: 0; z-index: 90; background: Canvas; color: CanvasText; display: flex; flex-direction: column; overflow: auto; }
+.import-view > * { min-width: 720px; }
+.import-view > .imp-body { min-height: 420px; }
 .imp-head { display: flex; align-items: center; gap: 14px; padding: 8px 14px 0; border-bottom: 1px solid #8884; }
 .imp-head h2 { margin: 0; font-size: 16px; }
 .imp-steps { display: flex; gap: 4px; list-style: none; margin: 0 auto 0 12px; padding: 0; }
@@ -469,8 +471,9 @@ span.result-badge { cursor: default; }
 .imp-close { margin-bottom: 6px; }
 .imp-error { margin: 8px 14px 0; }
 .imp-body { flex: 1; min-height: 0; overflow: auto; padding: 14px 18px; }
-.imp-document, .imp-questions, .imp-run, .imp-apply { max-width: 980px; }
+.imp-document, .imp-questions, .imp-run, .imp-apply { min-width: 520px; }
 .imp-document section { margin-bottom: 26px; }
+.imp-run { height: 100%; min-height: 420px; display: flex; flex-direction: column; }
 .imp-document h3, .imp-questions h3, .imp-run h3, .imp-apply h3 { margin: 0 0 8px; }
 .imp-table { border-collapse: collapse; width: 100%; }
 .imp-table th { text-align: left; padding: 3px 8px; font-weight: 600; border-bottom: 1px solid #8884; }
@@ -483,7 +486,7 @@ span.result-badge { cursor: default; }
 .imp-state.rejected, .imp-state.broken, .imp-state.missing { border-color: #c0392b; color: #c0392b; }
 .imp-state.needs_answers, .imp-state.answered, .imp-state.partial, .imp-state.warn { border-color: #b8860b; color: #b8860b; }
 .imp-state.reject { border-color: #c0392b; color: #c0392b; }
-.imp-log { height: 46vh; overflow: auto; font: 12px/1.45 ui-monospace, monospace; border: 1px solid #8884; border-radius: 4px; padding: 8px 10px; margin: 10px 0; background: color-mix(in srgb, CanvasText 4%, Canvas); }
+.imp-log { flex: 1; min-height: 220px; overflow: auto; font: 12px/1.45 ui-monospace, monospace; border: 1px solid #8884; border-radius: 4px; padding: 8px 10px; margin: 10px 0; background: color-mix(in srgb, CanvasText 4%, Canvas); }
 .imp-details { margin: 4px 0 8px; }
 .imp-question { border: 1px solid #8885; border-radius: 6px; padding: 10px 14px; margin: 0 0 12px; }
 .imp-qhead { display: flex; gap: 10px; align-items: baseline; justify-content: space-between; }
@@ -515,7 +518,7 @@ button.link { background: none; border: none; padding: 0; color: #4a90d9; text-d
 .imp-review .tabs { padding-left: 18px; }
 .imp-pane { flex: 1; min-height: 0; overflow: auto; }
 .imp-split { display: flex; height: 100%; }
-.imp-list { width: 340px; flex: none; border-right: 1px solid #8884; overflow: auto; }
+.imp-list { width: clamp(280px, 28vw, 560px); flex: none; border-right: 1px solid #8884; overflow: auto; }
 .imp-list ul { list-style: none; margin: 0; padding: 0; }
 .imp-filter { padding: 8px 10px; border-bottom: 1px solid #8883; }
 .imp-row { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; border: none; border-radius: 0; background: none; padding-top: 5px; padding-bottom: 5px; border-bottom: 1px solid #8882; }
@@ -523,7 +526,7 @@ button.link { background: none; border: none; padding: 0; color: #4a90d9; text-d
 .imp-target { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, monospace; font-size: 12px; }
 .imp-empty { padding: 14px 18px; }
 .imp-detail, .imp-cards { flex: 1; min-width: 0; overflow: auto; padding: 12px 18px; }
-.imp-rule { max-width: 900px; margin-bottom: 22px; }
+.imp-rule { min-width: 420px; margin-bottom: 22px; }
 .imp-rule header { margin-bottom: 8px; }
 .imp-rule h3 { margin: 0 0 4px; font-family: ui-monospace, monospace; font-size: 14px; }
 .imp-rule h4, .imp-cards h4 { margin: 14px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.7; }
@@ -538,7 +541,7 @@ button.link { background: none; border: none; padding: 0; color: #4a90d9; text-d
 .imp-fn dt { font-weight: 600; }
 .imp-fn dd { margin: 0; }
 .imp-discrepancy { margin: 3px 0; }
-.imp-bar { display: flex; height: 12px; border: 1px solid #8886; border-radius: 3px; overflow: hidden; margin: 6px 0 14px; max-width: 600px; }
+.imp-bar { display: flex; height: 12px; border: 1px solid #8886; border-radius: 3px; overflow: hidden; margin: 6px 0 14px; min-width: 300px; }
 .imp-bar .ok { background: #2e8b57; }
 .imp-bar .doubt { background: #b8860b; }
 .imp-bar .left { background: #8886; }
