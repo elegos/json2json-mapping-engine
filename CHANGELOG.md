@@ -10,6 +10,14 @@ section (see `packaging/release.py`).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-14
+
+### Fixed
+
+- Import on Windows: the assistant could not run `mapper` ("mapper isn't found in bash"), because the
+  shim in its PATH was only `mapper.cmd`, which the Bash of Git for Windows does not run. It now
+  also gets an extension-less `mapper`.
+
 ## [0.3.0] - 2026-10-14
 
 ### Features

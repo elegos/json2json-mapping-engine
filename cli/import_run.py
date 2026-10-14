@@ -124,9 +124,16 @@ def mapper_on_path(env: dict[str, str]) -> Iterator[None]:
     folder = Path(tempfile.mkdtemp(prefix="j2jme-run-"))
     try:
         if os.name == "nt":
+            # cmd / PowerShell find `mapper.cmd`; the Bash of Git for Windows, which Claude Code
+            # uses there, only runs a file with no extension
             (folder / "mapper.cmd").write_text(
                 f'@echo off\r\nset "PYTHONPATH={root};%PYTHONPATH%"\r\n"{sys.executable}" -m cli.main %*\r\n',
                 encoding="utf-8",
+            )
+            (folder / "mapper").write_text(
+                f'#!/bin/sh\nPYTHONPATH="{root.as_posix()}" exec "{Path(sys.executable).as_posix()}" -m cli.main "$@"\n',
+                encoding="utf-8",
+                newline="\n",
             )
         else:
             shim = folder / "mapper"
