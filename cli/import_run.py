@@ -198,7 +198,16 @@ def mapper_on_path(env: dict[str, str]) -> Iterator[None]:
 # `mapper` however the assistant spells the call: bare, by a path (`./mapper`, `/x/bin/mapper`), or
 # after environment variables (`PYTHONIOENCODING=utf-8 mapper ...`). Pipes into `grep`, `&&`, `;`,
 # redirections and `cd` are fine with the first rule; subshells and pipes into other programs stay refused.
-MAPPER_RULES = ["Bash(mapper *)", "Bash(*/mapper *)", "Bash(*/mapper.cmd *)", "Bash(*=* mapper *)"]
+# Windows may give the assistant PowerShell instead of Bash: another tool, with rules of its own.
+MAPPER_RULES = [
+    "Bash(mapper *)",
+    "Bash(*/mapper *)",
+    "Bash(*/mapper.cmd *)",
+    "Bash(*=* mapper *)",
+    "PowerShell(mapper *)",
+    "PowerShell(mapper.cmd *)",
+    "PowerShell(*\\mapper.cmd *)",
+]
 
 
 def command_for(
