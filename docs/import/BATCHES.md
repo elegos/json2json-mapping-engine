@@ -32,17 +32,17 @@ survey (one assistant run)  ->  queue (code)  ->  translate (many runs, in paral
 ```json
 {
   "units": [
-    {"id": "Field Mapping!A6", "location": {"sheet": "Field Mapping", "cells": "A6:I6"},
-     "target": "$.informationClassification",
-     "class": "constant", "value": "INTERNAL"},
-    {"id": "Field Mapping!A3", "location": {...}, "class": "skip",
-     "reason": "other", "detail": "logic says Do Not Map"},
-    {"id": "Field Mapping!A12", "location": {...}, "target": "$.Event[*]", "class": "structure"},
-    {"id": "Field Mapping!A40", "location": {...}, "target": "$.X.Y", "class": "copy", "source": "$.x.y"},
-    {"id": "Field Mapping!A41", "location": {...}, "target": "...", "class": "translate",
-     "group": "remark_split", "needs": ["a loop that reads the line it belongs to"]}
+    {"id": "Mapping!A6", "location": {"sheet": "Mapping", "cells": "A6:I6"},
+     "target": "$.channel",
+     "class": "constant", "value": "WEB"},
+    {"id": "Mapping!A3", "location": {...}, "class": "skip",
+     "reason": "other", "detail": "the logic column says not to map"},
+    {"id": "Mapping!A12", "location": {...}, "target": "$.Items[*]", "class": "structure"},
+    {"id": "Mapping!A40", "location": {...}, "target": "$.X.Y", "class": "copy", "source": "$.x.y"},
+    {"id": "Mapping!A41", "location": {...}, "target": "...", "class": "translate",
+     "group": "part_split", "needs": ["a loop that reads the line it belongs to"]}
   ],
-  "groups": [{"id": "remark_split", "description": "split(remarkText, '|')[N] and a mapping of the part"}]
+  "groups": [{"id": "part_split", "description": "split(text, '|')[N] and a mapping of the part"}]
 }
 ```
 
