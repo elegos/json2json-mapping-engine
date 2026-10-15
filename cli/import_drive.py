@@ -106,7 +106,12 @@ def _worker(
     lines, code = execute(project, provider, command, emit, cancelled, {"batch": entry["id"]})
     if cancelled.is_set():
         return {"batch": entry["id"], "status": "cancelled"}
-    denied = denied_of(provider, lines)
+    # a worker that tries to write the plan is refused on purpose: that is not for the user to allow
+    denied = [
+        d
+        for d in denied_of(provider, lines)
+        if not d["what"].replace("\\", "/").endswith("/ir.json")
+    ]
     tail = " ".join(lines[-2:])[:300]
     error = f"exited with {code}: {tail}" if code != 0 else "the run ended with units untranslated"
     status = import_batch.settle_batch(project, mapping, entry["id"], error)
