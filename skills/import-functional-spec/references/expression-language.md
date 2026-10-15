@@ -60,6 +60,9 @@ rules:
   `to_string(...)`, `upper(...)`, arithmetic), not an `if_else` of fields: wrap it. An element with
   no key goes last unless `nulls first`. Equal keys keep the source order. There is no `sort:` to
   write any more.
+- **The best of several**: a selection reads the first match; to read the one with the highest or
+  lowest of something, say it as in SQL: `$.events[kind == 'K1' order by to_number(rank) desc].txNo`
+  (same clause and same rules for the key's type as a loop's `order_by`).
 - A loop's `source` may start from an outer loop, as a `filter` may: `@2.refs[*]` or `@line.refs[*]`
   (`@` is the loop it sits in, `@2` the one outside it).
 - **An optional list left out when empty**: `when_empty: omit` on the loop (`list` writes `[]`). Unset,

@@ -154,3 +154,93 @@ def test_the_check_reads_the_keys_against_the_input_schema(
     assert any("nope" in p and "not in the input schema" in p for p in problems)
     good = parse_functional(raw({"order_by": "to_number(@.rank) desc, @.id"}), "m")
     assert [i for i in check_functional(good, INPUT, OUTPUT) if i.severity == "error"] == []
+
+
+SEL_OUTPUT = {
+    "type": "object",
+    "properties": {
+        "Best": TEXT,
+        "Last": TEXT,
+        "Pick": {"type": "object", "properties": {"Id": TEXT}},
+    },
+}
+
+
+def run_selection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    rules: list[dict[str, Any]],
+    rows: list[dict[str, Any]],
+    expected: dict[str, Any],
+) -> dict[str, Any]:
+    (tmp_path / "schemas").mkdir(exist_ok=True)
+    (tmp_path / "schemas" / "m_input.schema.json").write_text(json.dumps(INPUT))
+    (tmp_path / "schemas" / "m_output.schema.json").write_text(json.dumps(SEL_OUTPUT))
+    (tmp_path / "import" / "m").mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(tmp_path)
+    body = plan(*rules)
+    for rule in body["rules"]:
+        if rule["id"] == "pick_id":
+            rule["proposal"]["parent_rule"] = "pick"
+    body["tests"] = [
+        {"id": "t", "origin": {"sheet": "S"}, "trust": "invented", "input": {"rows": rows},
+         "expected": expected},
+    ]  # fmt: skip
+    (tmp_path / "import" / "m" / "ir.json").write_text(json.dumps(body))
+    result = import_plan.run_cases(tmp_path, "m")
+    assert result.get("compile_error") is None, result
+    saved = json.loads((tmp_path / "import" / "m" / "ir.json").read_text())
+    return {"result": saved["tests"][0]["result"], "detail": saved["tests"][0].get("detail", "")}
+
+
+def field(fid: str, name: str, path: str) -> dict[str, Any]:
+    return {"id": fid, "kind": "field", "field": name, "type": "str", "required": False,
+            "source": {"path": path}}  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        ("$.rows[order by rank].id", "d"),  # the lowest rank
+        ("$.rows[order by rank desc].id", "a"),  # the highest; the first of two equal ones
+        ("$.rows[group == 'g2' order by rank desc].id", "b"),
+        (
+            "$.rows[group = 'g1' order by rank nulls first].id",
+            "c",
+        ),  # the one with none, asked first
+        ("$.rows[group == 'g1' order by rank desc].id", "a"),  # one with no rank is never best
+        ("$.rows[order by to_number(split_last(code, '-')) desc].id", "c"),
+        ("$.rows[group == 'nope' order by rank].id", None),
+    ],
+)
+def test_a_selection_takes_the_first_element_by_its_order(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, path: str, expected: str | None
+) -> None:
+    got = run_selection(
+        tmp_path,
+        monkeypatch,
+        [field("best", "Best", path)],
+        ROWS,
+        {"Best": expected} if expected else {},
+    )
+    assert got["result"] == "pass", got["detail"]
+
+
+def test_an_object_selected_by_an_order_is_built_from_the_best_element(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pick = {
+        "id": "pick",
+        "kind": "object",
+        "output": "Pick",
+        "source": "$.rows[order by rank desc]",
+    }
+    inner = {
+        "id": "pick_id",
+        "kind": "field",
+        "field": "Id",
+        "type": "str",
+        "source": {"path": "@.id"},
+    }
+    got = run_selection(tmp_path, monkeypatch, [pick, inner], ROWS, {"Pick": {"Id": "a"}})
+    assert got["result"] == "pass", got["detail"]

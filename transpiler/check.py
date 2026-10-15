@@ -53,8 +53,8 @@ from transpiler.orderby import parse_order_by
 from transpiler.paths import expand_paths
 from transpiler.selector import (
     find_selections,
-    normalize_condition,
     replace_selections,
+    selection_parts,
     split_selector,
 )
 from transpiler.serialize import rule_to_raw
@@ -429,7 +429,7 @@ class _Checker:
         Answers `text` with each selection as the first element (`$.items[0].qty`), which the
         other checks can follow."""
         for sel in find_selections(text):
-            condition = normalize_condition(sel.condition)
+            condition, order = selection_parts(sel.condition)
             if find_selections(condition):
                 self.add(path, column, "a condition cannot hold another selection")
                 continue
@@ -448,9 +448,12 @@ class _Checker:
             inner = AnchorScope(
                 loops=(*scope.loops, LoopRef(None, "src", "index")), lookups=scope.lookups
             )
-            self.block(path, condition, inner, column)
-            self.refs(path, condition, column, root, [*items, item], [*labels, None])
-            self.typecheck(path, condition, None, "", root, [*items, item], [*labels, None])
+            for part in [condition, *(k.expr for k in order)]:
+                if not part:
+                    continue
+                self.block(path, part, inner, column)
+                self.refs(path, part, column, root, [*items, item], [*labels, None])
+                self.typecheck(path, part, None, "", root, [*items, item], [*labels, None])
         return replace_selections(text, lambda s: f"{s.path}[0]")
 
     def refs(
@@ -758,8 +761,10 @@ class _Checker:
             self.walk(rule.rules, f"{path}.rules", scope, node, in_root, items, labels)
             return
         # a loop, or an object that selects one element of a list: both read an element `@`
+        order_keys: list[Any] = []
         if selector is not None:
-            source, condition, label = f"{selector[0]}[*]", selector[1], None
+            cond, order_keys = selection_parts(selector[1])
+            source, condition, label = f"{selector[0]}[*]", cond or None, None
         else:
             assert isinstance(rule, LoopRule)
             source, condition, label = rule.source, rule.filter, rule.label
@@ -810,7 +815,9 @@ class _Checker:
             self.refs(path, condition, column, in_root, [*items, item], [*labels, label])
             self.typecheck(path, condition, None, "", in_root, [*items, item], [*labels, label])
         if isinstance(rule, LoopRule) and rule.order_by:
-            for key in parse_order_by(rule.order_by):
+            order_keys = parse_order_by(rule.order_by)
+        if order_keys:
+            for key in order_keys:
                 if find_selections(key.expr):
                     self.add(
                         path,

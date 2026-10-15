@@ -18,6 +18,9 @@ section (see `packaging/release.py`).
   `order_by`. The Python backend now runs a sorted loop at all (it passed the key as text to Python's
   `sorted`, which raised on every run), and PL/SQL orders by the computed keys with a stable sort that
   copies into a new array. Desktop: an *Order the list by* editor in the loop options.
+- Selections: `$.list[condition order by <keys>]` (or `$.list[order by <keys>]`) takes the first element
+  in that order: the event with the highest rank, the earliest date. The same clause as a loop's
+  `order_by`; it works in a path of a field, in an expression and in the Source of a selecting object.
 - Loops: `when_empty: omit | list` says whether a list with no element is left out or written as `[]`.
   **Behaviour change** (alpha): unset, an optional list (one the output schema does not require) is now
   left out when empty; before, every list was written empty. A required list is still written empty,

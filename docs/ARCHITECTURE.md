@@ -1947,6 +1947,11 @@ An `object` rule can pick it with a condition in its Source:
   writes it out in full (`@.discriminator == 'MY DISCRIMINATOR'`), as it does for Sources.
 - Because the object can be left out (like one with a guard), its output schema type must allow
   null (`"type": ["object", "null"]`); `check` reports it, as the build would.
+- **Which one, when several match**: an `order by` after the condition (`$.myList[kind = 'K1' order by
+  rank desc]`, or alone: `$.myList[order by createdAt]`) takes the first element in that order, the
+  same clause as a loop's `order_by` (§Loop rule): any expression of the candidate, `asc | desc`, `nulls
+  first | last`, several keys. Ties keep the list's order, and an element with no key is never the
+  best unless every one lacks it. Without it the first in the list's own order is taken.
 - An object has a guard **or** a source, not both. A plain loop is still the way to map every
   matching element.
 - Lowering: `transpiler/selector.py` turns the object into a loop with that filter whose

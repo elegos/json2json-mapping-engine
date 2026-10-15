@@ -66,14 +66,15 @@ from transpiler.model import (
     load_functional_file,
     prune_unfinished,
 )
-from transpiler.orderby import parse_order_by
+from transpiler.orderby import OrderKey, parse_order_by
 from transpiler.paths import expand_paths
 from transpiler.selector import (
     Selection,
     find_selections,
     lower_selectors,
-    normalize_condition,
     replace_selections,
+    selection_parts,
+    selection_text,
 )
 
 
@@ -424,8 +425,8 @@ class _Builder:
         condition holds (an empty object when none does, so that reading it gives nothing):
         its name and the positions it takes. One per list and condition; the condition reads
         the candidate as `@` and the loops around the rule as `@2`..."""
-        condition = normalize_condition(sel.condition)
-        key = (sel.path, condition, frame)
+        condition, order = selection_parts(sel.condition)
+        key = (sel.path, selection_text(condition, order), frame)
         if key in self._pickers:
             return self._pickers[key]
         if find_selections(condition):
@@ -442,13 +443,14 @@ class _Builder:
         scope = AnchorScope(
             loops=(*frame.loop_refs(), LoopRef(None, item, index)), lookups=self.lookups
         )
-        resolved = resolve_anchors(condition, scope, f"{where} condition")
+        resolved = resolve_anchors(condition or "True", scope, f"{where} condition")
         if resolved.uses_index:
             raise FnYamlError(f"{where}: a condition cannot reference @index")
+        ordered = self._order_iterable(list_text, order, None, scope, f"{where} selection")
         found = f"{ident}_found"
         body = self._stmts(
             f"{found} = []\n"
-            f"for {item} in {list_text}:\n"
+            f"for {item} in {ordered}:\n"
             f"    if not ({resolved.text}):\n"
             f"        continue\n"
             f"    {found}.append({item})\n"
@@ -471,7 +473,7 @@ class _Builder:
         often it is read."""
 
         def variable(sel: Selection) -> str:
-            condition = normalize_condition(sel.condition)
+            condition = selection_text(*selection_parts(sel.condition))
             key = (sel.path, condition)
             if key not in picks.lines:
                 base = re.sub(r"\W+", "_", sel.path.rsplit(".", 1)[-1]).strip("_") or "root"
@@ -830,25 +832,37 @@ class _Builder:
         return text
 
     def _ordered(self, iterable: str, rule: LoopRule, scope: AnchorScope, where: str) -> str:
-        """`iterable` inside the `sorted(...)` calls of the loop's `order_by`: one per key, the last
-        key innermost (the sort is stable, so the first decides and the next breaks its ties)."""
-        keys = parse_order_by(rule.order_by or "")
-        label = re.escape(rule.label or "")
+        """`iterable` ordered by the loop's `order_by`."""
+        return self._order_iterable(
+            iterable, parse_order_by(rule.order_by or ""), rule.label, scope, where
+        )
+
+    def _order_iterable(
+        self,
+        iterable: str,
+        keys: list[OrderKey],
+        label: str | None,
+        scope: AnchorScope,
+        where: str,
+    ) -> str:
+        """`iterable` inside the `sorted(...)` calls of `keys`: one per key, the last key innermost
+        (the sort is stable, so the first decides and the next breaks its ties)."""
+        field_of = re.escape(label or "")
         for key in reversed(keys):
             options = (", reverse=True" if key.desc else "") + (
                 ", nulls='first'" if key.nulls_first else ""
             )
-            field = re.match(rf"^@(?:{label})?\.(\w+)$", key.expr.strip())
+            field = re.match(rf"^@(?:{field_of})?\.(\w+)$", key.expr.strip())
             if field:
                 iterable = f"sorted({iterable}, key={field.group(1)!r}{options})"
                 continue
             if find_selections(key.expr):
                 raise FnYamlError(
-                    f"{where}: an order_by key cannot hold a selection (a path with a condition in it)"
+                    f"{where}: an order key cannot hold a selection (a path with a condition in it)"
                 )
-            resolved = resolve_anchors(key.expr, scope, f"{where} order_by")
+            resolved = resolve_anchors(key.expr, scope, f"{where} order by")
             if resolved.uses_index:
-                raise FnYamlError(f"{where}: order_by cannot reference @index")
+                raise FnYamlError(f"{where}: an order key cannot reference @index")
             kind = _order_kind(resolved.text)
             if kind is None:
                 raise FnYamlError(
