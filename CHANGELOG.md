@@ -10,6 +10,8 @@ section (see `packaging/release.py`).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-15
+
 ### Features
 
 - Import of a long document (above about 80 units) in batches: a *survey* run classifies every unit
@@ -24,6 +26,8 @@ section (see `packaging/release.py`).
   again at the end. The survey lists what the engine is expected to lack before anything is translated.
 - An import begun in one run goes on in batches (*Translate the rest* on the main import page): the
   survey classifies only the units the plan has no rule for.
+- Import: a worker that tries to write the plan is refused on purpose (`ir.json` is changed only by
+  `mapper import add`); the refusal is not offered to the user as a permission.
 - Import: *Delete…* on each import of the main import page (also one whose run left no plan) drops its
   plan, answers and working copy; documents, profiles and rules already applied stay.
 
