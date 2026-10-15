@@ -14,7 +14,7 @@ from typing import Any
 import yaml
 
 from cli import import_plan
-from cli.import_plan import PlanError, load_plan, plan_file, save_plan
+from cli.import_plan import PlanError, load_plan, locked, plan_file, save_plan
 from cli.import_run import DOCUMENTS, plan_errors, profile_file, sha256_of
 
 NOT_A_MAPPING = {"profiles", DOCUMENTS}
@@ -168,7 +168,7 @@ def read_plan(project: Path, mapping: str) -> dict[str, Any]:
     }
 
 
-def answer(project: Path, mapping: str, answers: list[dict[str, Any]]) -> dict[str, Any]:
+def _answer(project: Path, mapping: str, answers: list[dict[str, Any]]) -> dict[str, Any]:
     """`answers`: `{id, answer}` or `{id, skip: true}` (the proposal is taken, marked as such)."""
     plan = load_plan(project, _check_id(mapping))
     questions = {q["id"]: q for q in plan.get("questions") or []}
@@ -201,7 +201,7 @@ def _item(plan: dict[str, Any], kind: str, item_id: str) -> dict[str, Any]:
     raise PlanError(f"no {kind} '{item_id}'")
 
 
-def review(project: Path, mapping: str, kind: str, item_id: str, state: str) -> None:
+def _review(project: Path, mapping: str, kind: str, item_id: str, state: str) -> None:
     if state not in STATES:
         raise PlanError(f"unknown state '{state}'")
     plan = load_plan(project, _check_id(mapping))
@@ -212,7 +212,7 @@ def review(project: Path, mapping: str, kind: str, item_id: str, state: str) -> 
     save_plan(project, mapping, plan)
 
 
-def note(project: Path, mapping: str, rule_id: str, text: str) -> str:
+def _note(project: Path, mapping: str, rule_id: str, text: str) -> str:
     """The user's remark on a rule, as a question of scope `rule` that is already answered: the
     next run (`rerun_partial`, `rule_ids`) reads it like any answer."""
     text = text.strip()
@@ -241,6 +241,21 @@ def note(project: Path, mapping: str, rule_id: str, text: str) -> str:
     rule.setdefault("review", {"state": "pending"})["note"] = text
     save_plan(project, mapping, plan)
     return question_id
+
+
+def answer(project: Path, mapping: str, answers: list[dict[str, Any]]) -> dict[str, Any]:
+    with locked(project, _check_id(mapping)):
+        return _answer(project, mapping, answers)
+
+
+def review(project: Path, mapping: str, kind: str, item_id: str, state: str) -> None:
+    with locked(project, _check_id(mapping)):
+        _review(project, mapping, kind, item_id, state)
+
+
+def note(project: Path, mapping: str, rule_id: str, text: str) -> str:
+    with locked(project, _check_id(mapping)):
+        return _note(project, mapping, rule_id, text)
 
 
 def command(project: Path, mapping: str, action: str, **kwargs: Any) -> dict[str, Any]:

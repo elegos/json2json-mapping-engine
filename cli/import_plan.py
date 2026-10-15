@@ -16,6 +16,9 @@ import os
 import re
 import sys
 import tempfile
+import threading
+import time
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -52,6 +55,52 @@ def plan_file(project: Path, mapping: str) -> Path:
 
 def work_file(project: Path, mapping: str) -> Path:
     return import_dir(project, mapping) / "work" / f"{mapping}.fn.yaml"
+
+
+_HELD: dict[Path, list[int]] = {}  # lock file -> [owning thread, depth]
+_GUARD = threading.RLock()
+
+
+@contextlib.contextmanager
+def locked(project: Path, mapping: str, wait: float = 60.0) -> Iterator[None]:
+    """Exclusive use of a plan for a read-modify-write: several assistant runs and the desktop tool
+    write the same `ir.json`. A lock file next to it (taken by creating it), re-entrant in the
+    process; one older than `wait` seconds is taken to be left by a process that died."""
+    lock = import_dir(project, mapping) / "ir.json.lock"
+    me = threading.get_ident()
+    with _GUARD:
+        mine = _HELD.get(lock)
+        if mine and mine[0] == me:
+            mine[1] += 1
+            try:
+                yield
+            finally:
+                mine[1] -= 1
+            return
+    if not lock.parent.is_dir():
+        raise PlanError(f"no import '{mapping}'")
+    started = time.monotonic()
+    while True:
+        try:
+            os.close(os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+            break
+        except FileExistsError:
+            with contextlib.suppress(OSError):
+                if time.time() - lock.stat().st_mtime > wait:
+                    lock.unlink()
+                    continue
+            if time.monotonic() - started > wait:
+                raise PlanError(f"{lock.name}: the plan is in use by another run") from None
+            time.sleep(0.05)
+    with _GUARD:
+        _HELD[lock] = [me, 1]
+    try:
+        yield
+    finally:
+        with _GUARD:
+            _HELD.pop(lock, None)
+        with contextlib.suppress(OSError):
+            lock.unlink()
 
 
 def load_plan(project: Path, mapping: str) -> dict[str, Any]:
@@ -205,7 +254,7 @@ def _fn_id_at(rules: list[dict[str, Any]], position: str) -> str:
     return name
 
 
-def assemble(project: Path, mapping: str) -> dict[str, Any]:
+def _assemble(project: Path, mapping: str) -> dict[str, Any]:
     """Write `import/<mapping>/work/<mapping>.fn.yaml` from the plan, check it with the project's
     schemas and functions, and record the result in each rule's `proposal.check`."""
     plan = load_plan(project, mapping)
@@ -260,6 +309,11 @@ def assemble(project: Path, mapping: str) -> dict[str, Any]:
         "skipped": skipped,
         "diagnostics": [i.to_json() for i in issues],
     }
+
+
+def assemble(project: Path, mapping: str) -> dict[str, Any]:
+    with locked(project, mapping):
+        return _assemble(project, mapping)
 
 
 def _load_module(files: dict[str, str], module_name: str, folder: Path) -> Any:
@@ -370,11 +424,11 @@ def _run_each(
             )
 
 
-def run_cases(project: Path, mapping: str) -> dict[str, Any]:
+def _run_cases(project: Path, mapping: str) -> dict[str, Any]:
     """Run the plan's cases (those with an `input` and an `expected`) on the Python backend against
     the working copy, and record `result` / `detail` on each; a failing case also becomes a
     `sample_contradicts_rule` discrepancy. The working copy is rebuilt first."""
-    built = assemble(project, mapping)
+    built = _assemble(project, mapping)
     plan = load_plan(project, mapping)
     cases = [
         t
@@ -421,10 +475,10 @@ def run_cases(project: Path, mapping: str) -> dict[str, Any]:
     return {**built, "cases": len(cases), **summary}
 
 
-def apply(project: Path, mapping: str, force: bool = False) -> dict[str, Any]:
+def _apply(project: Path, mapping: str, force: bool = False) -> dict[str, Any]:
     """Write the working copy to `mappings/functional/<mapping>.fn.yaml` and mark the included
     rules `applied`. Refuses when the file exists (unless `force`) or the working copy has errors."""
-    built = assemble(project, mapping)
+    built = _assemble(project, mapping)
     if not built["ok"]:
         raise PlanError(
             "the working copy does not check; fix the plan first (`mapper import assemble`)"
@@ -458,4 +512,14 @@ def apply(project: Path, mapping: str, force: bool = False) -> dict[str, Any]:
     }
 
 
-__all__ = ["PlanError", "apply", "assemble", "load_plan", "run_cases"]
+def run_cases(project: Path, mapping: str) -> dict[str, Any]:
+    with locked(project, mapping):
+        return _run_cases(project, mapping)
+
+
+def apply(project: Path, mapping: str, force: bool = False) -> dict[str, Any]:
+    with locked(project, mapping):
+        return _apply(project, mapping, force)
+
+
+__all__ = ["PlanError", "apply", "assemble", "load_plan", "locked", "run_cases"]

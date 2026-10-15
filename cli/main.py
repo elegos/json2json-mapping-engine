@@ -832,6 +832,84 @@ def import_run_command(
         raise typer.Exit(code=1)
 
 
+def _batch_command(action: str, *args: Any, **kwargs: Any) -> None:
+    """One of the batch commands (`cli/import_batch.py`) from the project directory, as JSON."""
+    from cli import import_batch, import_plan
+
+    try:
+        result = getattr(import_batch, action)(Path.cwd(), *args, **kwargs)
+    except (import_plan.PlanError, FnYamlError, OSError) as exc:
+        typer.echo(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False))
+        raise typer.Exit(code=1) from exc
+    typer.echo(json.dumps(result, ensure_ascii=False))
+
+
+_MAPPING = Annotated[str, typer.Argument(help="Mapping id (import/<mapping>/)")]
+
+
+@import_app.command("queue")
+def import_queue(
+    mapping: _MAPPING,
+    size: Annotated[int, typer.Option(help="Units per batch")] = 30,
+) -> None:
+    """Units of the survey (import/<mapping>/units.json): write the mechanical rules, cut the rest into batches."""
+    _batch_command("queue", mapping, size)
+
+
+@import_app.command("add")
+def import_add(
+    mapping: _MAPPING,
+    batch: Annotated[
+        Path, typer.Argument(help="JSON file: rules, validations, lookups, discrepancies, tests")
+    ],
+    batch_id: Annotated[
+        str | None, typer.Option("--batch", help="The batch of queue.json it answers")
+    ] = None,
+) -> None:
+    """Check a batch of rules and merge it into the plan (evidence and hashes are filled in)."""
+    _batch_command("add", mapping, batch, batch_id)
+
+
+@import_app.command("ask")
+def import_ask(
+    mapping: _MAPPING,
+    text: Annotated[str, typer.Argument(help="The question")],
+    topic: Annotated[str, typer.Option(help="e.g. index_base, root_and_filter")] = "other",
+    scope: Annotated[str, typer.Option(help="profile, mapping or rule")] = "mapping",
+    option: Annotated[list[str] | None, typer.Option(help="An answer to offer (repeat)")] = None,
+    proposal: Annotated[str | None, typer.Option(help="The default")] = None,
+    rule: Annotated[
+        list[str] | None, typer.Option(help="A rule id that depends on it (repeat)")
+    ] = None,
+) -> None:
+    """Ask the user now; a question already asked about the same thing is returned instead."""
+    _batch_command(
+        "ask",
+        mapping,
+        text,
+        topic=topic,
+        scope=scope,
+        options=option,
+        proposal=proposal,
+        rule_ids=rule,
+    )
+
+
+@import_app.command("answers")
+def import_answers(
+    mapping: _MAPPING,
+    rule: Annotated[str | None, typer.Option(help="Only the answers that touch this rule")] = None,
+) -> None:
+    """The answers given so far, with the rules each touches, and the ids still open."""
+    _batch_command("answers", mapping, rule)
+
+
+@import_app.command("gaps")
+def import_gaps(mapping: _MAPPING) -> None:
+    """What the survey expects the engine to lack, and the function gaps the plan has."""
+    _batch_command("gaps", mapping)
+
+
 @import_app.command("assemble")
 def import_assemble(
     mapping: Annotated[str, typer.Argument(help="Mapping id (import/<mapping>/)")],
