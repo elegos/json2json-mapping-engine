@@ -195,6 +195,12 @@ def mapper_on_path(env: dict[str, str]) -> Iterator[None]:
         shutil.rmtree(folder, ignore_errors=True)
 
 
+# `mapper` however the assistant spells the call: bare, by a path (`./mapper`, `/x/bin/mapper`), or
+# after environment variables (`PYTHONIOENCODING=utf-8 mapper ...`). Pipes into `grep`, `&&`, `;`,
+# redirections and `cd` are fine with the first rule; subshells and pipes into other programs stay refused.
+MAPPER_RULES = ["Bash(mapper *)", "Bash(*/mapper *)", "Bash(*/mapper.cmd *)", "Bash(*=* mapper *)"]
+
+
 def command_for(
     provider: str,
     executable: str,
@@ -225,7 +231,7 @@ def command_for(
             "Grep",
             "Write(import/**)",
             "Edit(import/**)",
-            "Bash(mapper *)",
+            *MAPPER_RULES,
             *(allow or []),
             *(["--disallowedTools", *deny] if deny else []),
         ]

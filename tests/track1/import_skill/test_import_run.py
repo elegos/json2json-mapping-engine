@@ -196,3 +196,9 @@ def test_an_import_can_be_deleted_even_when_the_run_left_no_plan(tmp_path: Path)
         import_ops.delete(root, "reservation_task")
     with pytest.raises(PlanError):
         import_ops.delete(root, "documents")
+
+
+def test_claude_may_run_mapper_by_path_or_after_variables() -> None:
+    cmd = import_run.command_for("claude", "claude", "go", Path("/skill"))
+    for rule in ("Bash(mapper *)", "Bash(*/mapper *)", "Bash(*=* mapper *)"):
+        assert rule in cmd
