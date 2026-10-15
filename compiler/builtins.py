@@ -87,7 +87,7 @@ def is_digits(s: str) -> bool | None:
     return s.isascii() and s.isdigit()
 
 
-def matches(s: str, pattern: str) -> bool | None:
+def matches(s: str | None, pattern: str) -> bool | None:
     """Whether the whole of `s` fits `pattern`: `matches(code, "[A-Z]{3}[XYZ][0-9]{7}")`. The pattern
     is written in the portable subset (`compiler/portable_regex.py`): characters, `.`, `[a-z]`,
     groups, `|` and `* + ? {n,m}`, and nothing a dialect reads in its own way; it must be a literal
