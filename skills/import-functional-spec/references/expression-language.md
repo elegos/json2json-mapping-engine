@@ -54,6 +54,11 @@ rules:
 
   Groups are at the top of the file and run in order; the guards are the author's to write and
   must exclude one another (nothing checks it, a test case that matches two shows it).
+- A loop's `source` may start from an outer loop, as a `filter` may: `@2.refs[*]` or `@line.refs[*]`
+  (`@` is the loop it sits in, `@2` the one outside it).
+- **An optional list left out when empty**: `when_empty: omit` on the loop (`list` writes `[]`). Unset,
+  the list is left out unless the output schema requires it: do not wrap a loop in a guarded object
+  for that. `omit` on a required list is refused by the check.
 - An output list with **one element built from the whole message** (a wrapper such as `entries`
   holding a single `content`): a `loop` with `source: $` (the document is its one element) and
   `output: entries[*]`; its fields read the message as `@.field`. The same loop with a `filter`

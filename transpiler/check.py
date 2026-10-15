@@ -98,6 +98,32 @@ _TYPES = {
 }
 
 
+_ANCHORED = re.compile(r"^@(\d+|[A-Za-z_]\w*)?(?=[.\[]|$)")
+
+
+def _source_base(
+    source: str, in_root: Node, items: list[Node], labels: list[str | None]
+) -> tuple[Node | None, str]:
+    """The schema node a loop's `source` starts from, and what is left of it: `$` the document, `@` the
+    element of the loop it is written in, `@2` the one outside it, `@label` the loop with that label."""
+    if source.startswith("$"):
+        return in_root, source[1:]
+    found = _ANCHORED.match(source)
+    if found is None:
+        return (items[-1] if items else in_root), re.sub(r"^[$@]", "", source)
+    name = found.group(1)
+    rest = source[found.end() :]
+    if name is None:
+        return (items[-1] if items else in_root), rest
+    if name.isdigit():
+        depth = int(name)
+        return (items[-depth] if 1 <= depth <= len(items) else None), rest
+    for node, label in zip(reversed(items), reversed(labels), strict=False):
+        if label == name:
+            return node, rest
+    return None, rest
+
+
 class _Schemas:
     def __init__(self, root: Schema | None):
         self.root = root
@@ -693,6 +719,13 @@ class _Checker:
                 )
                 node = UNKNOWN
             elif is_loop:
+                if rule.when_empty == "omit" and name in self.out.required(out):
+                    self.add(
+                        path,
+                        "type",
+                        f"'{name}' is mandatory in the output schema, so the list cannot be left "
+                        "out when it is empty (when_empty: list)",
+                    )
                 node = self.out.items(node)
             elif (
                 types
@@ -733,11 +766,16 @@ class _Checker:
         if not source.strip() and not is_unfinished(rule):
             self.add(path, "source", "a loop needs a source")
         if self.has_in and source:
-            base = in_root if source.startswith("$") else (items[-1] if items else in_root)
-            reached, missing = self.inp.resolve(base, re.sub(r"^[$@]", "", source))
+            base, relative = _source_base(source, in_root, items, labels)
+            if base is None:
+                reached, missing, hint = None, "", ""
+                self.add(path, "source", f"'{source}' names a loop that does not enclose this one")
+            else:
+                reached, missing = self.inp.resolve(base, relative)
+                hint = self.inp.near(base, relative, missing) if reached is None else ""
             if reached is None:
-                hint = self.inp.near(base, re.sub(r"^[$@]", "", source), missing)
-                self.add(path, "source", f"'{missing}' is not in the input schema{hint}")
+                if base is not None:
+                    self.add(path, "source", f"'{missing}' is not in the input schema{hint}")
             else:
                 item = reached
                 types = self.inp.types(reached) if isinstance(reached, dict) else set()

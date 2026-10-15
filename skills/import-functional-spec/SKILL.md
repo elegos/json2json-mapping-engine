@@ -208,10 +208,10 @@ For each unit of the document that holds a rule (or the whole document, when it 
   entry, and give the rule a default that says so. `assemble` reports a required output field with
   no rule as a `gap`, not as a failure of the plan: the cases still run, and the missing field is
   the only difference.
-- A list that must be **left out** when it would be empty (the schema wants at least one element,
-  "only if there is a note"): a `loop` over nothing gives an empty list, so put the loop in an
-  `object` rule with a `guard` that counts what the loop reads (`count(...) > 0`); the object, and
-  the list in it, are then written only when the guard holds.
+- A list that must be **left out** when it would be empty ("only if there is a note"): `when_empty:
+  omit` on the loop (`list` writes `[]`). Unset, a list the output schema does not require is left
+  out when empty and a required one is written empty, so say it only when the document says
+  something different. Do not wrap a loop in a guarded object for this.
 - A sentence that writes a null on purpose ("send null") is `Null`; "not sent" / "omitted" is
   `None` (`references/expression-language.md`).
 

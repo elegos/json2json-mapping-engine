@@ -106,6 +106,7 @@ def _rule_to_raw(rule: Rule, in_loop: bool = False, nested: bool = False) -> dic
         raw["output"] = _short(rule.output, "@." if nested else "$.")
         if rule.index_start:
             raw["index_start"] = rule.index_start
+        _put(raw, "when_empty", rule.when_empty)
         _put(raw, "parallel", rule.parallel)
     else:
         assert isinstance(rule, ObjectRule)

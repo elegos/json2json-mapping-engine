@@ -148,7 +148,7 @@ def test_several_loops_can_add_to_one_list_in_order(
         {"id": "t", "origin": {"sheet": "S"}, "trust": "invented",
          "input": {"id": "A", "fines": [{"amount": 1.5}, {"amount": 2}]},
          "expected": {"notes": [{"seq": 1, "text": "ref A"}, {"seq": 2, "text": "1.5"}, {"seq": 2, "text": "2"}]}},
-        {"id": "u", "origin": {"sheet": "S"}, "trust": "invented", "input": {"fines": []}, "expected": {"notes": []}},
+        {"id": "u", "origin": {"sheet": "S"}, "trust": "invented", "input": {"fines": []}, "expected": {}},  # an optional list with nothing to list is left out
     ]  # fmt: skip
     (tmp_path / "import" / "m" / "ir.json").write_text(json.dumps(body))
     monkeypatch.chdir(tmp_path)

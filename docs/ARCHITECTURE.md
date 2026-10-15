@@ -1731,6 +1731,17 @@ guards the rules of each shape (a group per shape), and what the schema calls re
 every shape requires. Nothing checks that the guards exclude one another; a test case that matches
 two shows it. Golden mapping: `groups`.
 
+**`when_empty`** (`omit` | `list`) says what the output list is when no element passed: left out, or
+written as `[]`. Unset, it is left out when the output schema does not require the list, and written
+empty when it does (without an output schema, written empty). `omit` on a required list is an error of
+the check. At the top of the file a list left out is built by a function of its own that returns it, or
+nothing; the loops that write one list are built together, in the order of the rules. Golden cases:
+`tests/track1/transpiler/test_when_empty.py`.
+
+**A loop's `source`** can start from the loop it is written in (`@.refs[*]`), from one outside it
+(`@2.refs[*]`, `@line.refs[*]`) or from the document (`$.refs[*]`): the anchors resolve as they do in a
+`filter`. A loop that does not enclose the one written is an error of the check.
+
 `source` is a list, or `$`: a loop over the document itself has the whole message as its one element,
 which is how a list with a single element built from the message is written (with a `filter`, a
 block written only when a condition holds). A missing list has no elements. Several loops of one

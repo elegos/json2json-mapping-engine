@@ -104,6 +104,9 @@ class LoopRule:
     sort_key: str | None = None
     sort_reverse: bool = False
     index_start: int = 0  # start-offset for `@index`
+    # what an output list is when no element passed: left out (`omit`), written empty (`list`), or
+    # (None) left out when the output schema does not require the list, else written empty
+    when_empty: Literal["omit", "list"] | None = None
     parallel: int | None = None  # `@parallel(degree=N)` on the loop's element function
     description: str | None = None
     rules: list[Rule] = dc_field(default_factory=list)
@@ -324,6 +327,7 @@ _LOOP_KEYS = _COMMON | {
     "sort",
     "output",
     "index_start",
+    "when_empty",
     "parallel",
     "rules",
 }
@@ -486,6 +490,9 @@ def _load_rule(where: str, raw: Any) -> Rule:
         index_start = raw.get("index_start", 0)
         if not isinstance(index_start, int) or isinstance(index_start, bool):
             raise _err(where, "'index_start' must be an integer")
+        when_empty = _get_str(where, raw, "when_empty")
+        if when_empty not in (None, "omit", "list"):
+            raise _err(where, f"'when_empty' must be 'omit' or 'list' — got {when_empty!r}")
         label = _get_str(where, raw, "label")
         if label is not None and not _IDENT.match(label):
             raise _err(where, f"invalid label {label!r}")
@@ -498,6 +505,7 @@ def _load_rule(where: str, raw: Any) -> Rule:
             sort_key=sort_key,
             sort_reverse=sort_reverse,
             index_start=index_start,
+            when_empty=when_empty,  # type: ignore[arg-type]
             parallel=_load_parallel(where, raw),
             description=_get_str(where, raw, "description"),
             rules=_load_children(where, raw),

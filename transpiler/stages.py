@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 from compiler.schema_generator import SchemaTypes
 from transpiler.model import (
@@ -49,6 +50,7 @@ def run_stages(
     cached: bool = False,
     warnings: list[str] | None = None,
     log: list[str] | None = None,
+    output_schema: dict[str, Any] | None = None,
 ) -> str:
     """Run stages up to `upto` and return the last stage's text. `out_dir=None`
     writes nothing (and `cached` is then meaningless). `log` receives one line
@@ -77,7 +79,7 @@ def run_stages(
         elif stage == 2:
             if tree is None:
                 tree = functional_from_dict(json.loads(read(1)))
-            text = build_stage(tree, options, input_schema, warnings)
+            text = build_stage(tree, options, input_schema, warnings, output_schema)
         else:
             src = text if stage > start else read(stage - 1)
             text = fuse_stage(src, options) if stage == 3 else emit_stage(src, options, path.name)

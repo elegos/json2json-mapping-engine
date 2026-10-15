@@ -12,6 +12,15 @@ section (see `packaging/release.py`).
 
 ### Features
 
+- Loops: `when_empty: omit | list` says whether a list with no element is left out or written as `[]`.
+  **Behaviour change** (alpha): unset, an optional list (one the output schema does not require) is now
+  left out when empty; before, every list was written empty. A required list is still written empty,
+  and `omit` on one is refused by the check.
+- A loop's `source` can start from an outer loop (`@2.refs[*]`, `@line.refs[*]`), as a `filter` could;
+  the check rejected it.
+- Desktop: an icon beside each loop opens *Loop options*: label, order (`sort`), first `@index` number,
+  *when there is nothing to list*, parallel degree. `sort`, `index_start` and `parallel` had no editor
+  before, only the YAML.
 - `x in ("A", "B")` and `x not in (...)` with a literal list now build on PL/SQL too (`IN (...)`; a
   missing value is in nothing, as in Python).
 - `mapper import assemble` builds the working copy for the project's target (`mapper.toml`, no

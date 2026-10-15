@@ -15,6 +15,7 @@ import { GoldenImport } from "./GoldenImport";
 import { nameProblem } from "./mappings";
 import { LocalSettings, type LocalState } from "./LocalSettings";
 import { RunMenu } from "./RunMenu";
+import { LoopOptions, type LoopOptionValues, loopOptionsSummary } from "./LoopOptions";
 import { NewRuleDialog, type NewRuleValues } from "./NewRuleDialog";
 import { PromptDialog, type PromptField } from "./PromptDialog";
 import { RuleTip } from "./RuleTip";
@@ -1436,6 +1437,8 @@ export function App() {
   const selectedRow = () => grid.current?.api?.getSelectedRows()[0];
 
   const [newRule, setNewRule] = useState<{ kind: string; at: { parent: string | null; index: number | null } } | null>(null);
+  /** The loop whose advanced options are open (its row path). */
+  const [loopOptions, setLoopOptions] = useState<string | null>(null);
 
   /** Adds the rule; the reason it was refused, or null once added. */
   const insertRule = useCallback(
@@ -2152,8 +2155,34 @@ export function App() {
             </span>
           ) : null,
       },
-      { headerName: "Kind",
-        colId: "kind", valueGetter: (p) => p.data?.rule.kind, width: 80 },
+      {
+        headerName: "Kind",
+        colId: "kind",
+        valueGetter: (p) => p.data?.rule.kind,
+        width: 96,
+        // a loop has options beyond its Source, Filter and Output: the icon beside it opens them
+        cellRenderer: (p: ICellRendererParams<Row>) => {
+          const rule = p.data?.rule;
+          if (rule?.kind !== "loop") return p.value;
+          const summary = loopOptionsSummary(rule as unknown as Record<string, unknown>);
+          return (
+            <span>
+              loop{" "}
+              <button
+                className={summary ? "link loop-options-button set" : "link loop-options-button"}
+                title={summary ? `Loop options: ${summary}` : "Loop options (order, numbering, when empty…)"}
+                aria-label="Loop options"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setLoopOptions(p.data!.path);
+                }}
+              >
+                ⚙
+              </button>
+            </span>
+          );
+        },
+      },
       {
         headerName: "Type",
         colId: "type",
@@ -2827,6 +2856,31 @@ export function App() {
           ensureSaved={() => guardRef.current("Save before continuing?", "Continue without saving")}
         />
       )}
+      {loopOptions !== null && tree && (() => {
+        const rule = ruleAt(tree, loopOptions);
+        if (!rule || rule.kind !== "loop") return null;
+        const r = rule as unknown as Record<string, unknown>;
+        return (
+          <LoopOptions
+            name={nameOf(rule)}
+            values={{
+              label: rule.label ?? null,
+              sort_key: (r.sort_key as string | null) ?? null,
+              sort_reverse: Boolean(r.sort_reverse),
+              index_start: Number(r.index_start ?? 0),
+              when_empty: (r.when_empty as LoopOptionValues["when_empty"]) ?? null,
+              parallel: (r.parallel as number | null) ?? null,
+            }}
+            onCancel={() => setLoopOptions(null)}
+            onApply={(values) => {
+              edit(loopOptions, (target) => {
+                if (target.kind === "loop") Object.assign(target, values);
+              });
+              setLoopOptions(null);
+            }}
+          />
+        );
+      })()}
       {newRule && (
         <NewRuleDialog
           kind={newRule.kind}

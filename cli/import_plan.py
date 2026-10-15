@@ -23,7 +23,13 @@ from pathlib import Path
 from typing import Any
 
 from cli import shared
-from cli.build import FUNCTIONAL_DIR, resolve_schema_for, schema_file, transpile_options
+from cli.build import (
+    FUNCTIONAL_DIR,
+    raw_output_schema,
+    resolve_schema_for,
+    schema_file,
+    transpile_options,
+)
 from compiler.backends.python.backend import PythonBackend
 from compiler.function_registry import all_functions
 from compiler.pipeline import compile_unit
@@ -351,7 +357,11 @@ def _unit_of(
     refs = tree.schemas
     options = transpile_options(config) if config is not None else None
     source = transpile_file_model(
-        tree, options, resolve_schema_for(mapping, "input", refs), f"{mapping}.fn.yaml"
+        tree,
+        options,
+        resolve_schema_for(mapping, "input", refs),
+        f"{mapping}.fn.yaml",
+        output_schema=raw_output_schema(mapping, refs),
     )
     texts = {
         kind: schema_file(mapping, kind, refs).read_text()

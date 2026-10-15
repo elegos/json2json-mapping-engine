@@ -35,10 +35,11 @@ the positions (`index2, index1, index`) that its subtree actually references.
 from __future__ import annotations
 
 import ast
+import contextlib
 import json
 import re
 import textwrap
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from pathlib import Path
@@ -47,6 +48,7 @@ from typing import Any
 from compiler.loop_fusion import fuse_loops
 from compiler.schema_generator import SchemaTypes
 from transpiler.anchors import AnchorScope, LoopRef, resolve_anchors, uses_value
+from transpiler.check import _Schemas
 from transpiler.expr import COMMENT_MARK, Block, comment_stmt, parse_block
 from transpiler.ids import assign_ids, ident_of, walk
 from transpiler.model import (
@@ -237,11 +239,22 @@ class _Composite:
 
 
 class _Builder:
-    def __init__(self, file: FunctionalFile, options: TranspileOptions, schema: SchemaTypes | None):
+    def __init__(
+        self,
+        file: FunctionalFile,
+        options: TranspileOptions,
+        schema: SchemaTypes | None,
+        output_schema: dict[str, Any] | None = None,
+    ):
         self.file = file
         self.opt = options
         self.warnings: list[str] = []
         self.schema = schema
+        # the output JSON Schema, to know what it requires (a list is left out when empty unless it does)
+        self.out_schema = _Schemas(output_schema) if output_schema is not None else None
+        self._out: list[Any] = [output_schema if output_schema is not None else None]
+        self._top_lists: set[tuple[int, str]] = set()  # (rules of a level, list) already written
+        self._level: list[Any] = file.rules  # the rules written straight into the output root here
         self.lookups: dict[str, dict] = {}
         self.classes: list[ast.stmt] = []
         self.class_fields: dict[str, list[tuple[str, str]]] = {}  # name -> (field, annotation)s
@@ -271,6 +284,32 @@ class _Builder:
 
     def _scope(self, frame: _Frame) -> AnchorScope:
         return AnchorScope(loops=frame.loop_refs(), lookups=self.lookups)
+
+    @contextlib.contextmanager
+    def _inside(self, out_field: str, is_list: bool) -> Iterator[None]:
+        """The output schema node of what is being built, while its rules are written: the
+        container `out_field` of the current one, or the element of the list it is."""
+        node: Any = None
+        if self.out_schema is not None:
+            here = self._out[-1]
+            node = self.out_schema.prop(here, out_field) if here is not None else None
+            if is_list and node is not None:
+                node = self.out_schema.items(node)
+        self._out.append(node)
+        try:
+            yield
+        finally:
+            self._out.pop()
+
+    def _omits_when_empty(self, rule: LoopRule, out_field: str) -> bool:
+        """Whether the list of a loop is left out when no element passed: as the rule says, else
+        when the output schema does not require it (with no schema, it is written empty)."""
+        if rule.when_empty is not None:
+            return rule.when_empty == "omit"
+        here = self._out[-1]
+        if self.out_schema is None or not isinstance(here, dict):
+            return False
+        return out_field not in self.out_schema.required(here)
 
     def _post_steps(
         self, rule: FieldRule, where: str
@@ -624,17 +663,59 @@ class _Builder:
             self._top_object(rule, fq)
         elif rule.first:
             self._top_first(rule, fq)
+        elif self._top_omitting(rule):
+            self._top_list(rule, fq)
         else:
             self._top_loop(rule, fq)
+
+    def _top_omitting(self, rule: LoopRule) -> bool:
+        """Whether a top-level loop writes a list that is left out when empty."""
+        out_field = _output_field(rule.output, f"rule '{rule.id}'")
+        return self._omits_when_empty(rule, out_field)
+
+    def _top_list(self, rule: LoopRule, fq: str) -> None:
+        """A top-level list that is left out when empty: one function builds it (the loops that
+        write it, in the order of the rules) and returns it, or nothing when no element passed."""
+        out_field = _output_field(rule.output, f"rule '{fq}'")
+        if (id(self._level), out_field) in self._top_lists:
+            return  # the loops of this list were all written with the first
+        self._top_lists.add((id(self._level), out_field))
+        stmts: list[ast.stmt] = []
+        into: tuple[str, str] | None = None
+        list_var = ""
+        for other in self._level:
+            if (
+                isinstance(other, LoopRule)
+                and not other.first
+                and _output_field(other.output, "") == out_field
+            ):
+                assert other.id is not None
+                with self._inside(out_field, True):
+                    more, list_var, sub = self._nested_loop(
+                        other, other.id, _Frame(), f"rule '{other.id}'", into=into
+                    )
+                stmts += more
+                into = into or (list_var, sub.cls)
+        assert into is not None
+        body = [*stmts, *self._stmts(f"if {list_var}:\n    return {list_var}\nreturn")]
+        ident = f"{ident_of(fq)}_all"
+        fn = ast.parse(f"def {ident}(root: Any) -> list[{into[1]}] | None:\n    pass").body[0]
+        assert isinstance(fn, ast.FunctionDef)
+        fn.body = body
+        ast.fix_missing_locations(fn)
+        self.functions.append(fn)
+        self.flow += self._stmts(f"out.{out_field} = {ident}(root)")
 
     def _top_group(self, rule: ObjectRule, fq: str) -> None:
         """`output: $`: a group of rules that write into the root, all of them or none (its
         `guard`). The mapping has no notion of alternative shapes: whoever writes it guards the
         rules of each shape, and the rules of the other shapes are not run."""
         start = len(self.flow)
+        outer, self._level = self._level, rule.rules
         for child in rule.rules:
             assert child.id is not None
             self._top(child, f"{fq}.{child.id}")
+        self._level = outer
         body = self.flow[start:] or self._stmts("pass")
         del self.flow[start:]
         if not rule.guard:
@@ -664,13 +745,15 @@ class _Builder:
 
     def _top_object(self, rule: ObjectRule, fq: str) -> None:
         out_field = _output_field(rule.output, f"rule '{fq}'")
-        comp = self._composite(rule, fq, _Frame(), _pascal(out_field), rule.guard)
+        with self._inside(out_field, False):
+            comp = self._composite(rule, fq, _Frame(), _pascal(out_field), rule.guard)
         self.flow += self._stmts(f"out.{out_field} = {comp.ident}(root)")
 
     def _top_first(self, rule: LoopRule, fq: str) -> None:
         where = f"rule '{fq}'"
         out_field = _output_field(rule.output, where)
-        wrapper = self._first_match(rule, fq, _Frame(), where)
+        with self._inside(out_field, False):
+            wrapper = self._first_match(rule, fq, _Frame(), where)
         self.flow += self._stmts(f"out.{out_field} = {wrapper.ident}(root)")
 
     def _first_match(self, rule: LoopRule, fq: str, frame: _Frame, where: str) -> _Composite:
@@ -698,7 +781,8 @@ class _Builder:
         out_field = _output_field(rule.output, where)
         source = self._source_text(rule, self._scope(_Frame()), where)
         frame = _Frame().child(rule.label, self._element_type(source, _Frame()), rule.source)
-        comp = self._composite(rule, fq, frame, _pascal(out_field) + "Item", None)
+        with self._inside(out_field, True):
+            comp = self._composite(rule, fq, frame, _pascal(out_field) + "Item", None)
         uses_index = 0 in comp.needs
         scope = self._scope(frame)
         iterable, filter_text = self._iterable(rule, source, "src", scope, uses_index, where)
@@ -813,7 +897,8 @@ class _Builder:
                 )
             elif isinstance(child, ObjectRule):
                 out_field = _output_field(child.output, where)
-                sub = self._composite(child, cfq, frame, _pascal(out_field), child.guard)
+                with self._inside(out_field, False):
+                    sub = self._composite(child, cfq, frame, _pascal(out_field), child.guard)
                 call = ast.Call(
                     func=ast.Name(id=sub.ident, ctx=ast.Load()),
                     args=self._call_args(frame, None, sub.needs),
@@ -822,7 +907,8 @@ class _Builder:
                 add(out_field, sub.cls + (" | None" if child.guard else ""), call, where)
             elif child.first:
                 out_field = _output_field(child.output, where)
-                wrapper = self._first_match(child, cfq, frame, where)
+                with self._inside(out_field, False):
+                    wrapper = self._first_match(child, cfq, frame, where)
                 call = ast.Call(
                     func=ast.Name(id=wrapper.ident, ctx=ast.Load()),
                     args=self._call_args(frame, None, wrapper.needs),
@@ -831,13 +917,24 @@ class _Builder:
                 add(out_field, f"{wrapper.cls} | None", call, where)
             else:
                 out_field = _output_field(child.output, where)
-                stmts, list_var, sub = self._nested_loop(
-                    child, cfq, frame, where, into=lists.get(out_field)
-                )
+                omit = self._omits_when_empty(child, out_field)
+                with self._inside(out_field, True):
+                    stmts, list_var, sub = self._nested_loop(
+                        child, cfq, frame, where, into=lists.get(out_field)
+                    )
                 pre += stmts
                 if out_field not in lists:
                     lists[out_field] = (list_var, sub.cls)
-                    add(out_field, f"list[{sub.cls}]", ast.Name(id=list_var, ctx=ast.Load()), where)
+                    value: ast.expr = ast.Name(id=list_var, ctx=ast.Load())
+                    annotation = f"list[{sub.cls}]"
+                    if omit:  # nothing to list: the field is left out
+                        value = ast.IfExp(
+                            test=ast.Name(id=list_var, ctx=ast.Load()),
+                            body=ast.Name(id=list_var, ctx=ast.Load()),
+                            orelse=ast.Constant(value=None),
+                        )
+                        annotation += " | None"
+                    add(out_field, annotation, value, where)
 
         if not fields:
             raise FnYamlError(f"rule '{fq}': a {node.kind} rule needs at least one member")
@@ -958,6 +1055,7 @@ def build_stage(
     options: TranspileOptions,
     input_schema: SchemaTypes | None = None,
     warnings: list[str] | None = None,
+    output_schema: dict[str, Any] | None = None,
 ) -> str:
     """Stage `build`: rule tree -> `.map.py` text, before loop fusion (anchors,
     expressions, `choices` steps and their comments are all applied here).
@@ -971,7 +1069,7 @@ def build_stage(
             f"mapping '{file.id}' is empty: no rule has a Source or an Expression yet"
         )
     # aliases / root override applied, selecting objects lowered to first-element loops
-    b = _Builder(lower_selectors(expand_paths(file)), options, input_schema)
+    b = _Builder(lower_selectors(expand_paths(file)), options, input_schema, output_schema)
     b.build()
     if warnings is not None:
         warnings.extend(b.warnings)
@@ -1051,9 +1149,10 @@ def transpile_file_model(
     input_schema: SchemaTypes | None = None,
     source_name: str = "<fn.yaml>",
     warnings: list[str] | None = None,
+    output_schema: dict[str, Any] | None = None,
 ) -> str:
     options = options or TranspileOptions()
-    built = build_stage(file, options, input_schema, warnings)
+    built = build_stage(file, options, input_schema, warnings, output_schema)
     return emit_stage(fuse_stage(built, options), options, source_name)
 
 
@@ -1062,9 +1161,10 @@ def transpile_file(
     options: TranspileOptions | None = None,
     input_schema: SchemaTypes | None = None,
     warnings: list[str] | None = None,
+    output_schema: dict[str, Any] | None = None,
 ) -> str:
     return transpile_file_model(
-        load_functional_file(path), options, input_schema, path.name, warnings
+        load_functional_file(path), options, input_schema, path.name, warnings, output_schema
     )
 
 
