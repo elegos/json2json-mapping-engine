@@ -803,6 +803,10 @@ def import_run_command(
         list[str] | None,
         typer.Option(help="A permission rule to allow (Claude Code), e.g. 'Bash(python -I *)'"),
     ] = None,
+    concurrency: Annotated[
+        int, typer.Option(help="Runs at once for a long document (batches)")
+    ] = 2,
+    batch_size: Annotated[int, typer.Option(help="Units per batch of a long document")] = 30,
     watch_stdin: Annotated[
         bool, typer.Option(help="Cancel when stdin closes (the desktop tool)")
     ] = False,
@@ -827,6 +831,8 @@ def import_run_command(
         input_schema=input_schema,
         output_schema=output_schema,
         allow=allow or [],
+        concurrency=concurrency,
+        size=batch_size,
     )
     if result["status"] in ("failed", "cancelled"):
         raise typer.Exit(code=1)
@@ -902,6 +908,14 @@ def import_answers(
 ) -> None:
     """The answers given so far, with the rules each touches, and the ids still open."""
     _batch_command("answers", mapping, rule)
+
+
+@import_app.command("batch")
+def import_batch_info(
+    mapping: _MAPPING, batch: Annotated[str, typer.Argument(help="Batch id of queue.json")]
+) -> None:
+    """The units of a batch with the text of their rows, and the rules to read again."""
+    _batch_command("batch_info", mapping, batch)
 
 
 @import_app.command("gaps")

@@ -247,10 +247,19 @@ def test_questions_are_asked_once_and_read_back(tmp_path: Path) -> None:
     assert (
         import_batch.ask(root, "demo", "Is the index 1-based?", topic="index_base")["answer"] == "0"
     )
-    # a rule written before the answer needs to be read again
-    assert import_batch.stale_rules(root, "demo", "2000-01-01T00:00:00") == []
-    import_batch.add(root, "demo", batch_file(tmp_path, "b.json", rules=[rule_for(6, "a", "a")]))
-    assert import_batch.stale_rules(root, "demo", "2000-01-01T00:00:00") == ["a@Mapping!A6"]
+    # a rule written before the answer needs to be read again, one written after it does not
+    import_batch.queue(root, "demo", 30)
+    everything = [rule_for(6, "a", "a"), rule_for(7, "b", "b"), rule_for(8, "c", "c")]
+    import_batch.add(root, "demo", batch_file(tmp_path, "b.json", rules=everything), "b001")
+    assert import_batch.rework(root, "demo") == []
+    late = import_batch.ask(
+        root, "demo", "What does a hold?", topic="a_topic", rule_ids=["a@Mapping!A6"]
+    )
+    import_ops.answer(root, "demo", [{"id": late["id"], "answer": "a text"}])
+    assert import_batch.rework(root, "demo") == ["a@Mapping!A6"]
+    made = import_batch.queue_rework(root, "demo", ["a@Mapping!A6"])
+    assert made["id"] == "r001" and made["units"] == ["Mapping!A6"]
+    assert import_batch.next_batch(root, "demo")["id"] == "r001"
     with pytest.raises(PlanError):
         import_batch.ask(root, "demo", " ", topic="x")
 

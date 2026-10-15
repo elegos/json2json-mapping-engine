@@ -27,7 +27,15 @@ from typing import Any, TextIO
 from cli.import_plan import PlanError
 
 PROVIDERS = {"claude": "Claude Code", "codex": "Codex"}
-MODES = ("import", "resume", "rerun_all", "rerun_partial", "revalue_version")
+MODES = (
+    "import",
+    "resume",
+    "rerun_all",
+    "rerun_partial",
+    "revalue_version",
+    "survey",  # a long document: classify its units, translate nothing (docs/import/BATCHES.md)
+    "translate",  # one batch of those units
+)
 DOCUMENTS = "documents"
 SKILL = "skills/import-functional-spec"
 
@@ -121,6 +129,7 @@ def build_prompt(
     skill: Path,
     input_schema: str | None = None,
     output_schema: str | None = None,
+    batch: str | None = None,
 ) -> str:
     lines = [
         f"Follow the skill in {skill.as_posix()}/SKILL.md (read it first, and the files in its "
@@ -138,6 +147,8 @@ def build_prompt(
         lines.append(f"- output_schema: {output_schema}")
     if rule_ids:
         lines.append(f"- rule_ids: {', '.join(rule_ids)}")
+    if batch:
+        lines.append(f"- batch: {batch}")
     lines += [
         "",
         "Write only inside import/. `mapper` is on the PATH; run it from this directory. You cannot "
@@ -180,7 +191,12 @@ def mapper_on_path(env: dict[str, str]) -> Iterator[None]:
 
 
 def command_for(
-    provider: str, executable: str, prompt: str, skill: Path, allow: list[str] | None = None
+    provider: str,
+    executable: str,
+    prompt: str,
+    skill: Path,
+    allow: list[str] | None = None,
+    deny: list[str] | None = None,
 ) -> list[str]:
     """The non-interactive command line. Writes are limited to `import/`; the only program the
     assistant may run is `mapper`, plus what the user allowed after a refusal (`allow`: Claude Code
@@ -206,6 +222,7 @@ def command_for(
             "Edit(import/**)",
             "Bash(mapper *)",
             *(allow or []),
+            *(["--disallowedTools", *deny] if deny else []),
         ]
     if provider == "codex":
         return [
@@ -349,6 +366,8 @@ HISTORY_KIND = {
     "rerun_all": "rerun_all",
     "rerun_partial": "rerun_partial",
     "revalue_version": "revalue_for_version",
+    "survey": "import",
+    "translate": "import",
 }
 
 
@@ -401,6 +420,49 @@ def find_plan(project: Path, since: float, hint: str | None) -> Path | None:
     return newest[1] if newest else None
 
 
+def execute(
+    project: Path,
+    provider: str,
+    command: list[str],
+    emit: Callable[[dict[str, Any]], None],
+    cancelled: threading.Event | None,
+    tag: dict[str, Any] | None = None,
+) -> tuple[list[str], int]:
+    """Start the assistant in the project with `mapper` on its PATH and follow it: its lines, and
+    its exit code. `tag` goes on every progress event (which worker said it)."""
+    env = dict(os.environ)
+    lines: list[str] = []
+    with mapper_on_path(env):
+        process = subprocess.Popen(
+            command,
+            cwd=project,
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+
+        def watch() -> None:
+            while process.poll() is None:
+                if cancelled is not None and cancelled.wait(0.3):
+                    if process.poll() is None:
+                        process.terminate()
+                    return
+                if cancelled is None:
+                    return
+
+        threading.Thread(target=watch, daemon=True).start()
+        assert process.stdout is not None
+        for raw in process.stdout:
+            lines.append(raw.rstrip("\n"))
+            for text in progress_of(provider, raw):
+                emit({"event": "progress", "text": text, **(tag or {})})
+        return lines, process.wait()
+
+
 def run(
     project: Path,
     document: Path,
@@ -450,35 +512,8 @@ def run(
     backups: dict[Path, bytes] = {}
     for existing in (project / "import").glob("*/ir.json"):
         backups[existing] = existing.read_bytes()
-    env = dict(os.environ)
     emit({"event": "started", "provider": provider, "document": relative})
-    lines: list[str] = []
-    with mapper_on_path(env):
-        process = subprocess.Popen(
-            command,
-            cwd=project,
-            env=env,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-        )
-
-        def watch() -> None:
-            if cancelled is not None:
-                cancelled.wait()
-                if process.poll() is None:
-                    process.terminate()
-
-        threading.Thread(target=watch, daemon=True).start()
-        assert process.stdout is not None
-        for raw in process.stdout:
-            lines.append(raw.rstrip("\n"))
-            for text in progress_of(provider, raw):
-                emit({"event": "progress", "text": text})
-        code = process.wait()
+    lines, code = execute(project, provider, command, emit, cancelled)
 
     def restore() -> None:
         for path, data in backups.items():
@@ -538,6 +573,13 @@ def finish(
         }
     summary = summarize(plan)
     status = "needs_answers" if summary["open_questions"] else "ready_for_review"
+    if mode == "survey":
+        # a survey that classified the document goes on to the batches, with its questions open
+        # in the backlog; one that could not, because it needs an answer first, stops
+        surveyed = (path.parent / "units.json").is_file() and (said or {}).get(
+            "status"
+        ) != "needs_answers"
+        status = "surveyed" if surveyed else "needs_answers"
     return {
         "status": status,
         "ir": path.relative_to(project).as_posix(),
@@ -570,8 +612,10 @@ def run_streaming(
         out.write(json.dumps(event, ensure_ascii=False) + "\n")
         out.flush()
 
+    from cli.import_drive import drive
+
     try:
-        result = run(
+        result = drive(
             project,
             document,
             emit=emit,

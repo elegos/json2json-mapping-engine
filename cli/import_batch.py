@@ -406,9 +406,10 @@ def _finish_batch(
     for entry in queue["batches"]:
         if entry["id"] == batch_id:
             missing = [u for u in entry["units"] if u not in by_unit]
-            entry["status"] = "pending" if missing else "done"
-            entry["finished_at"] = _now()
-            _write(file, queue)
+            if not missing:  # else it stays with the worker, who adds the rest
+                entry["status"] = "done"
+                entry["finished_at"] = _now()
+                _write(file, queue)
             return missing
     raise PlanError(f"no batch '{batch_id}' in queue.json")
 
@@ -679,6 +680,30 @@ def batch_units(project: Path, mapping: str, batch_id: str) -> list[dict[str, An
     return [by_id[u] for u in wanted if u in by_id]
 
 
+def batch_info(project: Path, mapping: str, batch_id: str) -> dict[str, Any]:
+    """What a worker needs for its batch: the units with the text of their rows, the rules it is to
+    read again (a `rework` batch), and the context every rule inherits."""
+    queue_data = _read(queue_file(project, mapping), "queue.json")
+    entry = next((b for b in queue_data["batches"] if b["id"] == batch_id), None)
+    if entry is None:
+        raise PlanError(f"no batch '{batch_id}' in queue.json")
+    document = document_file(project, mapping)
+    index = row_index(_read(document, "document.json")) if document.exists() else {}
+    units = []
+    for item in batch_units(project, mapping, batch_id):
+        text = evidence_text(index, [item["location"]])
+        units.append({**item, **({"text": text} if text else {})})
+    out: dict[str, Any] = {
+        "id": batch_id,
+        "units": units,
+        "context": load_units(project, mapping).get("context") or [],
+    }
+    if entry.get("rework"):
+        plan = load_plan(project, mapping)
+        out["rework"] = [r for r in plan["rules"] if r["id"] in entry["rework"]]
+    return out
+
+
 # ---- live questions --------------------------------------------------------------------------
 
 
@@ -778,16 +803,73 @@ def answers(project: Path, mapping: str, rule_id: str | None = None) -> dict[str
     return {"answers": given, "open": open_}
 
 
-def stale_rules(project: Path, mapping: str, since: str) -> list[str]:
-    """Rules whose reading depends on a question answered after `since` (an ISO time) and that were
-    written before it: they need a partial re-run."""
+def _when(text: str) -> datetime | None:
+    try:
+        return datetime.fromisoformat(text)
+    except ValueError:
+        return None
+
+
+def rework(project: Path, mapping: str) -> list[str]:
+    """Rules to read again: the ones a question lists as depending on it, written (their batch
+    finished) before the answer came. A rule written after the answer has read it."""
+    file = queue_file(project, mapping)
+    if not file.exists():
+        return []
+    finished: dict[str, datetime] = {}
+    for entry in _read(file, "queue.json")["batches"]:
+        when = _when(entry.get("finished_at", "")) if entry["status"] == "done" else None
+        for unit in entry["units"] if when else []:
+            finished[unit] = max(when, finished.get(unit, when))
     plan = load_plan(project, mapping)
-    wanted: set[str] = set()
+    by_id = {r["id"]: r for r in plan["rules"]}
+    stale: set[str] = set()
     for q in plan.get("questions") or []:
-        when = q.get("answered_at")
-        if when and when > since and q.get("topic") != "user_note":
-            wanted.update(q.get("rule_ids") or [])
-    return sorted(r["id"] for r in plan["rules"] if r["id"] in wanted)
+        given = _when(q.get("answered_at", "")) if q.get("topic") != "user_note" else None
+        for rule_id in (q.get("rule_ids") or []) if given else []:
+            unit = _location_key(by_id[rule_id]) if rule_id in by_id else None
+            if unit in finished and finished[unit] < given:
+                stale.add(rule_id)
+    return sorted(stale)
+
+
+def queue_rework(project: Path, mapping: str, rule_ids: list[str]) -> dict[str, Any] | None:
+    """Put the rules to read again into a batch of their own (`rework` names them); `None` when
+    there are none."""
+    if not rule_ids:
+        return None
+    with locked(project, mapping):
+        file = queue_file(project, mapping)
+        data = _read(file, "queue.json")
+        by_id = {r["id"]: r for r in load_plan(project, mapping)["rules"]}
+        units = sorted({u for r in rule_ids if (u := _location_key(by_id.get(r, {})))})
+        number = 1 + sum(1 for b in data["batches"] if b["id"].startswith("r"))
+        entry = {
+            "id": f"r{number:03d}",
+            "units": units,
+            "rework": rule_ids,
+            "groups": [],
+            "status": "pending",
+        }
+        data["batches"].append(entry)
+        _write(file, data)
+    return entry
+
+
+def settle_batch(project: Path, mapping: str, batch_id: str, error: str, attempts: int = 2) -> str:
+    """A run ended without finishing its batch: back to waiting, until it has been tried
+    `attempts` times, then failed with the reason. Returns the new status."""
+    with locked(project, mapping):
+        file = queue_file(project, mapping)
+        data = _read(file, "queue.json")
+        for entry in data["batches"]:
+            if entry["id"] == batch_id and entry["status"] != "done":
+                entry["attempts"] = entry.get("attempts", 0) + 1
+                entry["status"] = "pending" if entry["attempts"] < attempts else "failed"
+                entry["error"] = error
+                _write(file, data)
+                return str(entry["status"])
+    return "done"
 
 
 # ---- the engine's gaps, known early ------------------------------------------------------------
