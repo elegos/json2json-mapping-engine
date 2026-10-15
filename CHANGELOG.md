@@ -18,6 +18,8 @@ section (see `packaging/release.py`).
   `order_by`. The Python backend now runs a sorted loop at all (it passed the key as text to Python's
   `sorted`, which raised on every run), and PL/SQL orders by the computed keys with a stable sort that
   copies into a new array. Desktop: an *Order the list by* editor in the loop options.
+- Loops over the parts of a text: `source: "split_list(<text>, <separator>)"`, each part an element read
+  as `@`. Python: a loop whose iterable is filtered and numbered no longer fails on a missing list.
 - `matches(text, pattern)`: the whole text fits a pattern written in a portable subset of regular
   expressions (characters, `.`, `[a-z]`, groups, `|`, `* + ? {n,m}`), the same on Python
   (`re.fullmatch`) and PL/SQL (`REGEXP_LIKE` anchored); what a dialect reads in its own way (`\d`, `^`,

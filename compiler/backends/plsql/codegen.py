@@ -209,6 +209,7 @@ _BUILTIN_ARG_EXPECTED: dict[str, list[str | None]] = {
     "rfc3339_normalize": ["VARCHAR2", "NUMBER"],
     "parse_timestamp": ["VARCHAR2", "VARCHAR2"],
     "split_last": ["VARCHAR2", "VARCHAR2"],
+    "split_list": ["VARCHAR2", "VARCHAR2"],
     "is_digits": ["VARCHAR2"],
     "days_between": ["VARCHAR2", "VARCHAR2"],
     "add_days": ["VARCHAR2", "NUMBER"],
@@ -1011,6 +1012,28 @@ def _write_unless_null(
     return [f"{var} := {value_expr};", f"IF {var} IS NOT NULL THEN", f"    {sink(var)}", "END IF;"]
 
 
+def _scalar_elements(array: ast.expr) -> str | None:
+    """`VARCHAR2` when a loop walks the parts of a text (`split_list(...)`), else None: its elements
+    are objects."""
+    if (
+        isinstance(array, ast.Call)
+        and isinstance(array.func, ast.Name)
+        and array.func.id == "split_list"
+    ):
+        return "VARCHAR2"
+    return None
+
+
+def element_decl(array: ast.expr) -> str:
+    return "VARCHAR2(32767)" if _scalar_elements(array) else "JSON_OBJECT_T"
+
+
+def element_read(array: ast.expr, arr: str, k: str) -> str:
+    if _scalar_elements(array):
+        return f"{arr}.get_String({k})"
+    return f"TREAT({arr}.get({k}) AS JSON_OBJECT_T)"
+
+
 def _is_aggregate_call(node: ast.expr, linker: FunctionLinker) -> bool:
     """A `max` / `min` / `sum` / `avg` / `join` call, or a `count` over a comprehension, that the backend
     lowers to a loop: not one the project overrides (that one is an expression, its
@@ -1583,11 +1606,12 @@ def _translate_fn_for(
     lines: list[str] = []
     source = translator.translate(spec.array_expr, "ARRAY")
     lines.append(f"{arr} := {source};")
+    scalar = _scalar_elements(spec.array_expr)
     for name in (item_var, *([index_var] if index_var else [])):
         if name not in ctx.locals:
-            ctx.locals[name] = "OBJECT" if name == item_var else "NUMBER"
+            ctx.locals[name] = (scalar or "OBJECT") if name == item_var else "NUMBER"
             ctx.declare(
-                f"{ctx.local_var(name)} {'JSON_OBJECT_T' if name == item_var else 'NUMBER'};"
+                f"{ctx.local_var(name)} {element_decl(spec.array_expr) if name == item_var else 'NUMBER'};"
             )
     if spec.sorts:  # (a list missing from the document is NULL: no elements)
         lines.append(f"IF {arr} IS NOT NULL THEN")
@@ -1608,7 +1632,7 @@ def _translate_fn_for(
     if body_filter is not None:
         body = wrap_filter(body_filter, rest)
 
-    inner = [f"{ctx.local_var(item_var)} := TREAT({arr}.get({k}) AS JSON_OBJECT_T);"]
+    inner = [f"{ctx.local_var(item_var)} := {element_read(spec.array_expr, arr, k)};"]
     if index_var:
         offset = spec.enumerate_start or 0
         inner.append(f"{ctx.local_var(index_var)} := {k}" + (f" + {offset};" if offset else ";"))
@@ -2174,7 +2198,8 @@ class PlsqlCodeGenerator:
             [
                 f"        FOR {idx_var} IN 0 .. {arr_var}.get_size - 1 LOOP",
                 "            DECLARE",
-                f"                v_{item_var} JSON_OBJECT_T := TREAT({arr_var}.get({idx_var}) AS JSON_OBJECT_T);"
+                f"                v_{item_var} {element_decl(iter_spec.array_expr)}"
+                f" := {element_read(iter_spec.array_expr, arr_var, idx_var)};"
                 f"{index_decl}",
                 "            BEGIN",
             ]

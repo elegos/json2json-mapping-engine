@@ -49,7 +49,7 @@ from transpiler.model import (
     is_unfinished,
     load_rule,
 )
-from transpiler.orderby import parse_order_by
+from transpiler.orderby import parse_order_by, split_top_level
 from transpiler.paths import expand_paths
 from transpiler.selector import (
     find_selections,
@@ -771,7 +771,14 @@ class _Checker:
         item: Node = UNKNOWN
         if not source.strip() and not is_unfinished(rule):
             self.add(path, "source", "a loop needs a source")
-        if self.has_in and source:
+        if source.strip().startswith("split_list("):
+            # the parts of a text: the arguments are read where the loop is written, and the
+            # elements are texts (`@` is one)
+            for arg in split_top_level(source.strip()[len("split_list(") :].rstrip(")")):
+                self.block(path, arg, scope, "source")
+                self.refs(path, arg, "source", in_root, items, labels)
+                self.typecheck(path, arg, None, "", in_root, items, labels)
+        elif self.has_in and source:
             base, relative = _source_base(source, in_root, items, labels)
             if base is None:
                 reached, missing, hint = None, "", ""

@@ -64,7 +64,7 @@ def test_a_bare_name_in_an_expression_offers_functions_and_value() -> None:
     assert "lookup" in found and "value" not in found
     assert "value" in labels(CURRENCY, "expression", "val")
     fn = complete(FILE, CURRENCY, "expression", "spl", 3, INP, OUT).items
-    assert [i.label for i in fn] == ["split_first", "split_last", "split_nth"]
+    assert [i.label for i in fn] == ["split_first", "split_last", "split_list", "split_nth"]
     assert fn[0].insert == "split_first(" and fn[0].detail == "split_first(s, sep)"
     assert "before the first" in fn[0].doc and fn[0].origin == "built-in"
 

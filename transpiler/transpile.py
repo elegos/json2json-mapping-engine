@@ -93,6 +93,7 @@ def _pascal(name: str) -> str:
 
 
 _OUT_PATH = re.compile(r"^[$@]\.(?P<name>[A-Za-z_]\w*)(?:\[\*?\])?$")
+_SPLIT_LIST = re.compile(r"^split_list\(.*\)$", re.DOTALL)
 _ATTR_CHAIN = re.compile(r'^[A-Za-z_]\w*((\.[A-Za-z_]\w*|\["[A-Za-z_]\w*"\])(\[\d+\])*)*$')
 _INDEX_NAME = re.compile(r"^index(\d*)$")
 
@@ -594,6 +595,8 @@ class _Builder:
 
     def _element_type(self, source_text: str, frame: _Frame) -> str | None:
         """Element type of the array at `root.a.b` / `src.items` (a resolved path)."""
+        if _SPLIT_LIST.match(source_text):
+            return "str"  # the parts of a text
         names: dict[str, str | None] = {"root": self.schema.root_type if self.schema else None}
         for off in range(frame.depth):
             names[frame.item_name(off)] = frame.types[frame.depth - 1 - off]
@@ -827,6 +830,8 @@ class _Builder:
     def _source_text(self, rule: LoopRule, scope: AnchorScope, where: str) -> str:
         path = re.sub(r"\[\*?\]$", "", rule.source.strip())
         text = resolve_anchors(path, scope, f"{where} source").text
+        if _SPLIT_LIST.match(text):  # the parts of a text: a list of texts
+            return text
         if not _ATTR_CHAIN.match(text):
             raise FnYamlError(f"{where}: unsupported source path {rule.source!r}")
         return text

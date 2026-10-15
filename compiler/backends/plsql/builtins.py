@@ -447,6 +447,7 @@ BUILTIN_FUNCTIONS: dict[str, FunctionImpl] = {
         name="split_nth",
         target_templates={"plsql": _split_nth_plsql},
     ),
+    "split_list": FunctionImpl(name="split_list", target_templates={"plsql": "NULL"}),
     "split_last": FunctionImpl(
         name="split_last",
         target_templates={
@@ -601,6 +602,35 @@ IF p_el IS NULL OR p_el.is_Null THEN
     RETURN FALSE;"""
 
 
+_SPLIT_LIST_BODY = """\
+IF p_s IS NULL OR p_sep IS NULL THEN
+        RETURN NULL;
+    END IF;
+    DECLARE
+        v_arr  JSON_ARRAY_T := JSON_ARRAY_T();
+        v_pos  PLS_INTEGER := 1;
+        v_next PLS_INTEGER;
+        v_part VARCHAR2(32767);
+    BEGIN
+        LOOP
+            v_next := INSTR(p_s, p_sep, v_pos);
+            IF v_next = 0 THEN
+                v_part := SUBSTR(p_s, v_pos);
+            ELSE
+                v_part := SUBSTR(p_s, v_pos, v_next - v_pos);
+            END IF;
+            IF v_part IS NULL THEN
+                v_arr.append_Null;
+            ELSE
+                v_arr.append(v_part);
+            END IF;
+            EXIT WHEN v_next = 0;
+            v_pos := v_next + LENGTH(p_sep);
+        END LOOP;
+        RETURN v_arr;
+    END;"""
+
+
 def truthy_py(value) -> bool:
     """Python truthiness, which is the language's (docs/ARCHITECTURE.md, §Truthiness)."""
     return bool(value)
@@ -623,6 +653,14 @@ LIBRARY_FUNCTIONS: dict[str, LibraryFunction] = {
         "VARCHAR2",
         ["p_s", "p_sep"],
         _split_first_plsql,
+    ),
+    # the parts of a text as a list, for a loop
+    "split_list": LibraryFunction(
+        "p_s IN VARCHAR2, p_sep IN VARCHAR2",
+        "JSON_ARRAY_T",
+        ["p_s", "p_sep"],
+        lambda a: "NULL",
+        body=_SPLIT_LIST_BODY,
     ),
     "split_nth": LibraryFunction(
         "p_s IN VARCHAR2, p_sep IN VARCHAR2, p_n IN NUMBER",

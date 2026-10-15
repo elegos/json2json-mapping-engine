@@ -165,6 +165,20 @@ class _Rewriter(ast.NodeTransformer):
             ],
         )
 
+    def visit_ListComp(self, node: ast.ListComp) -> ast.expr:
+        """`[x for x in <list> if <cond>]`, the filter of a loop's iterable: a missing list has no
+        elements."""
+        gens = [
+            ast.comprehension(
+                target=g.target,
+                iter=_call("_each", self.visit(g.iter)),
+                ifs=[self.visit(c) for c in g.ifs],
+                is_async=0,
+            )
+            for g in node.generators
+        ]
+        return ast.ListComp(elt=self.visit(node.elt), generators=gens)
+
     # -- operators ---------------------------------------------------------------------
     def visit_BinOp(self, node: ast.BinOp) -> ast.expr:
         helper = _ARITH.get(type(node.op))

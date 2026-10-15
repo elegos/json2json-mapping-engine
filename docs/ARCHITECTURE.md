@@ -1751,6 +1751,13 @@ nothing; the loops that write one list are built together, in the order of the r
 (`@2.refs[*]`, `@line.refs[*]`) or from the document (`$.refs[*]`): the anchors resolve as they do in a
 `filter`. A loop that does not enclose the one written is an error of the check.
 
+A loop can also walk the **parts of a text**: `source: "split_list(<text>, <separator>)"` (any text
+expression, e.g. `split_list(split_nth($.notes[0].noteText, '|', 8), ',')`). Each part is one element,
+read as `@` (a text: `split_nth(@, ':', 1)`), `@index` works, and a `filter` may drop the empty ones
+(`not is_empty(@)`); an empty part is a null element, a missing or empty text has no elements.
+`split_list` is only a loop's source: no other expression reads it. PL/SQL builds the list in the
+functions package and reads each element with `get_String`.
+
 `source` is a list, or `$`: a loop over the document itself has the whole message as its one element,
 which is how a list with a single element built from the message is written (with a `filter`, a
 block written only when a condition holds). A missing list has no elements. Several loops of one

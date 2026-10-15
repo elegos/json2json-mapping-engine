@@ -71,6 +71,15 @@ def split_nth(s: str, sep: str, n: int) -> str | None:
     return (parts[n - 1] or None) if 0 < n <= len(parts) else None
 
 
+def split_list(s: str | None, sep: str) -> list[str | None] | None:
+    """The parts of `s` split at `sep`, as a list for a loop to walk (`source: "split_list(...)"`):
+    each element is one part, an empty part is a null element, a missing or empty `s` has no
+    elements. Only a loop reads it."""
+    if not s or not sep:
+        return None
+    return [part or None for part in s.split(sep)]
+
+
 def split_last(s: str, sep: str) -> str | None:
     """The part of `s` after the last `sep` (all of `s` when it has none): `split_last("A-B-C",
     "-")` is `"C"`. Null for a missing `s` or an empty part."""

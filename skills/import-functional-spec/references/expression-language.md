@@ -63,6 +63,10 @@ rules:
 - **The best of several**: a selection reads the first match; to read the one with the highest or
   lowest of something, say it as in SQL: `$.events[kind == 'K1' order by to_number(rank) desc].txNo`
   (same clause and same rules for the key's type as a loop's `order_by`).
+- **A loop over the parts of a text** ("for each value of the comma-separated list, one entry"):
+  `source: "split_list(split_nth($.notes[0].noteText, '|', 8), ',')"`; the element is a text, read as
+  `@`: `split_nth(@, ':', 1)`. An empty part is a null element: `filter: "not is_empty(@)"` leaves it
+  out. A missing or empty text gives no element.
 - A loop's `source` may start from an outer loop, as a `filter` may: `@2.refs[*]` or `@line.refs[*]`
   (`@` is the loop it sits in, `@2` the one outside it).
 - **An optional list left out when empty**: `when_empty: omit` on the loop (`list` writes `[]`). Unset,

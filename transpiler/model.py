@@ -727,8 +727,8 @@ def qualify_source(path: str, in_loop: bool) -> str:
     outside a loop (`id` = `$.id`), the loop's element inside one (`sku` = `@.sku`).
     `$.name` always means the root, so both spellings are accepted everywhere."""
     text = path.strip()
-    if not text or text[0] in "$@":
-        return text
+    if not text or text[0] in "$@" or text.startswith("split_list("):
+        return text  # (the parts of a text are no path)
     return f"{'@' if in_loop else '$'}.{text}"
 
 
