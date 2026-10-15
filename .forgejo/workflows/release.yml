@@ -6,6 +6,7 @@ name: Release
 # A tag `vX.Y.Z` (or `vX.Y.Z-suffix`, a pre-release) builds them and makes a DRAFT release:
 #  - the version of the tag replaces the one in desktop/src-tauri/Cargo.toml for this build;
 #  - a suffix (v1.2.3-beta1) marks the release as a pre-release;
+#  - a draft of the same tag left by an earlier run is replaced; a published release stops the run;
 #  - the description is the section of that version in CHANGELOG.md (Keep a Changelog), else its
 #    `Unreleased` section, else none (packaging/release.py).
 # A manual run only builds the packages (artifacts), with the version of Cargo.toml.
@@ -44,6 +45,20 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         run: python packaging/release.py prepare "$GITHUB_REF_NAME" --notes "$RUNNER_TEMP/notes.md" >> "$GITHUB_ENV"
 
+      # fail before the long build: a published release of this tag is never touched
+      - name: Refuse a tag that is already released
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          api="${GITHUB_SERVER_URL}/api/v1/repos/${GITHUB_REPOSITORY}"
+          curl -fsS "$api/releases?limit=100" -H "Authorization: token $TOKEN" \
+            | python -c 'import json, os, sys; print(json.dumps(next((r for r in json.load(sys.stdin) if r["tag_name"] == os.environ["GITHUB_REF_NAME"]), {})))' > "$RUNNER_TEMP/existing.json"
+          if [ "$(python -c 'import json, sys; print(json.load(open(sys.argv[1])).get("draft"))' "$RUNNER_TEMP/existing.json")" = False ]; then
+            echo "::error::$GITHUB_REF_NAME is already released (published): delete the release by hand to redo it"
+            exit 1
+          fi
+
       - name: Locate the Docker daemon (dind, at the bridge gateway)
         run: |
           gw=$(python -c "import socket, struct; print(next(socket.inet_ntoa(struct.pack('<L', int(f[2], 16))) for f in (l.split() for l in open('/proc/net/route').readlines()[1:]) if f[1] == '00000000'))")
@@ -77,6 +92,15 @@ jobs:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           api="${GITHUB_SERVER_URL}/api/v1/repos/${GITHUB_REPOSITORY}"
+          # a draft of this tag left by an earlier run is replaced; a published one stops here
+          curl -fsS "$api/releases?limit=100" -H "Authorization: token $TOKEN" \
+            | python -c 'import json, os, sys; print(json.dumps(next((r for r in json.load(sys.stdin) if r["tag_name"] == os.environ["GITHUB_REF_NAME"]), {})))' > "$RUNNER_TEMP/existing.json"
+          if [ "$(cat "$RUNNER_TEMP/existing.json")" != "{}" ]; then
+            [ "$(python -c 'import json, sys; print(json.load(open(sys.argv[1]))["draft"])' "$RUNNER_TEMP/existing.json")" = True ] \
+              || { echo "::error::$GITHUB_REF_NAME is already released (published)"; exit 1; }
+            curl -fsS -X DELETE "$api/releases/$(python -c 'import json, sys; print(json.load(open(sys.argv[1]))["id"])' "$RUNNER_TEMP/existing.json")" -H "Authorization: token $TOKEN"
+            echo "replaced the earlier draft of $GITHUB_REF_NAME"
+          fi
           id=$(python -c 'import json, os; print(json.dumps({
                   "tag_name": os.environ["GITHUB_REF_NAME"], "name": os.environ["GITHUB_REF_NAME"],
                   "body": open(os.environ["RUNNER_TEMP"] + "/notes.md").read(),
