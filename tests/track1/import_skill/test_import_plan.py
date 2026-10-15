@@ -387,17 +387,19 @@ def test_the_schema_validation_flags_turn_the_json_schema_check_on(project: Path
 
 
 def test_what_the_target_cannot_build_is_an_error_of_the_rule(project: Path) -> None:
-    """The check is the same for every backend; the backends are not: `any(...)` is Python's own
-    and PL/SQL has no implementation of it. The plan must not look fine for a project that builds
+    """The check is the same for every backend; the backends are not: a project function with an
+    implementation for Python only (no `@override(plsql=...)`) builds for one and not the other. The plan must not look fine for a project that builds
     for Oracle."""
     config = (Path(__file__).parents[3] / "desktop/fixtures/tour-project/mapper.toml").read_text()
     (project / "mapper.toml").write_text(config)
+    (project / "fn").mkdir()
+    (project / "fn" / "shout.fn").write_text(
+        'def shout(s: str) -> str:\n    """The text in capitals."""\n    return s.upper()\n'
+    )
     body = json.loads((project / "import/m/ir.json").read_text())
     for r in body["rules"]:
         if r["id"] == "sku":
-            r["proposal"]["fn_rule"]["transform"] = {
-                "expression": 'if_else(any(i.code == "A" for i in $.items), "y", "n")'
-            }
+            r["proposal"]["fn_rule"]["transform"] = {"expression": "shout(@.code)"}
     (project / "import/m/ir.json").write_text(json.dumps(body))
     result = import_plan.assemble(project, "m")
     assert result["ok"] is False
@@ -410,7 +412,7 @@ def test_what_the_target_cannot_build_is_an_error_of_the_rule(project: Path) -> 
         if r["id"] in ("no", "qty") and r["proposal"].get("check")
     ]
     assert all(others)  # only the rule that cannot be built is blamed
-    # the same rule builds for Python, which has `any`
+    # the same rule builds for Python
     (project / "mapper.toml").write_text(
         config.replace('target = "plsql"', 'target = "python"') + "\n[target.python]\n"
     )

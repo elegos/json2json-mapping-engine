@@ -48,7 +48,7 @@ OUTPUT = {
             "type": "array",
             "items": {
                 "type": "object",
-                "properties": {"Ref": TEXT, "Vol": {"type": "number"}, "Pack": TEXT},
+                "properties": {"Ref": TEXT, "Vol": {"type": "number"}, "Pack": TEXT, "All": TEXT},
             },
         },
     },
@@ -79,6 +79,8 @@ RULES = [
 LOOP = {"id": "lines", "kind": "loop", "label": "line", "source": "$.lines[*]", "output": "Lines[*]",
         "when_empty": "list"}  # fmt: skip
 LINE_FIELDS = [
+    {"id": "all", "kind": "field", "field": "All", "type": "str", "required": False,
+     "transform": {"expression": "join((p.id for p in $.packages if p.vol > 1), ',')"}},
     {"id": "ref", "kind": "field", "field": "Ref", "type": "str", "source": {"path": "@.ref"}},
     {"id": "vol", "kind": "field", "field": "Vol", "type": "number", "required": False,
      "source": {"path": "$.packages[any(i.ref == @2.ref for i in items)].vol"}},
@@ -105,8 +107,8 @@ EXPECTED = {
             "Vol": 5,
             "Pack": "P2",
         },  # the first package that holds it; the best by volume
-        {"Ref": "L2", "Vol": 9, "Pack": "P2"},
-        {"Ref": "L3"},
+        {"Ref": "L2", "Vol": 9, "Pack": "P2", "All": "P1,P2"},
+        {"Ref": "L3", "All": "P1,P2"},
     ],
 }
 
@@ -120,7 +122,7 @@ def start(
     (tmp_path / "import" / "m").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
     body = plan(*rules)
-    parents = {"ref": "lines", "vol": "lines", "pack": "lines"}
+    parents = {"ref": "lines", "vol": "lines", "pack": "lines", "all": "lines"}
     for rule in body["rules"]:
         if rule["id"] in parents:
             rule["proposal"]["parent_rule"] = parents[rule["id"]]

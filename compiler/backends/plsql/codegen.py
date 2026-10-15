@@ -959,11 +959,16 @@ def _emit_value(
             return [sink(var)]
     if _is_explicit_null(value):
         return [sink(_TYPED_NULL)]
+    first: list[str] = []  # an aggregate in the value is a loop: computed before it is written
+    value = _hoisted(copy.deepcopy(value), translator, ctx, loop_counter, first)
     kind = expected or infer_type(value, ctx)
-    return _write_unless_null(
-        translator.translate(value, kind), kind, sink, ctx.declare,
-        f"{ctx.local_prefix}__v{next(ctx.counter)}",
-    )  # fmt: skip
+    return [
+        *first,
+        *_write_unless_null(
+            translator.translate(value, kind), kind, sink, ctx.declare,
+            f"{ctx.local_prefix}__v{next(ctx.counter)}",
+        ),  # fmt: skip
+    ]
 
 
 _AGGREGATE_FUNCS = {"max", "min", "sum", "avg", "join"}
