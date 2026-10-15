@@ -45,6 +45,10 @@ Never wait for an answer inside a run and never assume one that matters (see *As
 - The functions you may call are **only** those printed by `mapper functions --json`. Run it at the
   start of every run; do not rely on memory or on this file. Parameters, `doc` and `origin` tell
   what each one does. Project functions (`fn/*.fn`) may replace built-ins.
+- Run `mapper` **alone, one command per call**: no pipe into `python`, `Select-Object` or any other
+  program, no `$(...)`, no subshell. The permissions of a run let `mapper` through (with `| head`,
+  `| grep`, `&&`, `;` at most) and refuse the rest. A long output is saved to a file that you `Read`
+  (in slices) instead of being cut by a pipe. Read the references with `Read`, not `cat`.
 - You never write a `.fn.yaml`. Each rule's `proposal.fn_rule` is a fragment with an `id`, and
   `proposal.parent_rule` names the `object`/`loop` fn rule it sits in (absent at the top). Run
   `mapper import assemble <mapping>` from the project directory: it builds the working copy

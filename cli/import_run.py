@@ -157,7 +157,8 @@ def build_prompt(
     )
     lines += [
         "",
-        "Write only inside import/. `mapper` is on the PATH; run it from this directory. "
+        "Write only inside import/. `mapper` is on the PATH; run it from this directory, alone "
+        "in each call (no pipe into another program, no `$(...)`). "
         f"{asking} The wizard computes `document.sha256` and `profile.sha256` itself (write any "
         "value). Your last line is the JSON status line of references/protocol.md.",
     ]
