@@ -165,6 +165,8 @@ export interface ImportSummary {
   guesses?: number;
   open_questions?: number;
   stale?: string[];
+  /** Units of the document still wait for a rule (batches left, or not translated yet). */
+  unfinished?: boolean;
   modified?: string;
 }
 
@@ -394,3 +396,23 @@ export const MODE_LABEL: Record<Mode, string> = {
   rerun_partial: "Redo the rules with a note",
   revalue_version: "Read the new version of the document",
 };
+
+/** How the batches of a long import stand. */
+export interface BatchCounts {
+  total: number;
+  done: number;
+  running: number;
+  pending: number;
+  failed: number;
+}
+
+/** What the run screen shows while the assistants work (`import_live`). */
+export interface LiveView {
+  questions: PlanQuestion[];
+  answered: number;
+  rules: number;
+  guesses: number;
+  units: { units_total?: number; imported?: number; imported_with_doubt?: number };
+  batches: BatchCounts | null;
+  rule_labels: Record<string, string>;
+}

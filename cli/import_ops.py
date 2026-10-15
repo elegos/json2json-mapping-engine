@@ -5,6 +5,7 @@ and has its own process (`cli/import_run.py`)."""
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
 from datetime import UTC, datetime
@@ -79,6 +80,57 @@ def state_of(plan: dict[str, Any]) -> str:
     return "ready_for_review"
 
 
+def _queue(project: Path, mapping: str) -> dict[str, int] | None:
+    """How the batches of a long import stand (`queue.json`), or `None` when it has none."""
+    path = project / "import" / mapping / "queue.json"
+    if not path.is_file():
+        return None
+    try:
+        batches = json.loads(path.read_text(encoding="utf-8"))["batches"]
+    except OSError, ValueError, KeyError:
+        return None
+    counts = {
+        k: sum(1 for b in batches if b["status"] == k)
+        for k in ("done", "running", "pending", "failed")
+    }
+    return {"total": len(batches), **counts}
+
+
+def unfinished(project: Path, mapping: str, plan: dict[str, Any]) -> bool:
+    """Whether units of the document still wait for a rule: batches left, or a coverage entry that
+    says some were not translated yet (an import begun in one run that did not get to the end)."""
+    queue = _queue(project, mapping)
+    if queue and queue["total"] > queue["done"]:
+        return True
+    return any(
+        e.get("reason") == "needs_user_input"
+        and "not translated" in str(e.get("detail", "")).lower()
+        for e in (plan.get("coverage") or {}).get("not_imported") or []
+    )
+
+
+def live(project: Path, mapping: str) -> dict[str, Any]:
+    """What the run screen shows while the assistants work: the questions waiting for the user,
+    and how far the batches and the rules are."""
+    plan = load_plan(project, _check_id(mapping))
+    questions = plan.get("questions") or []
+    rules = plan.get("rules") or []
+    coverage = plan.get("coverage") or {}
+    return {
+        "questions": [
+            q
+            for q in questions
+            if q.get("status", "open") == "open" and q.get("topic") != "user_note"
+        ],
+        "answered": sum(1 for q in questions if q.get("status", "open") != "open"),
+        "rules": len(rules),
+        "guesses": sum(1 for r in rules if r["confidence"]["level"] in ("low", "guess")),
+        "units": {k: coverage.get(k) for k in ("units_total", "imported", "imported_with_doubt")},
+        "batches": _queue(project, mapping),
+        "rule_labels": {r["id"]: r["target"]["path"] for r in rules[-400:]},
+    }
+
+
 def list_imports(project: Path) -> list[dict[str, Any]]:
     found: list[dict[str, Any]] = []
     # an import folder with no plan (a first run that did not get that far) is listed too, to be dropped
@@ -118,6 +170,7 @@ def list_imports(project: Path) -> list[dict[str, Any]]:
                     1 for q in plan.get("questions") or [] if q.get("status", "open") == "open"
                 ),
                 "stale": stale(project, plan),
+                "unfinished": unfinished(project, mapping, plan),
                 "modified": datetime.fromtimestamp(path.stat().st_mtime, UTC).isoformat(),
             }
         )

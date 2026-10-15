@@ -614,7 +614,9 @@ def queue(project: Path, mapping: str, size: int = DEFAULT_SIZE) -> dict[str, An
         )
         kept = [b for b in old["batches"] if b["status"] in ("done", "running")]
         busy = {u for b in kept for u in b["units"]}
-        numbered = len(old["batches"])
+        numbered = max(
+            [int(b["id"][1:]) for b in kept if b["id"][1:].isdigit() and b["id"][0] == "b"] or [0]
+        )
         fresh = []
         for chunk in _batches(
             [u for u in waiting if u["id"] not in busy and u["class"] != "ask"], size
@@ -821,14 +823,18 @@ def rework(project: Path, mapping: str) -> list[str]:
     finished: dict[str, datetime] = {}
     for entry in _read(file, "queue.json")["batches"]:
         when = _when(entry.get("finished_at", "")) if entry["status"] == "done" else None
-        for unit in entry["units"] if when else []:
+        if when is None:
+            continue
+        for unit in entry["units"]:
             finished[unit] = max(when, finished.get(unit, when))
     plan = load_plan(project, mapping)
     by_id = {r["id"]: r for r in plan["rules"]}
     stale: set[str] = set()
     for q in plan.get("questions") or []:
-        given = _when(q.get("answered_at", "")) if q.get("topic") != "user_note" else None
-        for rule_id in (q.get("rule_ids") or []) if given else []:
+        given = _when(q.get("answered_at", ""))
+        if given is None or q.get("topic") == "user_note":
+            continue
+        for rule_id in q.get("rule_ids") or []:
             unit = _location_key(by_id[rule_id]) if rule_id in by_id else None
             if unit in finished and finished[unit] < given:
                 stale.add(rule_id)

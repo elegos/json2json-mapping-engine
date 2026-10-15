@@ -12,11 +12,16 @@ import {
 } from "./importModel";
 
 interface Props {
-  view: PlanView;
-  /** Writes the answers into the plan and starts the next run. */
+  /** The plan, for the questions and the rules they touch; or give `questions` and `ruleLabel`. */
+  view?: PlanView;
+  questions?: PlanQuestion[];
+  ruleLabel?: (id: string) => string;
+  /** While a run goes on: the answers are written now and the run reads them; no run is started. */
+  live?: boolean;
+  /** Writes the answers into the plan (and, unless `live`, starts the next run). */
   onSubmit: (answers: { id: string; answer?: string; skip?: boolean }[]) => Promise<void>;
   /** Look at the plan as it is, without answering. */
-  onSkipToReview: () => void;
+  onSkipToReview?: () => void;
 }
 
 const SCOPE: Record<PlanQuestion["scope"], string> = {
@@ -26,24 +31,24 @@ const SCOPE: Record<PlanQuestion["scope"], string> = {
 };
 
 /** What the assistant could not decide, one card each, the ones that touch most rules first. */
-export function ImportQuestions({ view, onSubmit, onSkipToReview }: Props) {
+export function ImportQuestions({ view, questions, ruleLabel: labelOf, live, onSubmit, onSkipToReview }: Props) {
   const [drafts, setDrafts] = useState<Record<string, Draft | undefined>>({});
   const [busy, setBusy] = useState(false);
-  const all = questionOrder(view.plan.questions.filter((q) => !isNote(q)));
+  const all = questionOrder((questions ?? view?.plan.questions ?? []).filter((q) => !isNote(q)));
   const open = all.filter(isOpen);
   const answers = answersFrom(open, drafts);
   const set = (id: string, d: Draft | undefined) => setDrafts((old) => ({ ...old, [id]: d }));
-  const ruleLabel = (id: string) => view.plan.rules.find((r) => r.id === id)?.target.path ?? id;
+  const ruleLabel = (id: string) => labelOf?.(id) ?? view?.plan.rules.find((r) => r.id === id)?.target.path ?? id;
 
   return (
-    <div className="imp-questions">
+    <div className={live ? "imp-questions imp-live" : "imp-questions"}>
       <h3>
         {open.length} question{open.length === 1 ? "" : "s"} for you
       </h3>
       <p className="imp-help">
-        Each answer is used for every rule it touches. A question you skip is read the way the assistant proposes,
-        and the rules that depend on it are marked as guesses. The questions come back with the next run only if they
-        are still open.
+        {live
+          ? "The run does not wait: until you answer, the rules that depend on a question use the proposal and are marked as guesses. An answer you give now is read by the batches that come next, and the rules it touches are read again at the end."
+          : "Each answer is used for every rule it touches. A question you skip is read the way the assistant proposes, and the rules that depend on it are marked as guesses. The questions come back with the next run only if they are still open."}
       </p>
       {open.map((q, n) => {
         const d = drafts[q.id];
@@ -134,17 +139,23 @@ export function ImportQuestions({ view, onSubmit, onSkipToReview }: Props) {
         </details>
       )}
       <div className="modal-buttons imp-qfoot">
-        <button onClick={onSkipToReview}>Look at the plan first</button>
+        {onSkipToReview && <button onClick={onSkipToReview}>Look at the plan first</button>}
         <button
           className="primary"
           disabled={busy || answers.length === 0}
           onClick={async () => {
             setBusy(true);
-            await onSubmit(answers);
-            setBusy(false);
+            try {
+              await onSubmit(answers);
+              setDrafts({});
+            } finally {
+              setBusy(false);
+            }
           }}
         >
-          Send {answers.length} answer{answers.length === 1 ? "" : "s"} and continue
+          {live
+            ? `Send ${answers.length} answer${answers.length === 1 ? "" : "s"}`
+            : `Send ${answers.length} answer${answers.length === 1 ? "" : "s"} and continue`}
         </button>
       </div>
     </div>

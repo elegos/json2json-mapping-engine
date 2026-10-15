@@ -474,6 +474,14 @@ span.result-badge { cursor: default; }
 .imp-document, .imp-questions, .imp-run, .imp-apply { min-width: 520px; }
 .imp-document section { margin-bottom: 26px; }
 .imp-run { height: 100%; min-height: 420px; display: flex; flex-direction: column; }
+.imp-run-cols { flex: 1; min-height: 0; display: flex; gap: 18px; }
+.imp-run-log { flex: 1; min-width: 320px; display: flex; flex-direction: column; min-height: 0; }
+.imp-run-questions { width: clamp(360px, 40vw, 680px); flex: none; overflow: auto; border-left: 1px solid #8884; padding-left: 16px; }
+.imp-batches { display: flex; align-items: center; gap: 14px; font-size: 12px; margin: 4px 0 6px; }
+.imp-batches .imp-bar { flex: 0 0 240px; margin: 0; }
+.imp-expected { font-size: 12px; margin: 4px 0 8px; }
+.imp-expected ul { margin: 4px 0; padding-left: 18px; }
+.imp-live .imp-qfoot { position: sticky; bottom: 0; }
 .imp-document h3, .imp-questions h3, .imp-run h3, .imp-apply h3 { margin: 0 0 8px; }
 .imp-table { border-collapse: collapse; width: 100%; }
 .imp-table th { text-align: left; padding: 3px 8px; font-weight: 600; border-bottom: 1px solid #8884; }

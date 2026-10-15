@@ -258,8 +258,9 @@ def test_questions_are_asked_once_and_read_back(tmp_path: Path) -> None:
     import_ops.answer(root, "demo", [{"id": late["id"], "answer": "a text"}])
     assert import_batch.rework(root, "demo") == ["a@Mapping!A6"]
     made = import_batch.queue_rework(root, "demo", ["a@Mapping!A6"])
-    assert made["id"] == "r001" and made["units"] == ["Mapping!A6"]
-    assert import_batch.next_batch(root, "demo")["id"] == "r001"
+    assert made is not None and made["id"] == "r001" and made["units"] == ["Mapping!A6"]
+    claimed = import_batch.next_batch(root, "demo")
+    assert claimed is not None and claimed["id"] == "r001"
     with pytest.raises(PlanError):
         import_batch.ask(root, "demo", " ", topic="x")
 

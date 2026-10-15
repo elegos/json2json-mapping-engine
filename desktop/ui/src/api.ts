@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import type { Role } from "./goldenEdit";
-import type { ImportSummary, Mode, PlanView, ProfileInfo } from "./importModel";
+import type { ImportSummary, LiveView, Mode, PlanView, ProfileInfo } from "./importModel";
 import type { Diagnostic, FunctionalFile, ReviewFlag } from "./model";
 import type { ConfigIssue, ConfigSchema, ConfigValues } from "./projectConfig";
 
@@ -857,6 +857,10 @@ export const importList = (project: string) =>
 export const importDelete = (project: string, mapping: string) =>
   reviewRequest<{ deleted: string }>({ op: "import_delete", project, mapping });
 
+/** The questions waiting and the progress of a run that is going on. */
+export const importLive = (project: string, mapping: string) =>
+  reviewRequest<LiveView>({ op: "import_live", project, mapping });
+
 export const importPlan = (project: string, mapping: string) =>
   reviewRequest<PlanView>({ op: "import_plan", project, mapping });
 
@@ -913,7 +917,14 @@ export async function chooseDocumentFile(defaultPath?: string): Promise<string |
 
 /** What `mapper import run` says: progress lines, then `done` with the protocol's status. */
 export interface RunEvent {
-  event: "started" | "progress" | "done";
+  event: "started" | "progress" | "surveyed" | "queue" | "batch_started" | "batch" | "settling" | "gaps" | "done";
+  /** Batch events: which batch, and how many units or rules. */
+  batch?: string;
+  /** A `gaps` event: what the survey expects the engine to lack, with how many units wait for it. */
+  expected?: { need: string; units: number; examples: string[] }[];
+  /** A `queue` event: the batches the units were cut into. */
+  batches?: { id: string; units: number; status: string }[];
+  pending_units?: number;
   text?: string;
   provider?: string;
   status?: "needs_answers" | "ready_for_review" | "failed" | "cancelled";

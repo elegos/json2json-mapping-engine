@@ -804,9 +804,13 @@ def import_run_command(
         typer.Option(help="A permission rule to allow (Claude Code), e.g. 'Bash(python -I *)'"),
     ] = None,
     concurrency: Annotated[
-        int, typer.Option(help="Runs at once for a long document (batches)")
+        int,
+        typer.Option(help="Runs at once for a long document (batches)", envvar="J2JME_IMPORT_RUNS"),
     ] = 2,
-    batch_size: Annotated[int, typer.Option(help="Units per batch of a long document")] = 30,
+    batch_size: Annotated[
+        int,
+        typer.Option(help="Units per batch of a long document", envvar="J2JME_IMPORT_BATCH_SIZE"),
+    ] = 30,
     watch_stdin: Annotated[
         bool, typer.Option(help="Cancel when stdin closes (the desktop tool)")
     ] = False,

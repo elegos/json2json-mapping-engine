@@ -12,6 +12,18 @@ section (see `packaging/release.py`).
 
 ### Features
 
+- Import of a long document (above about 80 units) in batches: a *survey* run classifies every unit
+  (`units.json`), the code writes the plain ones itself (constants, copies, implied objects) and cuts
+  the rest into batches, and several assistant runs translate them at once, handing their rules to
+  `mapper import add` (checked and merged, with the evidence text and hashes filled from the document)
+  instead of rewriting the plan. New: `mapper import queue | add | ask | answers | batch | gaps`,
+  `mapper import run --concurrency --batch-size`, the plan lock (`ir.json.lock`). Docs:
+  `docs/import/BATCHES.md`.
+- Questions are asked while the run goes on (`mapper import ask`, deduplicated) and shown on the run
+  screen next to the progress; the run does not wait, the rules that depended on an answer are read
+  again at the end. The survey lists what the engine is expected to lack before anything is translated.
+- An import begun in one run goes on in batches (*Translate the rest* on the main import page): the
+  survey classifies only the units the plan has no rule for.
 - Import: *Delete…* on each import of the main import page (also one whose run left no plan) drops its
   plan, answers and working copy; documents, profiles and rules already applied stay.
 

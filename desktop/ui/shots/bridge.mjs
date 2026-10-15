@@ -10,7 +10,14 @@ const root = resolve(import.meta.dirname, "../../..");
 const python = existsSync(join(root, ".venv/bin/python")) ? join(root, ".venv/bin/python") : "python3";
 const fakeProvider = join(import.meta.dirname, "fake_provider.py");
 // the import runs with a stand-in for the assistant (shots/fake_provider.py)
-const env = { ...process.env, PYTHONPATH: root, J2JME_IMPORT_PROVIDER: fakeProvider };
+const env = {
+  ...process.env,
+  PYTHONPATH: root,
+  J2JME_IMPORT_PROVIDER: fakeProvider,
+  // a long document in the shots: a batch of one unit, so that several run at once
+  J2JME_IMPORT_BATCH_SIZE: "1",
+  J2JME_FAKE_WAIT: process.env.J2JME_FAKE_WAIT ?? "6",
+};
 export const fixture = join(root, "desktop/fixtures/tour-project");
 
 function runMapper(project, args, stdin) {

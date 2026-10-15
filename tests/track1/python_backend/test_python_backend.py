@@ -67,10 +67,7 @@ def _load(tmp_path: Path, source: str, mapping_id: str = "m") -> Any:
 @pytest.mark.parametrize("options", [{}, {"parallel": "process"}, {"parallel": "none"}])
 def test_every_golden_case_passes_on_the_python_backend(options: dict[str, Any]) -> None:
     backend = PythonBackend(options)
-    units = [
-        _golden_unit(name, backend)
-        for name in GOLDEN_MAPPINGS
-    ]
+    units = [_golden_unit(name, backend) for name in GOLDEN_MAPPINGS]
     context = IntegrationContext(
         cases=discover_cases(ROOT / "tests/golden"),
         files=backend.assemble(units),
@@ -570,10 +567,7 @@ def test_what_is_generated_parses_for_the_first_supported_python(tmp_path: Path)
     """The modules are Python 3.10+: nothing in them needs a newer syntax (the golden cases are run
     on the old Python itself by `dev_scripts/python_floor.sh`)."""
     backend = PythonBackend({"parallel": "process"})
-    units = [
-        _golden_unit(name, backend)
-        for name in GOLDEN_MAPPINGS
-    ] + [
+    units = [_golden_unit(name, backend) for name in GOLDEN_MAPPINGS] + [
         compile_unit(source, name, backend)
         for name, source in (("par", _PARALLEL), ("fused", _FUSED), ("nested", _NESTED))
     ]

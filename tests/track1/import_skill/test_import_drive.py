@@ -161,3 +161,17 @@ def test_a_short_document_is_a_single_run(tmp_path: Path) -> None:
     )
     kinds = [e["event"] for e in events]
     assert "started" in kinds and "queue" not in kinds and "surveyed" not in kinds
+
+
+def test_the_run_screen_reads_the_backlog_and_the_batches_while_they_go(tmp_path: Path) -> None:
+    from cli import import_batch, import_ops
+
+    root, document, program = start(tmp_path, TRANSLATE)
+    drive(root, document, program)
+    import_batch.ask(root, "demo", "Which sheet holds the codes?", topic="lookup")
+    live = import_ops.live(root, "demo")
+    assert [q["topic"] for q in live["questions"]] == ["lookup"]
+    assert live["batches"] == {"total": 2, "done": 2, "running": 0, "pending": 0, "failed": 0}
+    assert live["units"]["imported"] == 7 and live["rules"] == 7
+    listed = import_ops.list_imports(root)[0]
+    assert listed["unfinished"] is False

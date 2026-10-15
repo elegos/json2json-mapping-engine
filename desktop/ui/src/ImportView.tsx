@@ -11,6 +11,7 @@ import {
   importApply,
   importDelete,
   importList,
+  importLive,
   importNote,
   importPlan,
   importProviders,
@@ -24,6 +25,7 @@ import { ImportReview } from "./ImportReview";
 import {
   type ImportState,
   type ImportSummary,
+  type LiveView,
   type Mode,
   type PlanView,
   type ProfileInfo,
@@ -59,6 +61,10 @@ interface RunState {
   error?: string;
   details?: string[];
   denied?: NonNullable<RunEvent["denied"]>;
+  /** A long document: the mapping once the survey named it, and what the batches and the questions are. */
+  mapping?: string;
+  live?: LiveView | null;
+  expected?: NonNullable<RunEvent["expected"]>;
 }
 
 const errorText = (e: unknown) => String(e instanceof Error ? e.message : e);
@@ -156,11 +162,21 @@ export function ImportView({ project, onClose, onApplied }: Props) {
       const fail = (message: string, details?: string[], denied?: RunState["denied"]) =>
         setRun((r) => (r ? { ...r, phase: "failed", error: message, details, denied } : r));
       try {
+        const say = (text: string) =>
+          setRun((r) => (r ? { ...r, lines: [...r.lines.slice(-299), text] } : r));
         const h = await importRun(project, args, (e) => {
-          if (e.event === "progress" && e.text) {
-            const text = e.text;
-            setRun((r) => (r ? { ...r, lines: [...r.lines.slice(-299), text] } : r));
-          }
+          if (e.event === "progress" && e.text) say(e.batch ? `[${e.batch}] ${e.text}` : e.text);
+          else if (e.event === "surveyed") {
+            say(`Surveyed: ${e.mapping}`);
+            setRun((r) => (r ? { ...r, mapping: e.mapping } : r));
+          } else if (e.event === "queue") {
+            say(`${e.pending_units ?? 0} units to translate, in ${e.batches?.length ?? 0} batches`);
+            setRun((r) => (r ? { ...r, mapping: e.mapping } : r));
+          } else if (e.event === "batch_started") say(`Batch ${e.batch} started`);
+          else if (e.event === "batch")
+            say(`Batch ${e.batch}: ${e.status} — ${e.rules ?? 0} rules, ${e.open_questions ?? 0} open questions`);
+          else if (e.event === "settling") say(`Reading again ${e.rules ?? 0} rules an answer touched`);
+          else if (e.event === "gaps") setRun((r) => (r ? { ...r, expected: e.expected } : r));
         });
         handle.current = h;
         if (cancelled.current) h.cancel();
@@ -173,6 +189,9 @@ export function ImportView({ project, onClose, onApplied }: Props) {
         }
         if (result.status === "failed" || !result.mapping) {
           fail(result.error ?? "The run failed.", result.details, result.denied);
+          // a long import that stopped part way goes on from where it was
+          if (result.mapping)
+            setRun((r) => (r ? { ...r, args: { ...r.args, mode: "resume", mapping: result.mapping } } : r));
           return;
         }
         await refresh();
@@ -184,6 +203,26 @@ export function ImportView({ project, onClose, onApplied }: Props) {
     },
     [project, refresh, open],
   );
+
+  const runMapping = run?.phase === "running" ? run.mapping : undefined;
+  useEffect(() => {
+    if (!runMapping) return;
+    let alive = true;
+    const poll = async () => {
+      try {
+        const live = await importLive(project, runMapping);
+        if (alive) setRun((r) => (r ? { ...r, live } : r));
+      } catch {
+        // the plan is being written: try again at the next tick
+      }
+    };
+    void poll();
+    const t = setInterval(poll, 2500);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, [project, runMapping]);
 
   const stop = () => {
     cancelled.current = true;
@@ -285,6 +324,7 @@ export function ImportView({ project, onClose, onApplied }: Props) {
             imports={imports}
             profiles={profiles}
             onContinue={(s) => void continueImport(s)}
+            onTranslateRest={(s) => mode(s, "resume")}
             onRedo={(s) =>
               setAsk({
                 message: `Redo every rule of ${s.mapping} from the document? Rules you edited are asked about, not overwritten.`,
@@ -324,6 +364,12 @@ export function ImportView({ project, onClose, onApplied }: Props) {
           <RunStep
             run={run}
             providers={providers ?? []}
+            onAnswer={async (answers) => {
+              if (!run.mapping) return;
+              await importAnswer(project, run.mapping, answers);
+              const live = await importLive(project, run.mapping);
+              setRun((r) => (r ? { ...r, live } : r));
+            }}
             onStop={stop}
             onBack={() => setStep(run.back === "run" ? "document" : run.back)}
             onRetry={() => void startRun(run.args, run.back)}
@@ -452,6 +498,7 @@ function DocumentStep(props: {
   imports: ImportSummary[];
   profiles: ProfileInfo[];
   onContinue: (s: ImportSummary) => void;
+  onTranslateRest: (s: ImportSummary) => void;
   onRedo: (s: ImportSummary) => void;
   onNewVersion: (s: ImportSummary) => void;
   onDelete: (s: ImportSummary) => void;
@@ -506,6 +553,7 @@ function DocumentStep(props: {
                     {s.rules ?? 0}
                     {s.guesses ? <span className="muted"> · {s.guesses} low or guess</span> : null}
                     {s.open_questions ? <span className="muted"> · {s.open_questions} open</span> : null}
+                    {s.unfinished ? <span className="muted"> · not all translated yet</span> : null}
                   </td>
                   <td className="imp-actions">
                     {s.state !== "broken" && (
@@ -513,6 +561,9 @@ function DocumentStep(props: {
                         <button className="primary" onClick={() => props.onContinue(s)}>
                           {s.state === "applied" ? "View" : s.state === "answered" ? "Continue the run" : "Continue"}
                         </button>
+                        {s.unfinished && s.state !== "applied" && (
+                          <button onClick={() => props.onTranslateRest(s)}>Translate the rest</button>
+                        )}
                         <button onClick={() => props.onRedo(s)}>Redo all</button>
                         <button onClick={() => props.onNewVersion(s)}>New version…</button>
                       </>
@@ -642,6 +693,8 @@ function DocumentStep(props: {
 function RunStep(props: {
   run: RunState;
   providers: Provider[];
+  /** Answers to the questions that wait while the run goes on. */
+  onAnswer: (answers: { id: string; answer?: string; skip?: boolean }[]) => Promise<void>;
   onStop: () => void;
   onBack: () => void;
   onRetry: () => void;
@@ -698,12 +751,54 @@ function RunStep(props: {
           )}
         </div>
       )}
+      {run.live?.batches && (
+        <div className="imp-batches" role="status">
+          <div className="imp-bar" aria-hidden="true">
+            <span className="ok" style={{ width: `${(100 * run.live.batches.done) / Math.max(run.live.batches.total, 1)}%` }} />
+            <span className="doubt" style={{ width: `${(100 * run.live.batches.running) / Math.max(run.live.batches.total, 1)}%` }} />
+          </div>
+          <span>
+            Batches: {run.live.batches.done} of {run.live.batches.total} done
+            {run.live.batches.running ? `, ${run.live.batches.running} running` : ""}
+            {run.live.batches.failed ? `, ${run.live.batches.failed} failed` : ""} · {run.live.rules} rules
+            {run.live.guesses ? ` (${run.live.guesses} low or guess)` : ""}
+          </span>
+        </div>
+      )}
+      {run.expected && run.expected.length > 0 && (
+        <details className="imp-expected">
+          <summary>
+            The engine is expected to lack {run.expected.length} thing{run.expected.length === 1 ? "" : "s"} the document needs
+          </summary>
+          <ul>
+            {run.expected.map((g) => (
+              <li key={g.need}>
+                {g.need} — {g.units} unit{g.units === 1 ? "" : "s"} <span className="muted">({g.examples.join(", ")})</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+      <div className="imp-run-cols">
+        <div className="imp-run-log">
       <div className="imp-log" aria-label="Progress">
-        {run.lines.length === 0 && <span className="muted">Waiting for the first words…</span>}
-        {run.lines.map((l, i) => (
-          <div key={i}>{l}</div>
-        ))}
-        <div ref={tail} />
+          {run.lines.length === 0 && <span className="muted">Waiting for the first words…</span>}
+          {run.lines.map((l, i) => (
+            <div key={i}>{l}</div>
+          ))}
+          <div ref={tail} />
+        </div>
+        </div>
+        {run.phase === "running" && run.live && run.live.questions.length > 0 && (
+          <aside className="imp-run-questions" aria-label="Questions while the run goes on">
+            <ImportQuestions
+              live
+              questions={run.live.questions}
+              ruleLabel={(id) => run.live?.rule_labels[id] ?? id}
+              onSubmit={props.onAnswer}
+            />
+          </aside>
+        )}
       </div>
       <div className="modal-buttons">
         {run.phase === "running" ? (

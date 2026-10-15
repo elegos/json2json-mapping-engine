@@ -37,7 +37,13 @@ def test_a_case_is_copied_under_the_standard_names(tmp_path: Path) -> None:
         "tests/golden/orders/two_lines.expected_errors.json",
     ]
     assert list_cases(project, "orders") == [
-        {"name": "two_lines", "expected": True, "errors": True, "rejected": False, "warnings": False}
+        {
+            "name": "two_lines",
+            "expected": True,
+            "errors": True,
+            "rejected": False,
+            "warnings": False,
+        }
     ]
     # the harness reads it as a case, with the same names
     [case] = discover_cases(project / "tests/golden", "orders")
@@ -47,7 +53,9 @@ def test_a_case_is_copied_under_the_standard_names(tmp_path: Path) -> None:
 
 def test_only_the_input_is_required(tmp_path: Path) -> None:
     import_case(tmp_path / "p", "m", "c1", _file(tmp_path, "i.json", "{}"))
-    assert list_cases(tmp_path / "p", "m") == [{"name": "c1", "expected": False, "errors": False, "rejected": False, "warnings": False}]
+    assert list_cases(tmp_path / "p", "m") == [
+        {"name": "c1", "expected": False, "errors": False, "rejected": False, "warnings": False}
+    ]
     assert list_cases(tmp_path / "p", "no_such_mapping") == []
 
 
@@ -104,7 +112,9 @@ def test_serve_golden_ops(tmp_path: Path) -> None:
     serve(io.StringIO("".join(json.dumps(r) + "\n" for r in requests)), out)
     answers = [json.loads(line) for line in out.getvalue().splitlines()]
     assert [a["ok"] for a in answers] == [True, True, True, True, False]
-    assert answers[1]["cases"] == [{"name": "c", "expected": False, "errors": False, "rejected": False, "warnings": False}]
+    assert answers[1]["cases"] == [
+        {"name": "c", "expected": False, "errors": False, "rejected": False, "warnings": False}
+    ]
 
 
 def test_a_case_is_created_read_edited_and_its_files_removed(tmp_path: Path) -> None:
