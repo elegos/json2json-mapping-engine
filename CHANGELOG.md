@@ -10,6 +10,11 @@ section (see `packaging/release.py`).
 
 ## [Unreleased]
 
+### Features
+
+- Import: *Delete…* on each import of the main import page (also one whose run left no plan) drops its
+  plan, answers and working copy; documents, profiles and rules already applied stay.
+
 ## [0.3.1] - 2026-10-14
 
 ### Changed

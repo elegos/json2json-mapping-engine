@@ -176,3 +176,23 @@ def test_refused_calls_are_reported_with_the_rule_that_allows_them() -> None:
     assert import_run.denied_of("codex", [json.dumps(result)]) == []
     command = import_run.command_for("claude", "claude", "p", Path("s"), ["Read(/x/y.txt)"])
     assert command[-1] == "Read(/x/y.txt)"
+
+
+def test_an_import_can_be_deleted_even_when_the_run_left_no_plan(tmp_path: Path) -> None:
+    root, document = project(tmp_path)
+    run(root, document, fake(tmp_path, WRITES_PLAN))
+    (root / "import" / "half_done").mkdir()
+    (root / "import" / "half_done" / "document.json").write_text("{}")
+    listed = {i["mapping"]: i for i in import_ops.list_imports(root)}
+    assert listed["half_done"]["state"] == "broken"
+    assert "documents" not in listed and "profiles" not in listed
+
+    assert import_ops.delete(root, "half_done") == {"deleted": "half_done"}
+    import_ops.delete(root, "reservation_task")
+    assert not (root / "import" / "reservation_task").exists()
+    assert (root / "import" / "documents").is_dir()  # shared, stays
+    assert import_ops.list_imports(root) == []
+    with pytest.raises(PlanError):
+        import_ops.delete(root, "reservation_task")
+    with pytest.raises(PlanError):
+        import_ops.delete(root, "documents")

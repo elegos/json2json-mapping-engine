@@ -6,6 +6,7 @@ and has its own process (`cli/import_run.py`)."""
 from __future__ import annotations
 
 import re
+import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -80,6 +81,20 @@ def state_of(plan: dict[str, Any]) -> str:
 
 def list_imports(project: Path) -> list[dict[str, Any]]:
     found: list[dict[str, Any]] = []
+    # an import folder with no plan (a first run that did not get that far) is listed too, to be dropped
+    for folder in sorted((project / "import").glob("*/")):
+        if (
+            folder.is_dir()
+            and not (folder / "ir.json").exists()
+            and folder.name not in NOT_A_MAPPING
+        ):
+            found.append(
+                {
+                    "mapping": folder.name,
+                    "state": "broken",
+                    "error": "no plan: the run did not finish",
+                }
+            )
     for path in sorted((project / "import").glob("*/ir.json")):
         mapping = path.parent.name
         if mapping in NOT_A_MAPPING:
@@ -107,6 +122,16 @@ def list_imports(project: Path) -> list[dict[str, Any]]:
             }
         )
     return found
+
+
+def delete(project: Path, mapping: str) -> dict[str, Any]:
+    """Drop an import: its plan, answers and working copy (`import/<mapping>/`). The documents and
+    the profiles are shared and stay; a `.fn.yaml` already applied stays too."""
+    folder = project / "import" / _check_id(mapping)
+    if not folder.is_dir():
+        raise PlanError(f"no import '{mapping}'")
+    shutil.rmtree(folder)
+    return {"deleted": mapping}
 
 
 def profiles(project: Path) -> list[dict[str, Any]]:

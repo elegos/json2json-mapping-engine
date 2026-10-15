@@ -9,6 +9,7 @@ import {
   chooseSchemaFile,
   importAnswer,
   importApply,
+  importDelete,
   importList,
   importNote,
   importPlan,
@@ -291,6 +292,20 @@ export function ImportView({ project, onClose, onApplied }: Props) {
                 then: () => mode(s, "rerun_all"),
               })
             }
+            onDelete={(s) =>
+              setAsk({
+                message: `Delete the import of ${s.mapping}? Its plan, your answers and the working copy are removed. The document, the profiles and rules already applied to the project stay.`,
+                yes: "Delete the import",
+                then: async () => {
+                  try {
+                    await importDelete(project, s.mapping);
+                    await refresh();
+                  } catch (e) {
+                    setError(errorText(e));
+                  }
+                },
+              })
+            }
             onNewVersion={async (s) => {
               const file = await chooseDocumentFile();
               if (file) mode(s, "revalue_version", file);
@@ -439,6 +454,7 @@ function DocumentStep(props: {
   onContinue: (s: ImportSummary) => void;
   onRedo: (s: ImportSummary) => void;
   onNewVersion: (s: ImportSummary) => void;
+  onDelete: (s: ImportSummary) => void;
   onStart: (
     document: string,
     profile?: string,
@@ -501,6 +517,7 @@ function DocumentStep(props: {
                         <button onClick={() => props.onNewVersion(s)}>New version…</button>
                       </>
                     )}
+                    <button onClick={() => props.onDelete(s)}>Delete…</button>
                   </td>
                 </tr>
               ))}

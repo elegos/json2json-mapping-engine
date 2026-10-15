@@ -853,6 +853,10 @@ export const importProviders = async () =>
 export const importList = (project: string) =>
   reviewRequest<{ imports: ImportSummary[]; profiles: ProfileInfo[] }>({ op: "import_list", project });
 
+/** Drops an import (its plan, answers and working copy); documents, profiles and applied rules stay. */
+export const importDelete = (project: string, mapping: string) =>
+  reviewRequest<{ deleted: string }>({ op: "import_delete", project, mapping });
+
 export const importPlan = (project: string, mapping: string) =>
   reviewRequest<PlanView>({ op: "import_plan", project, mapping });
 

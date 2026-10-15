@@ -73,6 +73,7 @@ _IMPORT_OPS: dict[str, Any] = {
         "profiles": import_ops.profiles(_import_project(r)),
     },
     "import_plan": lambda r: import_ops.read_plan(_import_project(r), r["mapping"]),
+    "import_delete": lambda r: import_ops.delete(_import_project(r), r["mapping"]),
     "import_answer": lambda r: import_ops.answer(_import_project(r), r["mapping"], r["answers"]),
     "import_review": lambda r: (
         import_ops.review(
