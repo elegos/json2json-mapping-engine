@@ -10,6 +10,8 @@ section (see `packaging/release.py`).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-15
+
 ### Features
 
 - Loops: `order_by: "<expression> [asc|desc] [nulls first|last], ..."` (SQL's `order by`) replaces
@@ -49,18 +51,6 @@ section (see `packaging/release.py`).
   causes it. The check is the same for every backend; the backends are not (a function one has no
   implementation of): a rule that passed the check but would not build for Oracle is now an error of
   the plan, not a surprise of the build.
-
-### Fixed
-
-- An optional object (a property the output schema does not require) that is left out by a guard or a
-  selection is no longer an error. The check asked the schema to allow `null` for it, and the compiler
-  refused it at the top of a mapping, though omitting a non-required property is exactly what the
-  language means. Only a **required** property is still refused.
-
-## [0.4.0] - 2026-10-15
-
-### Features
-
 - Import of a long document (above about 80 units) in batches: a *survey* run classifies every unit
   (`units.json`), the code writes the plain ones itself (constants, copies, implied objects) and cuts
   the rest into batches, and several assistant runs translate them at once, handing their rules to
@@ -77,6 +67,13 @@ section (see `packaging/release.py`).
   `mapper import add`); the refusal is not offered to the user as a permission.
 - Import: *Delete…* on each import of the main import page (also one whose run left no plan) drops its
   plan, answers and working copy; documents, profiles and rules already applied stay.
+
+### Fixed
+
+- An optional object (a property the output schema does not require) that is left out by a guard or a
+  selection is no longer an error. The check asked the schema to allow `null` for it, and the compiler
+  refused it at the top of a mapping, though omitting a non-required property is exactly what the
+  language means. Only a **required** property is still refused.
 
 ## [0.3.1] - 2026-10-14
 
