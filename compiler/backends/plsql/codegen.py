@@ -965,7 +965,10 @@ def _emit_value(
     return [
         *first,
         *_write_unless_null(
-            translator.translate(value, kind), kind, sink, ctx.declare,
+            translator.translate(value, kind),
+            kind,
+            sink,
+            ctx.declare,
             f"{ctx.local_prefix}__v{next(ctx.counter)}",
         ),  # fmt: skip
     ]

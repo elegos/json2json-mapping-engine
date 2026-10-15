@@ -25,11 +25,29 @@ from compiler.backends.base import Backend, CodeGenError, CompiledUnit
 from compiler.backends.registry import DEFAULT_TARGET, create_backend
 from compiler.loop_fusion import fuse_loops
 from compiler.out_arrays import open_output_arrays
+from compiler.portable_regex import portable_regex_error
 from compiler.schema_generator import SchemaTypes
 from compiler.scope_resolver import resolve_scopes
 from compiler.type_checker import check_module
 from compiler.validation import ValidationError, canonical_schema, extract
 from compiler.validator import Validator
+
+
+def check_matches_patterns(tree: ast.Module) -> None:
+    """The pattern of `matches(text, pattern)` is a literal text in the portable subset: both
+    backends then read it the same way."""
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "matches"
+        ):
+            pattern = node.args[1] if len(node.args) > 1 else None
+            if not (isinstance(pattern, ast.Constant) and isinstance(pattern.value, str)):
+                raise CodeGenError("matches(text, pattern): the pattern must be a literal text")
+            problem = portable_regex_error(pattern.value)
+            if problem:
+                raise CodeGenError(f"matches(text, {pattern.value!r}): {problem}")
 
 
 def extract_mapping_id(tree: ast.Module, default: str) -> str:
@@ -60,6 +78,7 @@ def compile_unit(
     unit embeds for the sides that ask to validate against their schema."""
     tree = ast.parse(source)
     Validator().validate(tree)  # security gate — must run first
+    check_matches_patterns(tree)
 
     mapping_id = extract_mapping_id(tree, default_mapping_id)
     try:

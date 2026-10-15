@@ -87,6 +87,16 @@ def is_digits(s: str) -> bool | None:
     return s.isascii() and s.isdigit()
 
 
+def matches(s: str, pattern: str) -> bool | None:
+    """Whether the whole of `s` fits `pattern`: `matches(code, "[A-Z]{3}[XYZ][0-9]{7}")`. The pattern
+    is written in the portable subset (`compiler/portable_regex.py`): characters, `.`, `[a-z]`,
+    groups, `|` and `* + ? {n,m}`, and nothing a dialect reads in its own way; it must be a literal
+    text. Null for a missing `s`."""
+    if not s:
+        return None
+    return re.fullmatch(pattern, s) is not None
+
+
 def parse_date(s: str, fmt: str) -> str:
     """The date written in `s` with format `fmt`; a date travels as text."""
     raise NotImplementedError  # the format dialect is the target's: each backend implements it

@@ -549,6 +549,15 @@ date `n` days on, as `YYYY-MM-DD`. Text: `is_digits(s)` is true when `s` is made
 after the other (missing and empty ones left out, a comprehension in parentheses because a
 separator follows it). Golden mapping: `builtins_dates`.
 
+`matches(s, pattern)` is true when the **whole** of `s` fits `pattern` (null for a missing `s`), for
+a text that must have a shape (`[A-Z]{3}[XYZ][0-9]{7}`). Its pattern must be a literal text in a
+portable subset (`compiler/portable_regex.py`): characters, `.`, `[a-z]` and `[^0-9]` (characters and
+ranges only), `( )`, `|`, and the quantifiers `* + ? {n} {n,} {n,m}`; a metacharacter is written with a
+`\` before it. What a dialect reads in its own way is refused at build time, with the reason: `^` and
+`$` (the whole text is matched), `\d \w \s \b`, back-references, `(?...)`, lazy and possessive
+quantifiers, `[:alpha:]`, an empty alternative. Python runs it as `re.fullmatch`, PL/SQL as
+`REGEXP_LIKE(s, '^(' || pattern || ')$')`, so the two agree.
+
 **Regular expressions are the one place where backends are not interchangeable.** The pattern of
 `regexp_replace` and `regexp_group` is written in the dialect of the backend that runs the mapping
 (Python's `re` for the Python backend, Oracle's `REGEXP_*` for PL/SQL); the tool does not translate

@@ -200,6 +200,15 @@ def _pad_plsql(function: str) -> Callable[[list[str]], str]:
     return render
 
 
+def _matches_plsql(arg_exprs: list[str]) -> str:
+    """The whole text fits the pattern (a literal, in the portable subset: the pipeline has checked
+    it): REGEXP_LIKE looks for a match anywhere, so the pattern is anchored."""
+    s, pattern = arg_exprs
+    if not pattern.startswith("'"):
+        raise ValueError("the pattern of matches() must be a literal text")
+    return f"(CASE WHEN {s} IS NULL THEN NULL WHEN REGEXP_LIKE({s}, '^(' || {pattern} || ')$') THEN TRUE ELSE FALSE END)"
+
+
 def _starts_with_plsql(arg_exprs: list[str]) -> str:
     s, prefix = arg_exprs
     return f"(CASE WHEN SUBSTR({s}, 1, LENGTH({prefix})) = {prefix} THEN TRUE ELSE FALSE END)"
@@ -514,6 +523,7 @@ BUILTIN_FUNCTIONS: dict[str, FunctionImpl] = {
         name="contains",
         target_templates={"plsql": "(CASE WHEN INSTR({0}, {1}) > 0 THEN TRUE ELSE FALSE END)"},
     ),
+    "matches": FunctionImpl(name="matches", target_templates={"plsql": _matches_plsql}),
     "starts_with": FunctionImpl(name="starts_with", target_templates={"plsql": _starts_with_plsql}),
     "ends_with": FunctionImpl(name="ends_with", target_templates={"plsql": _ends_with_plsql}),
     "abs": FunctionImpl(name="abs", target_templates={"plsql": "ABS({0})"}),

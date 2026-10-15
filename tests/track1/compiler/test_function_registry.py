@@ -53,6 +53,8 @@ def test_the_plsql_backend_implements_every_registered_function(name: str) -> No
         args.append(args[-1])
     if name in ("max", "min", "sum", "avg"):
         args = ["root.xs", '"v"']
+    if name == "matches":
+        args = ["root.a", '"[a-z]+"']
     if name in ("any", "all"):
         args = ["x.a for x in root.xs"]
     call = f"{name}({', '.join(args)})"

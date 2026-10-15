@@ -18,6 +18,10 @@ section (see `packaging/release.py`).
   `order_by`. The Python backend now runs a sorted loop at all (it passed the key as text to Python's
   `sorted`, which raised on every run), and PL/SQL orders by the computed keys with a stable sort that
   copies into a new array. Desktop: an *Order the list by* editor in the loop options.
+- `matches(text, pattern)`: the whole text fits a pattern written in a portable subset of regular
+  expressions (characters, `.`, `[a-z]`, groups, `|`, `* + ? {n,m}`), the same on Python
+  (`re.fullmatch`) and PL/SQL (`REGEXP_LIKE` anchored); what a dialect reads in its own way (`\d`, `^`,
+  `(?...)`, lazy quantifiers) is refused with the reason, in the check and in the build.
 - Aggregates inside aggregates, to any depth (`count(l for l in $.lines if not any(any(i.ref == l.ref for
   i in p.items) for p in $.packages))`), and two new ones, `any(cond for x in list)` and `all(...)`
   (Python's truthiness; the loop stops at the first element that decides). On PL/SQL an aggregate in the

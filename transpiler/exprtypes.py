@@ -23,6 +23,7 @@ from collections.abc import Callable, Collection, Mapping
 from typing import Any
 
 from compiler.function_registry import FunctionInfo, builtin_functions
+from compiler.portable_regex import portable_regex_error
 
 Ty = frozenset[str] | None
 
@@ -381,8 +382,16 @@ class ExprTyper:
             for arg in args:
                 self.infer(arg)
             return STRING
-        if name in ("any", "all") and name in self.special and not (
-            args and isinstance(args[0], ast.GeneratorExp)
+        if name == "matches" and len(args) == 2:
+            pattern = args[1]
+            if not (isinstance(pattern, ast.Constant) and isinstance(pattern.value, str)):
+                self.report("matches(text, pattern): the pattern must be a literal text")
+            elif (problem := portable_regex_error(pattern.value)) is not None:
+                self.report(f"matches(text, {pattern.value!r}): {problem}")
+        if (
+            name in ("any", "all")
+            and name in self.special
+            and not (args and isinstance(args[0], ast.GeneratorExp))
         ):
             self.report(f"{name}() takes a comprehension: {name}(condition for x in list)")
             return BOOLEAN

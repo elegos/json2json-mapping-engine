@@ -119,6 +119,10 @@ rules:
 
 - Missing/absent is `None`; booleans `True` / `False`; `null` and `true` are not names here.
 - Text in quotes, either kind. Operators `+ - * /` and `== != < > <= >=`, `and or not`.
+- **A text that must have a shape**: `matches(text, "[A-Z]{3}[XYZ][0-9]{7}")` is true when the whole text
+  fits (null for a missing one). The pattern is a literal in a portable subset: characters, `.`, `[a-z]`,
+  `[^0-9]`, groups, `|`, `* + ? {n,m}`; no `^` or `$`, no `\d \w \s \b`, no `(?...)`. Say the digits as
+  `[0-9]`, not `\d`. This is not `regexp_group` (which keeps the dialect of the backend).
 - Membership in a literal list: `x in ("A", "B")` and `x not in (...)` (all texts or all
   numbers; a missing `x` is in nothing). The list must be written out: `x in $.allowed` is not supported.
 - An empty text counts as null everywhere (never written to the output).
