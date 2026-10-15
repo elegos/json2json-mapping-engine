@@ -836,7 +836,7 @@ def rework(project: Path, mapping: str) -> list[str]:
             continue
         for rule_id in q.get("rule_ids") or []:
             unit = _location_key(by_id[rule_id]) if rule_id in by_id else None
-            if unit in finished and finished[unit] < given:
+            if unit in finished and finished[unit] <= given:
                 stale.add(rule_id)
     return sorted(stale)
 

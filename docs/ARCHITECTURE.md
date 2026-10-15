@@ -242,7 +242,7 @@ flowchart LR
 | `return Null` | emit field explicitly as JSON null (`"field": null`) |
 | `return <expr>` | emit field with value |
 | Local variables | `x = <expr>` inside a function or expression block; names are mangled by the compiler to avoid collision with loop variables in the wider scope |
-| Operators | `+ - * / // % == != < > <= >= and or not` |
+| Operators | `+ - * / // % == != < > <= >= and or not`, and `in` / `not in` with a literal list of texts or of numbers (`x in ("A", "B")`; a missing `x` is in nothing) |
 | Literals | `str`, `int`, `float`, `bool`, `None` |
 | Attribute access | `root.a.b.c` → JSON path `$srcroot.a.b.c` |
 | Type union | `T \| None` for nullable fields; `T \| Null` for explicitly-nullable fields |

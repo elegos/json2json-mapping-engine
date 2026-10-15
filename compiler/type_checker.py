@@ -650,12 +650,10 @@ def _check_write(
     if checker.shapes is not None and (
         produced_base.startswith("list[") or produced_base in checker.shapes.local_classes
     ):
-        checker.shapes.compat(
-            produced_base,
-            produced_nullable,
-            declared.type_expr if not unwrap_list else declared_type_expr,
-            f"out.{field_name}",
-        )
+        schema_expr = declared.type_expr if not unwrap_list else declared_type_expr
+        if declared_nullable and not _strip_none(schema_expr)[1]:
+            schema_expr = f"{schema_expr} | None"  # a property the schema does not require
+        checker.shapes.compat(produced_base, produced_nullable, schema_expr, f"out.{field_name}")
         return
     if produced_base != ANY and produced_base not in declared_bases:
         raise TypeCheckError(

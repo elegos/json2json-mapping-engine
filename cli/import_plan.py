@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from cli import shared
-from cli.build import FUNCTIONAL_DIR, resolve_schema_for, schema_file
+from cli.build import FUNCTIONAL_DIR, resolve_schema_for, schema_file, transpile_options
 from compiler.backends.python.backend import PythonBackend
 from compiler.function_registry import all_functions
 from compiler.pipeline import compile_unit
@@ -284,6 +284,13 @@ def _assemble(project: Path, mapping: str) -> dict[str, Any]:
         found = errors.pop(key)
         if int(index) < len(checks):
             errors.setdefault(checks[int(index)]["id"], []).extend(found)
+    unplaced: list[str] = []
+    if not errors:  # what the check passes, the target may still not build
+        for key, found in _target_errors(project, mapping, raw, not gaps).items():
+            if key == "*":
+                unplaced += found
+            else:
+                errors.setdefault(key, []).extend(found)
     for check in plan.get("validations") or []:
         if not any(s["rule"] == check["id"] for s in skipped):
             found = errors.get(check["id"], [])
@@ -298,7 +305,9 @@ def _assemble(project: Path, mapping: str) -> dict[str, Any]:
             proposal["check"] = {"ran": True, "ok": not found, "errors": found}
     save_plan(project, mapping, plan)
     return {
-        "ok": not errors,
+        "ok": not errors and not unplaced,
+        # the target cannot build the working copy and no single rule is to blame
+        "target_errors": unplaced,
         # required output fields no rule writes yet (their rules are skipped: see `skipped`); the
         # cases still run, without the output schema's checks
         "gaps": gaps,
@@ -333,28 +342,113 @@ def _load_module(files: dict[str, str], module_name: str, folder: Path) -> Any:
         sys.path.remove(str(folder))
 
 
-def _compile_runner(project: Path, mapping: str, folder: Path, output_checked: bool = True) -> Any:
-    """The compiled `map_<mapping>_safe` of the working copy (Python backend). Without
+def _unit_of(
+    tree: Any, mapping: str, backend: Any, output_checked: bool, config: Any = None
+) -> Any:
+    """The compiled unit of a functional tree for a backend, as the build makes it. Without
     `output_checked` the compiler does not hold the rules to the output schema (required fields
     that no rule writes yet)."""
-    tree = load_functional_file(work_file(project, mapping))
     refs = tree.schemas
+    options = transpile_options(config) if config is not None else None
     source = transpile_file_model(
-        tree, None, resolve_schema_for(mapping, "input", refs), f"{mapping}.fn.yaml"
+        tree, options, resolve_schema_for(mapping, "input", refs), f"{mapping}.fn.yaml"
     )
-    backend = PythonBackend({})
     texts = {
         kind: schema_file(mapping, kind, refs).read_text()
         for kind in ("input", "output")
         if schema_file(mapping, kind, refs).is_file()
     }
-    unit = compile_unit(
+    extra: dict[str, Any] = {}
+    if config is not None:
+        extra = {
+            "loop_fusion": config.optimizer.loop_fusion,
+            "parallel_conflict": config.optimizer.parallel_conflict,
+        }
+    return compile_unit(
         source, mapping, backend, resolve_schema_for(mapping, "input", refs),
         resolve_schema_for(mapping, "output", refs) if output_checked else None,
-        schema_texts=texts,
+        schema_texts=texts, **extra,
     )  # fmt: skip
+
+
+def _compile_runner(project: Path, mapping: str, folder: Path, output_checked: bool = True) -> Any:
+    """The compiled `map_<mapping>_safe` of the working copy (Python backend)."""
+    tree = load_functional_file(work_file(project, mapping))
+    backend = PythonBackend({})
+    unit = _unit_of(tree, mapping, backend, output_checked)
     module = _load_module(backend.assemble([unit]), f"map_{mapping}", folder)
     return getattr(module, f"map_{mapping}_safe")
+
+
+def _rule_ids(rules: list[dict[str, Any]]) -> list[str]:
+    """The ids of the leaf rules (those with no rule inside), in file order."""
+    out: list[str] = []
+    for rule in rules:
+        if rule.get("rules"):
+            out += _rule_ids(rule["rules"])
+        else:
+            out.append(rule["id"])
+    return out
+
+
+def _only(rules: list[dict[str, Any]], keep: set[str]) -> list[dict[str, Any]]:
+    """The rules with only the leaves in `keep`, and the containers that lead to them."""
+    out = []
+    for rule in rules:
+        if rule.get("rules"):
+            inner = _only(rule["rules"], keep)
+            if inner:
+                out.append({**rule, "rules": inner})
+        elif rule["id"] in keep:
+            out.append(rule)
+    return out
+
+
+def _target_errors(
+    project: Path, mapping: str, raw: dict[str, Any], output_checked: bool
+) -> dict[str, list[str]]:
+    """What the project's target (`[project] target` of `mapper.toml`) cannot build, by rule: the
+    check is the same for every backend, the backends are not (a function one has no
+    implementation of, an operator it cannot write). The working copy is compiled as the build
+    does it, without a database; when it fails, halves of its rules are compiled again to find the
+    ones that do not (a failure that needs several rules together is reported on `*`)."""
+    from cli.build import backend_for
+    from cli.config import MapperConfigError, load_config
+
+    with contextlib.chdir(project):
+        try:
+            config = load_config()
+            backend = backend_for(config)
+        except MapperConfigError, Exception:  # no project configuration: nothing to build for
+            return {}
+
+        def failure(rules: list[dict[str, Any]]) -> str | None:
+            try:
+                tree = parse_functional({**raw, "rules": rules}, mapping)
+                _unit_of(tree, mapping, backend, output_checked, config)
+            except Exception as exc:
+                return f"does not build for {config.project.target}: {exc}"
+            return None
+
+        top = raw["rules"]
+        lookups = [r for r in top if r.get("kind") == "lookup"]
+        rest = [r for r in top if r.get("kind") != "lookup"]
+        message = failure(top)
+        if message is None:
+            return {}
+
+        def search(ids: list[str]) -> dict[str, str]:
+            found = failure(lookups + _only(rest, set(ids)))
+            if found is None:
+                return {}
+            if len(ids) == 1:
+                return {ids[0]: found}
+            half = len(ids) // 2
+            left, right = search(ids[:half]), search(ids[half:])
+            return {**left, **right} if left or right else {"*": found}
+
+        culprits = search(_rule_ids(rest))
+        return {k: [v] for k, v in culprits.items()} or {"*": [message]}
 
 
 def _contains(actual: Any, expected: Any) -> bool:

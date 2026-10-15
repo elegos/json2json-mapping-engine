@@ -10,6 +10,23 @@ section (see `packaging/release.py`).
 
 ## [Unreleased]
 
+### Features
+
+- `x in ("A", "B")` and `x not in (...)` with a literal list now build on PL/SQL too (`IN (...)`; a
+  missing value is in nothing, as in Python).
+- `mapper import assemble` builds the working copy for the project's target (`mapper.toml`, no
+  database), as `mapper build` does, and reports what the target cannot build on the rule that
+  causes it. The check is the same for every backend; the backends are not (a function one has no
+  implementation of): a rule that passed the check but would not build for Oracle is now an error of
+  the plan, not a surprise of the build.
+
+### Fixed
+
+- An optional object (a property the output schema does not require) that is left out by a guard or a
+  selection is no longer an error. The check asked the schema to allow `null` for it, and the compiler
+  refused it at the top of a mapping, though omitting a non-required property is exactly what the
+  language means. Only a **required** property is still refused.
+
 ## [0.4.0] - 2026-10-15
 
 ### Features

@@ -694,12 +694,18 @@ class _Checker:
                 node = UNKNOWN
             elif is_loop:
                 node = self.out.items(node)
-            elif types and not self.out.nullable(node) and (rule.guard or rule.source):
-                # the build refuses a non-nullable output for a value that may be omitted
+            elif (
+                types
+                and not self.out.nullable(node)
+                and (rule.guard or rule.source)
+                and name in self.out.required(out)
+            ):
+                # the build refuses a required, non-nullable output for a value that may be omitted;
+                # a property the schema does not require may simply be left out
                 self.add(
                     path,
                     "type",
-                    f"'{name}' is left out when its "
+                    f"'{name}' is required by the output schema but is left out when its "
                     f"{'guard is false' if rule.guard else 'source selects no element'}, "
                     'so the output schema must allow null (type ["object", "null"])',
                 )

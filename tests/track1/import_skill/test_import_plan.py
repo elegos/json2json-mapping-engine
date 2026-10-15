@@ -384,3 +384,34 @@ def test_the_schema_validation_flags_turn_the_json_schema_check_on(project: Path
     (project / "import/m/ir.json").write_text(json.dumps(flagged))
     result = import_plan.run_cases(project, "m")
     assert (result["pass"], result["fail"], result["error"]) == (1, 0, 0), result
+
+
+def test_what_the_target_cannot_build_is_an_error_of_the_rule(project: Path) -> None:
+    """The check is the same for every backend; the backends are not: `any(...)` is Python's own
+    and PL/SQL has no implementation of it. The plan must not look fine for a project that builds
+    for Oracle."""
+    config = (Path(__file__).parents[3] / "desktop/fixtures/tour-project/mapper.toml").read_text()
+    (project / "mapper.toml").write_text(config)
+    body = json.loads((project / "import/m/ir.json").read_text())
+    for r in body["rules"]:
+        if r["id"] == "sku":
+            r["proposal"]["fn_rule"]["transform"] = {
+                "expression": 'if_else(any(i.code == "A" for i in $.items), "y", "n")'
+            }
+    (project / "import/m/ir.json").write_text(json.dumps(body))
+    result = import_plan.assemble(project, "m")
+    assert result["ok"] is False
+    saved = json.loads((project / "import/m/ir.json").read_text())
+    sku = next(r for r in saved["rules"] if r["id"] == "sku")["proposal"]["check"]
+    assert sku["ok"] is False and "does not build for plsql" in sku["errors"][0]
+    others = [
+        r["proposal"]["check"]["ok"]
+        for r in saved["rules"]
+        if r["id"] in ("no", "qty") and r["proposal"].get("check")
+    ]
+    assert all(others)  # only the rule that cannot be built is blamed
+    # the same rule builds for Python, which has `any`
+    (project / "mapper.toml").write_text(
+        config.replace('target = "plsql"', 'target = "python"') + "\n[target.python]\n"
+    )
+    assert import_plan.assemble(project, "m")["ok"] is True

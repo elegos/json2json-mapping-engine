@@ -105,6 +105,8 @@ rules:
 
 - Missing/absent is `None`; booleans `True` / `False`; `null` and `true` are not names here.
 - Text in quotes, either kind. Operators `+ - * /` and `== != < > <= >=`, `and or not`.
+- Membership in a literal list: `x in ("A", "B")` and `x not in (...)` (all texts or all
+  numbers; a missing `x` is in nothing). The list must be written out: `x in $.allowed` is not supported.
 - An empty text counts as null everywhere (never written to the output).
 - `concat` leaves the separators where they are when a part is missing: `concat(a, "-", b, "-", c)`
   with `a` and `b` missing is `--C`. That is the language, not a question for the user; a document

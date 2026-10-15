@@ -645,6 +645,8 @@ class _ExprTranslator:
         if len(node.ops) != 1:
             raise CodeGenError("chained comparisons are not supported")
         op = node.ops[0]
+        if isinstance(op, ast.In | ast.NotIn):
+            return self._membership(node, isinstance(op, ast.NotIn))
         if type(op) not in _COMPARE_OPS:
             raise CodeGenError(f"unsupported comparison operator: {type(op).__name__}")
         # `x == None` / `x != None` must be IS [NOT] NULL: in SQL `x = NULL` is
@@ -668,6 +670,24 @@ class _ExprTranslator:
         left = self.translate(node.left, operand_expected)
         right = self.translate(node.comparators[0], operand_expected)
         return f"({left} {_COMPARE_OPS[type(op)]} {right})"
+
+    def _membership(self, node: ast.Compare, negated: bool) -> str:
+        """`x in ("A", "B")` / `x not in (...)` with a literal list. A missing `x` is in nothing, as in
+        Python (SQL's `NULL IN (...)` is NULL, which `NOT` would keep NULL)."""
+        values = node.comparators[0]
+        if not isinstance(values, ast.Tuple | ast.List | ast.Set) or not all(
+            isinstance(v, ast.Constant) and not isinstance(v.value, type(None)) for v in values.elts
+        ):
+            raise CodeGenError("`in` needs a literal list of texts or numbers: x in ('A', 'B')")
+        constants = [v.value for v in values.elts if isinstance(v, ast.Constant)]
+        numeric = all(isinstance(c, int | float) and not isinstance(c, bool) for c in constants)
+        if not numeric and not all(isinstance(c, str) for c in constants):
+            raise CodeGenError("`in` takes a list of texts or a list of numbers, not a mix")
+        kind = "NUMBER" if numeric else "VARCHAR2"
+        left = self.translate(node.left, kind)
+        listed = ", ".join(self.translate(v, kind) for v in values.elts)
+        test = f"COALESCE({left} IN ({listed}), FALSE)"
+        return f"(NOT {test})" if negated else f"({test})"
 
     def condition(self, node: ast.expr) -> str:
         """A condition (`if`, `guard`, `filter`, `and` / `or` / `not`, `if_else`'s first

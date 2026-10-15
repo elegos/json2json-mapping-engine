@@ -175,9 +175,14 @@ def test_set_source_on_an_object() -> None:
     assert inner.rules[1].rules[1].source_path == "@.name"  # type: ignore[union-attr]
 
 
-def test_an_object_that_may_be_left_out_needs_a_nullable_output() -> None:
+def test_an_object_that_may_be_left_out_needs_a_nullable_output_only_if_required() -> None:
     assert [i for i in check_functional(tree(), SCHEMA_IN, SCHEMA_OUT) if i.column == "type"] == []
     strict = {**SCHEMA_OUT, "properties": {**SCHEMA_OUT["properties"]}}
     strict["properties"]["MyObject"] = dict(SCHEMA_OUT["properties"]["MyObject"], type="object")
+    # left out is fine for a property the schema does not require ...
+    errors = [i for i in check_functional(tree(), SCHEMA_IN, strict) if i.severity == "error"]
+    assert not any(i.column == "type" for i in errors)
+    # ... and an error for one it requires
+    strict["required"] = ["MyObject"]
     errors = [i for i in check_functional(tree(), SCHEMA_IN, strict) if i.severity == "error"]
     assert any(i.column == "type" and "allow null" in i.message for i in errors)
