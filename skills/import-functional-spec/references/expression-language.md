@@ -154,8 +154,11 @@ sum(abs(l.quantity) for l in $.lines)
 ```
 
 `s` is a name of your choice for one element; its fields are read as `s.field` and are checked
-against the schema. Only `count`, `sum`, `max`, `min` and `avg` take this form, and not one inside
-another (`avg(...)` in the condition of a `sum(...)`): write a second rule for the inner value.
+against the schema. Only `count`, `sum`, `max`, `min`, `avg`, `any` and `all` take this form. One may
+stand in the condition or the value of another, to any depth (each level runs a loop inside the one
+outside it): `count(l for l in $.lines if not any(any(i.ref == l.ref for i in p.items) for p in
+$.packages))`. `any(cond for x in list)` is true when one element passes, `all(...)` when every element
+does (an empty list: false and true); a missing value is false.
 `count` counts the elements that pass (its value is not looked at); the others skip an element whose
 value is missing. There is no `[*]` in the path.
 

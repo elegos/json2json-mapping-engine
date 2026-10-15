@@ -101,6 +101,7 @@ Scope of this milestone (documented, not silently assumed):
 from __future__ import annotations
 
 import ast
+import copy
 import itertools
 import json
 from collections.abc import Callable
@@ -531,6 +532,9 @@ class _FnCtx:
         # locals bound from a rule-function call: name -> its `omitted` flag variable
         self.omit_flags: dict[str, str] = {}
         self.counter = itertools.count()  # temp names, loop-index counters
+        self.loop_counter: itertools.count = (
+            self.counter
+        )  # the numbers of the loops of the function
         self.declared_names: set[str] = set()  # locals this code declared itself
         self.elements: dict[str, str] = {}  # as in `_FlowCtx`
 
@@ -1009,7 +1013,7 @@ def _is_aggregate_call(node: ast.expr, linker: FunctionLinker) -> bool:
         and (
             node.func.id in _AGGREGATE_FUNCS
             or (
-                node.func.id == "count"
+                node.func.id in ("count", "any", "all")
                 and len(node.args) == 1
                 and isinstance(node.args[0], ast.GeneratorExp)
             )
@@ -1059,9 +1063,14 @@ def _materialize_comprehension_aggregate(
     n_var = f"v_aggn_{agg_idx}"
     array_expr = translator.translate(gen.iter, "ARRAY")
     separator = translator.translate(call.args[1], "VARCHAR2") if fname == "join" else ""
+    # an aggregate in the condition or in the value is computed inside this loop, for each element:
+    # the condition's before the test, the value's once the element has passed it
+    cond_lines: list[str] = []
+    value_lines: list[str] = []
     ctx.elements[gen.target.id] = item_var
     try:
-        conditions = [translator.condition(c) for c in gen.ifs]
+        nested = _nested_hoister(translator, cond_lines)
+        conditions = [translator.condition(nested.visit(copy.deepcopy(c))) for c in gen.ifs]
         value_type = (
             "VARCHAR2"
             if fname == "join"
@@ -1069,11 +1078,42 @@ def _materialize_comprehension_aggregate(
             if fname in ("sum", "avg") or return_expected not in _EXPECTED_TO_DECL_TYPE
             else return_expected
         )
-        value = translator.translate(gen_exp.elt, value_type) if fname != "count" else ""
+        elt = copy.deepcopy(gen_exp.elt)
+        if fname in ("any", "all"):
+            tested = _nested_hoister(translator, value_lines).visit(elt)
+            value = translator.condition(tested)
+        elif fname != "count":
+            elt = _nested_hoister(translator, value_lines).visit(elt)
+            value = translator.translate(elt, value_type)
+        else:
+            value = ""
     finally:
         del ctx.elements[gen.target.id]
 
     declarations.extend([f"{arr_var} JSON_ARRAY_T;", f"{item_var} JSON_OBJECT_T;"])
+    if fname in ("any", "all"):
+        # true as soon as one element passes (`any`), false as soon as one fails (`all`): the loop
+        # stops there. A missing value is false.
+        found = fname == "any"
+        test = value if found else f"NOT COALESCE({value}, FALSE)"
+        hit = [f"{tmp_var} := {'TRUE' if found else 'FALSE'};", "EXIT;"]
+        inner = [*value_lines, f"IF {test} THEN", *_indent(hit), "END IF;"]
+        if conditions:
+            inner = [f"IF {' AND '.join(conditions)} THEN", *_indent(inner), "END IF;"]
+        loop = [
+            f"{item_var} := TREAT({arr_var}.get({k_var}) AS JSON_OBJECT_T);",
+            *cond_lines,
+            *inner,
+        ]
+        return [
+            f"{arr_var} := {array_expr};",
+            f"{tmp_var} := {'FALSE' if found else 'TRUE'};",
+            f"IF {arr_var} IS NOT NULL THEN",
+            f"    FOR {k_var} IN 0 .. {arr_var}.get_size - 1 LOOP",
+            *_indent(loop, 2),
+            "    END LOOP;",
+            "END IF;",
+        ]
     if fname == "count":
         declarations.append(f"{n_var} NUMBER;")
         init, step = [f"{n_var} := 0;"], [f"{n_var} := {n_var} + 1;"]
@@ -1110,6 +1150,7 @@ def _materialize_comprehension_aggregate(
     inner = [*step]
     if fname != "count":
         inner = [
+            *value_lines,
             f"{val_var} := {value};",
             f"IF {val_var} IS NOT NULL THEN",
             *_indent(step),
@@ -1117,7 +1158,7 @@ def _materialize_comprehension_aggregate(
         ]
     if conditions:
         inner = [f"IF {' AND '.join(conditions)} THEN", *_indent(inner), "END IF;"]
-    loop = [f"{item_var} := TREAT({arr_var}.get({k_var}) AS JSON_OBJECT_T);", *inner]
+    loop = [f"{item_var} := TREAT({arr_var}.get({k_var}) AS JSON_OBJECT_T);", *cond_lines, *inner]
     return [
         f"{arr_var} := {array_expr};",
         *init,
@@ -1287,6 +1328,8 @@ def infer_type(node: ast.expr, ctx: _FnCtx) -> str:
             return "DATE"
         if fname in ("concat", "split_first", "split_nth", "lookup"):
             return "VARCHAR2"
+        if fname in ("any", "all"):
+            return "BOOLEAN"
         if fname in ("max", "min", "sum", "avg", "count"):
             # Best-effort default: max/min could in principle key on a
             # str/date field, but without schema info to check the field's
@@ -1340,12 +1383,24 @@ class _AggregateHoister(ast.NodeTransformer):
         idx = next(self.loop_counter)
         name = f"agg{idx}"
         var = self.ctx.local_var(name)
-        self.ctx.locals[name] = "NUMBER"
-        self.ctx.declare(f"{var} NUMBER;")
+        kind = "BOOLEAN" if node.func.id in ("any", "all") else "NUMBER"  # type: ignore[attr-defined]
+        self.ctx.locals[name] = kind
+        self.ctx.declare(f"{var} {kind};")
         self.lines.extend(
             _materialize_aggregate(node, self.translator, var, "NUMBER", idx, self.ctx.declarations)
         )
         return ast.copy_location(ast.Name(id=name, ctx=ast.Load()), node)
+
+
+def _nested_hoister(translator: _ExprTranslator, lines: list[str]) -> _AggregateHoister:
+    """The hoister for an aggregate inside an aggregate: what it computes goes into `lines`, which
+    the outer loop runs for each element."""
+    ctx = translator.ctx
+    if not isinstance(ctx, _FnCtx):
+        raise CodeGenError(
+            "an aggregate inside an aggregate is only written in a rule's expression"
+        )
+    return _AggregateHoister(translator, ctx, ctx.loop_counter, lines)
 
 
 def _hoisted(
@@ -1367,6 +1422,9 @@ def _translate_fn_body(
     loop_counter: itertools.count,
 ) -> list[str]:
     out: list[str] = []
+    ctx.loop_counter = (
+        loop_counter  # the loops (and aggregates) of this function are numbered by it
+    )
     for stmt in stmts:
         appended = _list_local_append(stmt, ctx)
         if appended is not None:
@@ -1562,14 +1620,24 @@ def _translate_fn_if(
     translator: _ExprTranslator,
     loop_counter: itertools.count,
 ) -> list[str]:
-    lines = [f"IF {translator.condition(stmt.test)} THEN"]
+    # an aggregate in a condition is a loop: computed first, where the condition is tested
+    lines: list[str] = []
+    tests: list[ast.expr] = []
+    node: ast.If | None = stmt
+    while node is not None:
+        tests.append(_hoisted(copy.deepcopy(node.test), translator, ctx, loop_counter, lines))
+        orelse = node.orelse
+        node = orelse[0] if len(orelse) == 1 and isinstance(orelse[0], ast.If) else None
+    lines.append(f"IF {translator.condition(tests[0])} THEN")
     lines.extend(
         _indent(_translate_fn_body(stmt.body, ctx, return_expected, translator, loop_counter))
     )
     orelse = stmt.orelse
+    n = 1
     while len(orelse) == 1 and isinstance(orelse[0], ast.If):
         elif_stmt = orelse[0]
-        lines.append(f"ELSIF {translator.condition(elif_stmt.test)} THEN")
+        lines.append(f"ELSIF {translator.condition(tests[n])} THEN")
+        n += 1
         lines.extend(
             _indent(
                 _translate_fn_body(elif_stmt.body, ctx, return_expected, translator, loop_counter)

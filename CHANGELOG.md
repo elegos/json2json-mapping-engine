@@ -18,6 +18,12 @@ section (see `packaging/release.py`).
   `order_by`. The Python backend now runs a sorted loop at all (it passed the key as text to Python's
   `sorted`, which raised on every run), and PL/SQL orders by the computed keys with a stable sort that
   copies into a new array. Desktop: an *Order the list by* editor in the loop options.
+- Aggregates inside aggregates, to any depth (`count(l for l in $.lines if not any(any(i.ref == l.ref for
+  i in p.items) for p in $.packages))`), and two new ones, `any(cond for x in list)` and `all(...)`
+  (Python's truthiness; the loop stops at the first element that decides). On PL/SQL an aggregate in the
+  condition of an `if` of a rule function is now computed first too.
+- A selection's condition can hold an aggregate over a list of the candidate:
+  `$.packages[any(i.ref == @2.ref for i in items)].vol`: the first package that holds this line.
 - Selections: `$.list[condition order by <keys>]` (or `$.list[order by <keys>]`) takes the first element
   in that order: the event with the highest rank, the earliest date. The same clause as a loop's
   `order_by`; it works in a path of a field, in an expression and in the Source of a selecting object.

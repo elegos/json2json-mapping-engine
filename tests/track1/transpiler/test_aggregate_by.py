@@ -126,7 +126,8 @@ def checked(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, expression: str) ->
         ("sum(s.vaule for s in $.samples)", "did you mean 'value'"),
         ("sum(s.quality for s in $.samples)", "needs numbers"),
         ("sum(a.value for a in $.samples for b in $.samples)", "one `for`"),
-        ("sum(s.value for s in $.samples if s.value > avg(x.value for x in $.samples))", "avg() cannot be inside sum()"),
+        ("any(s.value for s in $.samples for b in $.samples)", "one `for`"),
+        ("any($.samples)", "takes a comprehension"),
     ],
 )  # fmt: skip
 def test_a_wrong_aggregate_is_said_so(

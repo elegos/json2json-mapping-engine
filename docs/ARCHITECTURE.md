@@ -570,7 +570,7 @@ positional: `max(<array>, "<field name>")`.
 
 The same functions take a **comprehension** when only some elements count or the value is computed:
 `count(x for x in $.items if cond)`, `sum(abs(x.qty) for x in $.items if x.ok)`, likewise `max`,
-`min`, `avg` (one `for`, any number of `if`s, no aggregate inside another). It is one loop on every
+`min`, `avg` (one `for`, any number of `if`s). An aggregate may stand in the condition or in the value of another, to any depth: the inner one runs inside the loop of the outer, for each element, and may read the outer element's variable (`count(l for l in $.lines if not any(any(i.ref == l.ref for i in p.items) for p in $.packages))`); each level multiplies the cost by the length of its list. `any(condition for x in list if filter)` and `all(...)` are true when one element (every element) is true, with Python's truthiness: a missing value is false, an empty set is false for `any` and true for `all`; the loop stops at the first element that decides. It is one loop on every
 backend, the value of an element left out is never computed, a missing value is skipped as SQL does,
 and with nothing left `sum` and `count` give 0 and `max`, `min`, `avg` give null. The check types
 the element from the list's schema (an unknown field is reported with the closest name). In the
@@ -1982,7 +1982,7 @@ rules:
 - Aliases are text (§Paths section), so `@totals.qty` is `$.items[marker = 'TOTALS'].qty`. The
   alias value may hold one condition, and `check` validates it where it is defined and where
   it is used.
-- A condition cannot hold another selection, a loop's `filter` and `sort` cannot hold one (read it
+- A condition cannot hold another selection (it can hold an aggregate over a list of the candidate: `$.packages[any(i.ref == @2.ref for i in items)].vol`, the variable of its `for` being its own and every other bare name a field of the candidate), a loop's `filter` and `order_by` cannot hold one (read it
   in the loop's fields), and a path has one selection (`$.a[x = 1].b[y = 2].c` is not supported).
 - Lowering (`_Builder._picker` / `_extract` in `transpiler/transpile.py`): each distinct
   selection (list path + condition + enclosing loops) becomes **one function** in the `.map.py`

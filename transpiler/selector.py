@@ -26,7 +26,7 @@ from transpiler.model import FnYamlError, FunctionalFile, LoopRule, ObjectRule, 
 from transpiler.orderby import OrderKey, format_order_by, parse_order_by, split_selection_order
 
 _KEYWORDS = frozenset(
-    {"and", "or", "not", "in", "is", "if", "else", "True", "False", "None", "Null"}
+    {"and", "or", "not", "in", "is", "if", "else", "for", "True", "False", "None", "Null"}
 )
 _SINGLE_EQUALS = re.compile(r"(?<![=!<>])=(?!=)")
 _BARE_NAME = re.compile(r"(?<![\w.@$])([A-Za-z_]\w*)(?!\w)(?!\s*\()")
@@ -144,15 +144,25 @@ def replace_selections(text: str, replacement: Callable[[Selection], str]) -> st
 def normalize_condition(condition: str) -> str:
     """The condition in explicit form: `=` becomes `==` and a bare name `x` becomes `@.x`."""
 
+    pieces = _split_strings(condition)
+    # the variable of a comprehension (`any(i.ref == @2.ref for i in items)`) is its own, not a field
+    bound = {
+        m.group(1)
+        for is_str, text in pieces
+        if not is_str
+        for m in re.finditer(r"\bfor\s+([A-Za-z_]\w*)\s+in\b", text)
+    }
+
     def chunk(text: str) -> str:
         text = _SINGLE_EQUALS.sub("==", text)
 
         def name(m: re.Match[str]) -> str:
-            return m.group(0) if m.group(1) in _KEYWORDS else f"@.{m.group(1)}"
+            word = m.group(1)
+            return m.group(0) if word in _KEYWORDS or word in bound else f"@.{word}"
 
         return _BARE_NAME.sub(name, text)
 
-    return "".join(s if is_str else chunk(s) for is_str, s in _split_strings(condition))
+    return "".join(s if is_str else chunk(s) for is_str, s in pieces)
 
 
 def selection_parts(condition: str) -> tuple[str, list[OrderKey]]:

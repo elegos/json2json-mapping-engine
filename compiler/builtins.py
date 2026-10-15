@@ -34,7 +34,7 @@ def _quantize(x: float, digits: int, mode: str) -> float:
 
 def _total(values: list[Any]) -> Any:
     """The sum of numbers, as the decimal numbers of the database add them (0.1 + 0.2 is 0.3)."""
-    if any(isinstance(v, float) for v in values):
+    if _py.any(isinstance(v, float) for v in values):
         return float(_py.sum(Decimal(repr(v)) for v in values))
     return _py.sum(values)
 
@@ -126,6 +126,22 @@ def count(items: list[Any]) -> int:
     """The number of elements of a list; `count(x for x in list if condition)` counts those that
     satisfy the condition."""
     return 0 if items is None else _py.len(items)
+
+
+@special
+def any(items: list[Any]) -> bool:  # noqa: A001
+    """True when at least one element of a comprehension is true: `any(condition for x in list if
+    filter)` (the `for` is the only way to write it). A missing value is false, as in any condition;
+    an empty set is false. Another aggregate may stand in the condition."""
+    return _py.any(bool(v) for v in items or [])
+
+
+@special
+def all(items: list[Any]) -> bool:  # noqa: A001
+    """True when every element of a comprehension is true: `all(condition for x in list if
+    filter)`. A missing value is false, so an element that has none makes it false; an empty set is
+    true. Another aggregate may stand in the condition."""
+    return _py.all(bool(v) for v in items or [])
 
 
 @special

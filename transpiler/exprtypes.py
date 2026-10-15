@@ -109,7 +109,7 @@ def did_you_mean(name: str, candidates: Collection[str]) -> str:
     return f" — did you mean '{pool[near[0]]}'?" if near else ""
 
 
-_AGGREGATES = {"sum", "avg", "max", "min", "count", "join"}
+_AGGREGATES = {"sum", "avg", "max", "min", "count", "join", "any", "all"}
 
 
 class ExprTyper:
@@ -381,6 +381,11 @@ class ExprTyper:
             for arg in args:
                 self.infer(arg)
             return STRING
+        if name in ("any", "all") and name in self.special and not (
+            args and isinstance(args[0], ast.GeneratorExp)
+        ):
+            self.report(f"{name}() takes a comprehension: {name}(condition for x in list)")
+            return BOOLEAN
         if (
             name in _AGGREGATES
             and name in self.special
@@ -421,16 +426,6 @@ class ExprTyper:
         if not isinstance(gen.target, ast.Name):
             self.report(f"the variable of the `for` in {name}() must be a single name")
             return None
-        for inner in ast.walk(comp):
-            if (
-                isinstance(inner, ast.Call)
-                and isinstance(inner.func, ast.Name)
-                and inner.func.id in _AGGREGATES
-                and inner.func.id in self.special
-                and inner.args
-                and (isinstance(inner.args[0], ast.GeneratorExp) or inner.func.id != "count")
-            ):
-                self.report(f"{inner.func.id}() cannot be inside {name}(): an aggregate is a loop")
         self.infer(gen.iter)
         array = self._node(gen.iter)
         element = self.schemas.items(array) if array is not None else None
@@ -449,6 +444,8 @@ class ExprTyper:
                 self.env[var] = earlier
         if name == "count":
             return INTEGER
+        if name in ("any", "all"):
+            return BOOLEAN
         if name == "join":
             if len(call.args) > 1:
                 self._arg("join", 1, call.args[1], STRING)
