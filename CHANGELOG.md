@@ -10,6 +10,18 @@ section (see `packaging/release.py`).
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-15
+
+### Fixed
+
+- Import runs: the assistant may call `mapper` by a path (`./mapper`, `/x/bin/mapper`) or after
+  environment variables, and the same rules exist for the PowerShell tool that Windows may give it
+  instead of Bash; fewer runs stop on a refused permission.
+- Import runs are told to call `mapper` alone in each call (no pipe into another program, no
+  `$(...)`), and to read long output with `Read`.
+- Release workflows: a published release of the tag stops the run before the build; a draft of the
+  same tag left by an earlier run is replaced.
+
 ## [0.4.0] - 2026-10-15
 
 ### Features
