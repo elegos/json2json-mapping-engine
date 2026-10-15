@@ -266,6 +266,74 @@ rules (structure wrappers and groups included, so it can exceed the units of the
 - If the user skips a question, take the proposal, mark the assumption `guess` and the question
   `skipped_assumed_proposal`.
 
+## Long documents: `survey` and `translate`
+
+A document of more than about 80 units is not read in one run. The wizard first starts a run in
+mode **`survey`**, then many runs in mode **`translate`**, several at once, one batch of units each
+(`references/protocol.md`, "Long documents"). Follow this section **instead of** steps 5 to 8.
+
+### Survey
+Do steps 0 to 4 (environment, read the document in slices, mapping, profile, schemas), write the plan
+with `rules: []` (and the discrepancies of step 4), and **classify every unit** into
+`import/<mapping>/units.json`. You translate nothing. If `import/<mapping>/covered.json` exists the
+plan already has rules for those units (an import begun in one run): keep the plan as it is and
+classify only the other units.
+
+- `class`: `skip` (not a rule: `reason` from `coverage.not_imported`, `detail` says why: "Do Not
+  Map", a title, a note), `structure` (an `object` the rows only imply: `target`), `constant`
+  (`target`, `value`; `type` if it is not plain text), `copy` (`target`, `source`, `type`),
+  `translate` (anything else), `ask` (cannot be classified before an answer).
+- **Be conservative.** `constant`, `copy` and `structure` are written by the code with no further
+  look: use them only when the row says it plainly (a literal; the value of one field of the message;
+  a parent object) with no condition, format, mapping of values or "if". Doubt is `translate`. A
+  `copy`'s `source` must be a path that exists in the input schema.
+- `id` is the location written in the rule ids (`Sheet!A6`, `t2:r7`, `p15`), `location` the range it
+  spans. A container that a row implies and no row defines is a `structure` unit too (`id`
+  `implied:<path>`, `location` of the first row that uses it).
+- `group`: the units that read as one pattern (the same split of a field, the same mapping of
+  values, the rows of one section) share a short name; they are translated together, so the pattern
+  is read once. Describe each in `groups`.
+- `needs`: for a `translate` unit, what you expect the engine to lack (a function, a loop that reads
+  the enclosing loop, a condition on another list...), checked against `mapper functions --json`
+  and `references/expression-language.md`. Use the same words for the same need: they are counted,
+  so that the gaps are known before anything is translated.
+- `context`: the statements that apply to every rule (a root path and filter, a general note), once,
+  as `inherited_context` items; the code attaches them to each rule.
+- **Ask now** what you can foresee: a convention, the root, a scope, a table, with
+  `mapper import ask <mapping> "<question>" --topic ... --scope ... --option ... --proposal ... --rule ...`.
+  It returns the answer if the question was asked before. Then go on with the proposal; the workers read
+  the answers. Questions about one rule are for the workers. If a question must be answered before
+  the units can be classified (which mapping, the root of the message), ask it, write no
+  `units.json` and end with `needs_answers`.
+- Check your file with `mapper import queue <mapping>`: it writes the rules of the plain units and cuts
+  the others into batches, and says what is wrong in `units.json`. End with the status line
+  (`ready_for_review` when the units are classified).
+
+### Translate
+The prompt names a batch. Do this, and no more:
+1. `mapper import batch <mapping> <batch>` gives the units (with the text of their rows), the
+   `context`, the `containers` (the `object` / `loop` rules there are, by target path, for a rule's
+   `parent_rule`) and, in a batch to read again, the `rework` rules. `mapper import answers
+   <mapping>` gives the answers so far; apply them. `mapper functions --json`, as always.
+2. For each unit do steps 5 and 6 above. You may leave out `evidence.text`, `evidence.sha256` and
+   `inherited_context`: the code fills them from the document. Give `evidence.locations`. The
+   `fn_rule.id` is the target path with letters, digits and `_` only (`[*]` dropped:
+   `Lines[*].Qty.Unit` is `Lines_Qty_Unit`) unless the plan already has a rule of that target.
+3. Write `import/<mapping>/<batch>.batch.json`: `{"rules": [...], "validations": [...], "lookups":
+   [...], "discrepancies": [...], "tests": [...]}` (what applies), and run
+   `mapper import add <mapping> <that file> --batch <batch>`. It checks the rules against the schemas
+   and merges them. Read what it prints: `errors` (rule id, what failed) go back to you: correct them
+   and add again (a rule with the same id replaces the old one; at most twice, then leave a flagged
+   guess); `missing_units` have no rule yet: write them. A batch that does not validate changes
+   nothing and says why.
+4. A question that came up: `mapper import ask` (see Survey); if it returns an answer use it; if it
+   is still open write the rule with the proposal as an assumption (`guess`) and list the rule with
+   `--rule`; it will be read again when the answer comes.
+5. In a `rework` batch the answers changed what these rules rest on: read them again and add the new
+   versions (same ids).
+6. **Never write `ir.json` or the profile**, and never answer or skip a question yourself. The last
+   line is the status line (`ready_for_review`).
+
 ## Re-runs and new versions
 
 - **Re-run** (all, or the listed `rule_ids`): re-read from the evidence; a rule the user edited

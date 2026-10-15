@@ -16,6 +16,8 @@ or "ask", and the mode:
 | `rerun_all` | redo every rule from the evidence (edited rules are asked about) |
 | `rerun_partial` | redo only the listed `rule_ids` |
 | `revalue_version` | the document has a new version: compare hashes, redo what changed |
+| `survey` | a long document: classify its units into `units.json`, translate nothing |
+| `translate` | one batch of those units (`batch`), merged with `mapper import add` |
 
 Files: as listed in `SKILL.md`. The wizard validates `ir.json` against `references/ir.schema.json` after
 each run; an invalid file is a failed run.
@@ -43,3 +45,14 @@ Detecting the provider, showing the plan, collecting answers, schema import, and
 `mappings/functional/<mapping>.fn.yaml` without `--force`, and marks the rules `applied`). The
 skill never applies rules. Commands, all run from the project directory, all printing one JSON
 object: `mapper import extract`, `assemble`, `test`, `apply`.
+
+## Long documents
+Above about 80 units (or when `units.json` already exists) the wizard does not start one run but a
+`survey`, then `translate` runs, up to two at a time (`docs/import/BATCHES.md`). The survey's final
+status is `ready_for_review` when it classified the units (the wizard reads that as "surveyed" and
+goes on, with the questions it asked still open) or `needs_answers` when it could not. A worker never
+writes `ir.json`: it hands rules to `mapper import add`, asks with `mapper import ask`, and reads
+answers with `mapper import answers`. The wizard shows the open questions while the batches run, and
+queues the rules an answer touches (`rule_ids`) for another pass. Commands: `mapper import queue`,
+`batch`, `add`, `ask`, `answers`, `gaps`, and the views of the extracted document (`outline`, `rows`,
+`blocks`, `find`).

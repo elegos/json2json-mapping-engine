@@ -693,13 +693,15 @@ def batch_info(project: Path, mapping: str, batch_id: str) -> dict[str, Any]:
     for item in batch_units(project, mapping, batch_id):
         text = evidence_text(index, [item["location"]])
         units.append({**item, **({"text": text} if text else {})})
+    plan = load_plan(project, mapping)
     out: dict[str, Any] = {
         "id": batch_id,
         "units": units,
         "context": load_units(project, mapping).get("context") or [],
+        # the `object` / `loop` rules there are, by target path: the `parent_rule` of a rule in one
+        "containers": _containers(plan),
     }
     if entry.get("rework"):
-        plan = load_plan(project, mapping)
         out["rework"] = [r for r in plan["rules"] if r["id"] in entry["rework"]]
     return out
 

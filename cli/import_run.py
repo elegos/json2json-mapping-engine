@@ -149,12 +149,17 @@ def build_prompt(
         lines.append(f"- rule_ids: {', '.join(rule_ids)}")
     if batch:
         lines.append(f"- batch: {batch}")
+    asking = (
+        "Ask with `mapper import ask`, never wait for an answer."
+        if mode in ("survey", "translate")
+        else "You cannot ask anything during this run: whatever needs an answer goes into the "
+        "plan's `questions`."
+    )
     lines += [
         "",
-        "Write only inside import/. `mapper` is on the PATH; run it from this directory. You cannot "
-        "ask anything during this run: whatever needs an answer goes into the plan's `questions`. "
-        "The wizard computes `document.sha256` and `profile.sha256` itself (write any value). "
-        "Your last line is the JSON status line of references/protocol.md.",
+        "Write only inside import/. `mapper` is on the PATH; run it from this directory. "
+        f"{asking} The wizard computes `document.sha256` and `profile.sha256` itself (write any "
+        "value). Your last line is the JSON status line of references/protocol.md.",
     ]
     return "\n".join(lines)
 
