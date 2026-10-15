@@ -102,11 +102,8 @@ EXPECTED = {
     "Orphans": 1,  # L3 is in no package
     "AboveAverage": 1,  # average 6: only 12
     "Lines": [
-        {
-            "Ref": "L1",
-            "Vol": 5,
-            "Pack": "P2",
-        },  # the first package that holds it; the best by volume
+        # the first package that holds the line; the best by volume
+        {"Ref": "L1", "Vol": 5, "Pack": "P2", "All": "P1,P2"},
         {"Ref": "L2", "Vol": 9, "Pack": "P2", "All": "P1,P2"},
         {"Ref": "L3", "All": "P1,P2"},
     ],
