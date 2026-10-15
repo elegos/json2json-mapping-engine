@@ -50,22 +50,42 @@ CREATE OR REPLACE PACKAGE BODY ENUMERATE_SORTED AS
             v_forarr_0 JSON_ARRAY_T := v_srcroot.get_Array('items');
         BEGIN
             IF v_forarr_0 IS NOT NULL THEN
-                v_forarr_0 := TREAT(v_forarr_0.clone AS JSON_ARRAY_T);
                 DECLARE
-                    v_sortj_0 PLS_INTEGER;
-                    v_sorttmp_0 JSON_ELEMENT_T;
-                    v_sorttmpkey_0 JSON_ELEMENT_T;
+                    TYPE t_key_0_0 IS TABLE OF JSON_ELEMENT_T INDEX BY PLS_INTEGER;
+                    TYPE t_ord_0_0 IS TABLE OF PLS_INTEGER INDEX BY PLS_INTEGER;
+                    v_sortkey_0_0 t_key_0_0;
+                    v_sortord_0_0 t_ord_0_0;
+                    v_sorted_0_0 JSON_ARRAY_T := JSON_ARRAY_T();
+                    v_sorttmp_0_0 PLS_INTEGER;
+                    v_sortj_0_0 PLS_INTEGER;
+                    FUNCTION v_sortnul_0_0(p IN PLS_INTEGER) RETURN BOOLEAN IS
+                    BEGIN RETURN v_sortkey_0_0(p) IS NULL OR v_sortkey_0_0(p).is_Null; END;
+                    FUNCTION v_sortcmp_0_0(a IN PLS_INTEGER, b IN PLS_INTEGER) RETURN PLS_INTEGER IS
+                    BEGIN
+                        IF v_sortnul_0_0(a) THEN RETURN CASE WHEN v_sortnul_0_0(b) THEN 0 ELSE 1 END; END IF;
+                        IF v_sortnul_0_0(b) THEN RETURN -1; END IF;
+                        IF v_sortkey_0_0(a).compare_to(v_sortkey_0_0(b)) < 0 THEN RETURN -1; END IF;
+                        IF v_sortkey_0_0(a).compare_to(v_sortkey_0_0(b)) > 0 THEN RETURN 1; END IF;
+                        RETURN 0;
+                    END;
                 BEGIN
-                    FOR v_sortk_0 IN 1 .. v_forarr_0.get_size - 1 LOOP
-                        v_sorttmp_0 := v_forarr_0.get(v_sortk_0);
-                        v_sorttmpkey_0 := TREAT(v_sorttmp_0 AS JSON_OBJECT_T).get('price');
-                        v_sortj_0 := v_sortk_0 - 1;
-                        WHILE v_sortj_0 >= 0 AND TREAT(v_forarr_0.get(v_sortj_0) AS JSON_OBJECT_T).get('price').compare_to(v_sorttmpkey_0) > 0 LOOP
-                            v_forarr_0.put(v_sortj_0 + 1, v_forarr_0.get(v_sortj_0), TRUE);
-                            v_sortj_0 := v_sortj_0 - 1;
-                        END LOOP;
-                        v_forarr_0.put(v_sortj_0 + 1, v_sorttmp_0, TRUE);
+                    FOR v_sorti_0_0 IN 0 .. v_forarr_0.get_size - 1 LOOP
+                        v_sortkey_0_0(v_sorti_0_0) := TREAT(v_forarr_0.get(v_sorti_0_0) AS JSON_OBJECT_T).get('price');
+                        v_sortord_0_0(v_sorti_0_0) := v_sorti_0_0;
                     END LOOP;
+                    FOR v_sortk_0_0 IN 1 .. v_forarr_0.get_size - 1 LOOP
+                        v_sorttmp_0_0 := v_sortord_0_0(v_sortk_0_0);
+                        v_sortj_0_0 := v_sortk_0_0 - 1;
+                        WHILE v_sortj_0_0 >= 0 AND v_sortcmp_0_0(v_sortord_0_0(v_sortj_0_0), v_sorttmp_0_0) > 0 LOOP
+                            v_sortord_0_0(v_sortj_0_0 + 1) := v_sortord_0_0(v_sortj_0_0);
+                            v_sortj_0_0 := v_sortj_0_0 - 1;
+                        END LOOP;
+                        v_sortord_0_0(v_sortj_0_0 + 1) := v_sorttmp_0_0;
+                    END LOOP;
+                    FOR v_sorti_0_0 IN 0 .. v_forarr_0.get_size - 1 LOOP
+                        v_sorted_0_0.append(v_forarr_0.get(v_sortord_0_0(v_sorti_0_0)));
+                    END LOOP;
+                    v_forarr_0 := v_sorted_0_0;
                 END;
                 FOR v_i_0 IN 0 .. v_forarr_0.get_size - 1 LOOP
                     DECLARE
@@ -145,22 +165,42 @@ CREATE OR REPLACE PACKAGE BODY ENUMERATE_SORTED AS
             v_forarr_0 JSON_ARRAY_T := v_srcroot.get_Array('items');
         BEGIN
             IF v_forarr_0 IS NOT NULL THEN
-                v_forarr_0 := TREAT(v_forarr_0.clone AS JSON_ARRAY_T);
                 DECLARE
-                    v_sortj_0 PLS_INTEGER;
-                    v_sorttmp_0 JSON_ELEMENT_T;
-                    v_sorttmpkey_0 JSON_ELEMENT_T;
+                    TYPE t_key_0_0 IS TABLE OF JSON_ELEMENT_T INDEX BY PLS_INTEGER;
+                    TYPE t_ord_0_0 IS TABLE OF PLS_INTEGER INDEX BY PLS_INTEGER;
+                    v_sortkey_0_0 t_key_0_0;
+                    v_sortord_0_0 t_ord_0_0;
+                    v_sorted_0_0 JSON_ARRAY_T := JSON_ARRAY_T();
+                    v_sorttmp_0_0 PLS_INTEGER;
+                    v_sortj_0_0 PLS_INTEGER;
+                    FUNCTION v_sortnul_0_0(p IN PLS_INTEGER) RETURN BOOLEAN IS
+                    BEGIN RETURN v_sortkey_0_0(p) IS NULL OR v_sortkey_0_0(p).is_Null; END;
+                    FUNCTION v_sortcmp_0_0(a IN PLS_INTEGER, b IN PLS_INTEGER) RETURN PLS_INTEGER IS
+                    BEGIN
+                        IF v_sortnul_0_0(a) THEN RETURN CASE WHEN v_sortnul_0_0(b) THEN 0 ELSE 1 END; END IF;
+                        IF v_sortnul_0_0(b) THEN RETURN -1; END IF;
+                        IF v_sortkey_0_0(a).compare_to(v_sortkey_0_0(b)) < 0 THEN RETURN -1; END IF;
+                        IF v_sortkey_0_0(a).compare_to(v_sortkey_0_0(b)) > 0 THEN RETURN 1; END IF;
+                        RETURN 0;
+                    END;
                 BEGIN
-                    FOR v_sortk_0 IN 1 .. v_forarr_0.get_size - 1 LOOP
-                        v_sorttmp_0 := v_forarr_0.get(v_sortk_0);
-                        v_sorttmpkey_0 := TREAT(v_sorttmp_0 AS JSON_OBJECT_T).get('price');
-                        v_sortj_0 := v_sortk_0 - 1;
-                        WHILE v_sortj_0 >= 0 AND TREAT(v_forarr_0.get(v_sortj_0) AS JSON_OBJECT_T).get('price').compare_to(v_sorttmpkey_0) > 0 LOOP
-                            v_forarr_0.put(v_sortj_0 + 1, v_forarr_0.get(v_sortj_0), TRUE);
-                            v_sortj_0 := v_sortj_0 - 1;
-                        END LOOP;
-                        v_forarr_0.put(v_sortj_0 + 1, v_sorttmp_0, TRUE);
+                    FOR v_sorti_0_0 IN 0 .. v_forarr_0.get_size - 1 LOOP
+                        v_sortkey_0_0(v_sorti_0_0) := TREAT(v_forarr_0.get(v_sorti_0_0) AS JSON_OBJECT_T).get('price');
+                        v_sortord_0_0(v_sorti_0_0) := v_sorti_0_0;
                     END LOOP;
+                    FOR v_sortk_0_0 IN 1 .. v_forarr_0.get_size - 1 LOOP
+                        v_sorttmp_0_0 := v_sortord_0_0(v_sortk_0_0);
+                        v_sortj_0_0 := v_sortk_0_0 - 1;
+                        WHILE v_sortj_0_0 >= 0 AND v_sortcmp_0_0(v_sortord_0_0(v_sortj_0_0), v_sorttmp_0_0) > 0 LOOP
+                            v_sortord_0_0(v_sortj_0_0 + 1) := v_sortord_0_0(v_sortj_0_0);
+                            v_sortj_0_0 := v_sortj_0_0 - 1;
+                        END LOOP;
+                        v_sortord_0_0(v_sortj_0_0 + 1) := v_sorttmp_0_0;
+                    END LOOP;
+                    FOR v_sorti_0_0 IN 0 .. v_forarr_0.get_size - 1 LOOP
+                        v_sorted_0_0.append(v_forarr_0.get(v_sortord_0_0(v_sorti_0_0)));
+                    END LOOP;
+                    v_forarr_0 := v_sorted_0_0;
                 END;
                 FOR v_i_0 IN 0 .. v_forarr_0.get_size - 1 LOOP
                     DECLARE

@@ -12,6 +12,12 @@ section (see `packaging/release.py`).
 
 ### Features
 
+- Loops: `order_by: "<expression> [asc|desc] [nulls first|last], ..."` (SQL's `order by`) replaces
+  `sort`: keys are expressions of the element, several keys, a direction and where the elements with no
+  key go (last by default). The earlier `sort: {key, reverse}` still loads and is written back as
+  `order_by`. The Python backend now runs a sorted loop at all (it passed the key as text to Python's
+  `sorted`, which raised on every run), and PL/SQL orders by the computed keys with a stable sort that
+  copies into a new array. Desktop: an *Order the list by* editor in the loop options.
 - Loops: `when_empty: omit | list` says whether a list with no element is left out or written as `[]`.
   **Behaviour change** (alpha): unset, an optional list (one the output schema does not require) is now
   left out when empty; before, every list was written empty. A required list is still written empty,

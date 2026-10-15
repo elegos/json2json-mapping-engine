@@ -1706,7 +1706,7 @@ enforced project-wide; a collision is a build error.
   label: order                      # anchor label: @order.x or @2.x (positional)
   source: $.source.orders[*]        # source array path
   filter: "@.status == 'ACTIVE'"    # optional filter expression
-  sort: {key: "@.orderDate", reverse: false}   # optional; applied before filter/index
+  order_by: "@.orderDate desc nulls last"      # optional; applied before filter/index
   output: $.Output.Orders[*]        # destination array path
   description: "One output record per active source order."
   rules:
@@ -1768,21 +1768,33 @@ language subset (§Permitted constructs). In hand-written bootstrap `.map.py`
 files, the same effect is achieved by writing that guard directly — there is
 no separate `filter:` keyword outside `.fn.yaml`.
 
-**`sort`** (optional) orders the source array before iteration — and, since
-`@index` (§Scope anchors) only ever numbers "whatever order the loop actually
-iterates in", `sort` is what makes an index *meaningful* rather than an
-artifact of source-JSON ordering. `key` is a field-reference expression (same
-anchor rules as `filter`); `reverse` defaults to `false`. Applied before
-`filter` and before index assignment, so `@index` counts positions in the
-*sorted, unfiltered* — no: sorted, then filtered — sequence. (Filtering after
-sorting means indices are contiguous over the elements that survive the
-filter, not over the original array; this is the only order the two
-compose in.) In bootstrap `.map.py` this is the `sorted(<array>, key="<field>")`
-/ `sorted(<array>, key="<field>", reverse=True)` idiom (§Built-in functions'
-sibling note doesn't cover this — `sorted`/`enumerate` are for-loop-iterable
-wrappers, not builtins, recognized directly by the Code Generator and lowered
-to a native in-place sort using `JSON_ELEMENT_T.compare_to()`, same
-no-SQL-context principle as aggregation).
+**`order_by`** (optional) orders the source array before iteration — and, since `@index` (§Scope
+anchors) only ever numbers "whatever order the loop actually iterates in", it is what makes an index
+*meaningful* rather than an artifact of source-JSON ordering. It is SQL's `order by`:
+
+```
+<expression> [asc | desc] [nulls first | nulls last] {, <expression> ...}
+```
+
+Each key is any expression of the element (`@.f`, `to_number(split_last(@.code, '-'))`), computed once
+per element; ascending and nulls last are the defaults. An element whose key is missing goes first or
+last as stated, whichever the direction; elements with equal keys keep the order they have, so the
+next key breaks the ties of the one before. A key that is not a plain field of the element must have
+a known type — number or text, from the function or operator that produces it (`to_number`,
+`to_string`, `upper`, arithmetic) — because that is how two keys are compared. The same clause orders
+a selection (§Selecting one element). The earlier form `sort: {key: "@.f", reverse: true}` still
+loads and is written back as `order_by: "@.f desc"`. Applied before `filter` and before index
+assignment: sorted, then filtered, then numbered (indices are contiguous over the elements that
+survive the filter).
+
+In the developer dialect (`.map.py`) this is `sorted(<array>, key="<field>")` or `sorted(<array>,
+by=<expression of the loop variable>, kind="number" | "str")`, each with `reverse=True` and
+`nulls="first"` as needed, one call per key with the last key innermost (stable sorts), always
+inside a `for` iterable (`sorted`/`enumerate` are wrappers recognized by the Code Generator, not
+built-ins). The Python backend runs it as `_sorted` (keys once per element, equal keys in order);
+PL/SQL computes the keys into a collection, puts the positions in order with a stable insertion
+sort and copies the elements into a new array, so the document's own array is never reordered
+under the other loops that read it. Golden cases: `tests/track1/transpiler/test_order_by.py`.
 
 **`@index`** — a loop that wants a progressive per-element number pairs its
 `for` with Python's real `enumerate()`: `for i, x in enumerate(<array>):` (0-based)

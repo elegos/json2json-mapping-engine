@@ -561,3 +561,9 @@ button.link { background: none; border: none; padding: 0; color: #4a90d9; text-d
 .loop-options .prompt-field select { font: inherit; padding: 4px 6px; }
 button.loop-options-button { padding: 0 4px; opacity: 0.55; }
 button.loop-options-button.set { opacity: 1; color: #2a5a9f; }
+.loop-options .order-keys { border: none; padding: 0; margin: 0 0 10px; display: flex; flex-direction: column; gap: 4px; }
+.loop-options .order-keys legend { padding: 0; margin-bottom: 3px; }
+.loop-options .order-key { display: flex; gap: 4px; align-items: center; }
+.loop-options .order-key input { flex: 1; min-width: 0; font: inherit; padding: 3px 6px; }
+.loop-options .order-key select { font: inherit; padding: 3px 4px; }
+.loop-options { width: min(560px, 94vw); }

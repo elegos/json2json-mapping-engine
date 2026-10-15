@@ -49,6 +49,7 @@ from transpiler.model import (
     is_unfinished,
     load_rule,
 )
+from transpiler.orderby import parse_order_by
 from transpiler.paths import expand_paths
 from transpiler.selector import (
     find_selections,
@@ -808,6 +809,18 @@ class _Checker:
             self.block(path, condition, inner, column)
             self.refs(path, condition, column, in_root, [*items, item], [*labels, label])
             self.typecheck(path, condition, None, "", in_root, [*items, item], [*labels, label])
+        if isinstance(rule, LoopRule) and rule.order_by:
+            for key in parse_order_by(rule.order_by):
+                if find_selections(key.expr):
+                    self.add(
+                        path,
+                        "expression",
+                        "an order_by key cannot hold a selection (a path with a condition in it)",
+                    )
+                    continue
+                self.block(path, key.expr, inner, "expression")
+                self.refs(path, key.expr, "expression", in_root, [*items, item], [*labels, label])
+                self.typecheck(path, key.expr, None, "", in_root, [*items, item], [*labels, label])
         self.walk(
             rule.rules, f"{path}.rules", inner, node, in_root, [*items, item], [*labels, label]
         )

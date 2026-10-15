@@ -47,7 +47,7 @@ import copy
 import itertools
 from dataclasses import dataclass, field
 
-from compiler.loop_iter import LoopIterError, parse_for_iter, parse_for_target
+from compiler.loop_iter import LoopIterError, parse_for_iter, parse_for_target, sorted_call
 
 
 class LoopFusionError(Exception):
@@ -193,13 +193,7 @@ def lower_filtered_iter(stmt: ast.For, counter: itertools.count) -> ast.For:
         cond = _RenameLoopVar(spec.filter_var, item_var).visit(cond)
 
     iterable: ast.expr = spec.array_expr
-    if spec.sort_key is not None:
-        keywords = [ast.keyword(arg="key", value=ast.Constant(value=spec.sort_key))]
-        if spec.sort_reverse:
-            keywords.append(ast.keyword(arg="reverse", value=ast.Constant(value=True)))
-        iterable = ast.Call(
-            func=ast.Name(id="sorted", ctx=ast.Load()), args=[iterable], keywords=keywords
-        )
+    iterable = sorted_call(iterable, spec.sorts)
 
     body: list[ast.stmt] = []
     if index_var is not None:

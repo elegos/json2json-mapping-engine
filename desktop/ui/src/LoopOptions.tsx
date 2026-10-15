@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
+import { type OrderKey, formatOrderBy, parseOrderBy } from "./orderBy";
 
 /** The advanced options of a loop rule, as the file keeps them (`sort`, `index_start`, `when_empty`...). */
 export interface LoopOptionValues {
   label: string | null;
-  sort_key: string | null;
-  sort_reverse: boolean;
+  /** `<expression> [asc|desc] [nulls first|last], ...` */
+  order_by: string | null;
   index_start: number;
   when_empty: "omit" | "list" | null;
   parallel: number | null;
@@ -25,8 +26,7 @@ const NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
  * loop opens it, so that every option of the file can be expressed without leaving the tool. */
 export function LoopOptions({ name, values, onApply, onCancel }: Props) {
   const [label, setLabel] = useState(values.label ?? "");
-  const [sortKey, setSortKey] = useState(values.sort_key ?? "");
-  const [reverse, setReverse] = useState(values.sort_reverse);
+  const [keys, setKeys] = useState<OrderKey[]>(parseOrderBy(values.order_by));
   const [start, setStart] = useState(String(values.index_start));
   const [empty, setEmpty] = useState<string>(values.when_empty ?? "");
   const [parallel, setParallel] = useState(values.parallel === null ? "" : String(values.parallel));
@@ -38,8 +38,7 @@ export function LoopOptions({ name, values, onApply, onCancel }: Props) {
     if (!ready) return;
     onApply({
       label: label.trim() || null,
-      sort_key: sortKey.trim() || null,
-      sort_reverse: sortKey.trim() ? reverse : false,
+      order_by: formatOrderBy(keys) || null,
       index_start: Number(start.trim()),
       when_empty: empty === "omit" || empty === "list" ? empty : null,
       parallel: parallel.trim() ? Number(parallel.trim()) : null,
@@ -64,20 +63,46 @@ export function LoopOptions({ name, values, onApply, onCancel }: Props) {
           <input value={label} spellCheck={false} autoFocus onChange={(e) => setLabel(e.target.value)} />
           <small>{labelProblem ?? "Lets a rule inside write @name.field instead of @2.field."}</small>
         </label>
-        <label className="prompt-field">
-          <span>Order the list by</span>
-          <input
-            value={sortKey}
-            spellCheck={false}
-            placeholder="@.field"
-            onChange={(e) => setSortKey(e.target.value)}
-          />
-          <small>A field of the element, as @.field. Empty: the order of the source.</small>
-        </label>
-        <label className="modal-option">
-          <input type="checkbox" checked={reverse} disabled={!sortKey.trim()} onChange={(e) => setReverse(e.target.checked)} />
-          Descending
-        </label>
+        <fieldset className="order-keys">
+          <legend>Order the list by</legend>
+          {keys.map((key, n) => (
+            <div className="order-key" key={n}>
+              <input
+                value={key.expr}
+                spellCheck={false}
+                placeholder="@.field, or an expression: to_number(@.code)"
+                aria-label={`Key ${n + 1}`}
+                onChange={(e) => setKeys(keys.map((k, i) => (i === n ? { ...k, expr: e.target.value } : k)))}
+              />
+              <select
+                aria-label={`Direction of key ${n + 1}`}
+                value={key.desc ? "desc" : "asc"}
+                onChange={(e) => setKeys(keys.map((k, i) => (i === n ? { ...k, desc: e.target.value === "desc" } : k)))}
+              >
+                <option value="asc">ascending</option>
+                <option value="desc">descending</option>
+              </select>
+              <select
+                aria-label={`Empty values of key ${n + 1}`}
+                value={key.nullsFirst ? "first" : "last"}
+                onChange={(e) => setKeys(keys.map((k, i) => (i === n ? { ...k, nullsFirst: e.target.value === "first" } : k)))}
+              >
+                <option value="last">empty last</option>
+                <option value="first">empty first</option>
+              </select>
+              <button className="link" title="Remove this key" onClick={() => setKeys(keys.filter((_, i) => i !== n))}>
+                ✕
+              </button>
+            </div>
+          ))}
+          <button className="link" onClick={() => setKeys([...keys, { expr: "", desc: false, nullsFirst: false }])}>
+            + Add a key
+          </button>
+          <small>
+            Each key is an expression of the element; the next one breaks the ties of the one before. No key: the order of
+            the source.
+          </small>
+        </fieldset>
         <label className="prompt-field">
           <span>First number (@index)</span>
           <input value={start} inputMode="numeric" onChange={(e) => setStart(e.target.value)} />
@@ -111,7 +136,7 @@ export function LoopOptions({ name, values, onApply, onCancel }: Props) {
 /** What a loop has set, in a few words for the grid (empty: nothing). */
 export function loopOptionsSummary(rule: Record<string, unknown>): string {
   const parts: string[] = [];
-  if (rule.sort_key) parts.push(`ordered by ${String(rule.sort_key)}${rule.sort_reverse ? " ↓" : ""}`);
+  if (rule.order_by) parts.push(`ordered by ${String(rule.order_by)}`);
   if (rule.index_start) parts.push(`@index from ${String(rule.index_start)}`);
   if (rule.when_empty === "omit") parts.push("left out when empty");
   if (rule.when_empty === "list") parts.push("empty list when empty");

@@ -72,7 +72,7 @@ def _rewrite_rule_texts(file: FunctionalFile, old: str, new: str) -> tuple[Funct
         elif isinstance(rule, ObjectRule):
             texts = {"source": rule.source, "guard": rule.guard}
         elif isinstance(rule, LoopRule):
-            texts = {"source": rule.source, "filter": rule.filter, "sort_key": rule.sort_key}
+            texts = {"source": rule.source, "filter": rule.filter, "order_by": rule.order_by}
         else:
             continue
         for key, value in texts.items():

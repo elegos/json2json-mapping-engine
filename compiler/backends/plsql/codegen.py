@@ -123,7 +123,7 @@ from compiler.loop_fusion import (
     lower_filtered_iter,
     wrap_filter,
 )
-from compiler.loop_iter import LoopIterError, parse_for_iter, parse_for_target
+from compiler.loop_iter import LoopIterError, SortSpec, parse_for_iter, parse_for_target
 from compiler.validation import SCHEMA_CODE, Validation, schema_hash
 
 # PL/SQL requires a VARCHAR2 *variable* declaration to carry a size (unlike
@@ -1517,18 +1517,18 @@ def _translate_fn_for(
     lines: list[str] = []
     source = translator.translate(spec.array_expr, "ARRAY")
     lines.append(f"{arr} := {source};")
-    if spec.sort_key is not None:  # (a list missing from the document is NULL: no elements)
-        lines.append(f"IF {arr} IS NOT NULL THEN")
-        lines.append(f"    {arr} := TREAT({arr}.clone AS JSON_ARRAY_T);")
-        lines.extend(_indent(_sort_lines(arr, spec.sort_key, spec.sort_reverse, n)))
-        lines.append("END IF;")
-
     for name in (item_var, *([index_var] if index_var else [])):
         if name not in ctx.locals:
             ctx.locals[name] = "OBJECT" if name == item_var else "NUMBER"
             ctx.declare(
                 f"{ctx.local_var(name)} {'JSON_OBJECT_T' if name == item_var else 'NUMBER'};"
             )
+    if spec.sorts:  # (a list missing from the document is NULL: no elements)
+        lines.append(f"IF {arr} IS NOT NULL THEN")
+        lines.extend(
+            _indent(_sort_passes(arr, n, spec.sorts, ctx.local_var(item_var), translator.translate))
+        )
+        lines.append("END IF;")
     for name, start, cid in _counted_indexes(lowered.body):
         cnt = ctx.local_var(f"cnt{cid}")
         ctx.declare(f"{cnt} NUMBER;")
@@ -2051,11 +2051,18 @@ class PlsqlCodeGenerator:
         else:
             setup_lines = [f"{arr_var} JSON_ARRAY_T := {source_expr};"]
         sort_lines: list[str] = []
-        if iter_spec.sort_key is not None:
-            sort_lines = [
-                f"{arr_var} := TREAT({arr_var}.clone AS JSON_ARRAY_T);",
-                *self._emit_sort(arr_var, iter_spec.sort_key, iter_spec.sort_reverse, idx),
-            ]
+        if iter_spec.sorts:
+            key_translator = _ExprTranslator(
+                _FlowCtx([*loop_vars, item_var]),
+                rule_signatures,
+                dataclasses,
+                self.function_linker,
+                self._fn_name,
+                self._library_name,
+            )
+            sort_lines = _sort_passes(
+                arr_var, idx, iter_spec.sorts, f"v_{item_var}", key_translator.translate, True
+            )
 
         inner_loop_vars = [*loop_vars, item_var]
         counted = _counted_indexes(stmt.body)
@@ -2099,9 +2106,6 @@ class PlsqlCodeGenerator:
         lines.extend(_indent(inner_lines, 4))
         lines.extend(["            END;", "        END LOOP;", "    END IF;", "END;"])
         return lines
-
-    def _emit_sort(self, arr_var: str, key: str, reverse: bool, idx: int) -> list[str]:
-        return _sort_lines(arr_var, key, reverse, idx)
 
     @staticmethod
     def _is_out_append(call: ast.Call) -> bool:
@@ -2419,37 +2423,91 @@ class PlsqlCodeGenerator:
         ]
 
 
-def _sort_lines(arr_var: str, key: str, reverse: bool, idx: int) -> list[str]:
-    """Native in-place insertion sort by a named field, comparing via
-    `JSON_ELEMENT_T.compare_to()` (type-agnostic — works for both
-    numbers and strings, verified against a live Oracle 23ai instance —
-    no SQL-context ORDER BY, staying in native PL/SQL per the
-    CLOB-only-at-the-boundary principle)."""
-    j_var, k_var, tmp_var, tmp_key_var = (
-        f"v_sortj_{idx}",
-        f"v_sortk_{idx}",
-        f"v_sorttmp_{idx}",
-        f"v_sorttmpkey_{idx}",
-    )
-    op = "<" if reverse else ">"
-    key_q = _quote(key)
+def _sort_passes(
+    arr: str,
+    idx: int,
+    sorts: tuple[SortSpec, ...],
+    item_local: str,
+    translate: Callable[[ast.expr, str | None], str],
+    declare_item: bool = False,
+) -> list[str]:
+    """The ordering of the array `arr` by each of `sorts`, in the order they are applied: one stable
+    pass per key (the last key decides first), each into a new array, so that the document's own
+    array is never reordered under the other loops that read it."""
+    lines: list[str] = []
+    for n, spec in enumerate(sorts):
+        key_code = None
+        if spec.by is not None:
+            key_code = translate(spec.by, "NUMBER" if spec.kind == "number" else "VARCHAR2")
+        lines.extend(_sort_pass(arr, f"{idx}_{n}", spec, item_local, key_code, declare_item))
+    return lines
+
+
+def _sort_pass(
+    arr: str, tag: str, spec: SortSpec, item_local: str, key_code: str | None, declare_item: bool
+) -> list[str]:
+    """One pass: the keys are computed once per element, then the positions are put in order by a
+    stable insertion sort (an element with no key goes first or last as asked, whichever the
+    direction) and the elements are copied in that order. A field key compares as JSON values
+    (`compare_to`: numbers and texts alike); an expression key as a NUMBER or a text, as its
+    `kind` says."""
+    key, order, out = f"v_sortkey_{tag}", f"v_sortord_{tag}", f"v_sorted_{tag}"
+    tmp, j = f"v_sorttmp_{tag}", f"v_sortj_{tag}"
+    i, k = f"v_sorti_{tag}", f"v_sortk_{tag}"
+    cmp_, nul = f"v_sortcmp_{tag}", f"v_sortnul_{tag}"
+    if spec.field is not None:
+        key_type = "JSON_ELEMENT_T"
+        fetch = [f"{key}({i}) := TREAT({arr}.get({i}) AS JSON_OBJECT_T).get({_quote(spec.field)});"]
+        is_null = f"{key}(p) IS NULL OR {key}(p).is_Null"
+        less, more = f"{key}(a).compare_to({key}(b)) < 0", f"{key}(a).compare_to({key}(b)) > 0"
+    else:
+        key_type = "NUMBER" if spec.kind == "number" else "VARCHAR2(4000 CHAR)"
+        fetch = [
+            f"{item_local} := TREAT({arr}.get({i}) AS JSON_OBJECT_T);",
+            f"{key}({i}) := {key_code};",
+        ]
+        is_null = f"{key}(p) IS NULL"
+        less, more = f"{key}(a) < {key}(b)", f"{key}(a) > {key}(b)"
+    first = -1 if spec.nulls_first else 1  # where an element with no key goes against one with
+    before, after = (1, -1) if spec.reverse else (-1, 1)
     return [
         "DECLARE",
-        f"    {j_var} PLS_INTEGER;",
-        f"    {tmp_var} JSON_ELEMENT_T;",
-        f"    {tmp_key_var} JSON_ELEMENT_T;",
+        f"    TYPE t_key_{tag} IS TABLE OF {key_type} INDEX BY PLS_INTEGER;",
+        f"    TYPE t_ord_{tag} IS TABLE OF PLS_INTEGER INDEX BY PLS_INTEGER;",
+        f"    {key} t_key_{tag};",
+        f"    {order} t_ord_{tag};",
+        f"    {out} JSON_ARRAY_T := JSON_ARRAY_T();",
+        f"    {tmp} PLS_INTEGER;",
+        f"    {j} PLS_INTEGER;",
+        *([f"    {item_local} JSON_OBJECT_T;"] if declare_item and spec.by is not None else []),
+        f"    FUNCTION {nul}(p IN PLS_INTEGER) RETURN BOOLEAN IS",
+        f"    BEGIN RETURN {is_null}; END;",
+        f"    FUNCTION {cmp_}(a IN PLS_INTEGER, b IN PLS_INTEGER) RETURN PLS_INTEGER IS",
+        "    BEGIN",
+        f"        IF {nul}(a) THEN RETURN CASE WHEN {nul}(b) THEN 0 ELSE {first} END; END IF;",
+        f"        IF {nul}(b) THEN RETURN {-first}; END IF;",
+        f"        IF {less} THEN RETURN {before}; END IF;",
+        f"        IF {more} THEN RETURN {after}; END IF;",
+        "        RETURN 0;",
+        "    END;",
         "BEGIN",
-        f"    FOR {k_var} IN 1 .. {arr_var}.get_size - 1 LOOP",
-        f"        {tmp_var} := {arr_var}.get({k_var});",
-        f"        {tmp_key_var} := TREAT({tmp_var} AS JSON_OBJECT_T).get({key_q});",
-        f"        {j_var} := {k_var} - 1;",
-        f"        WHILE {j_var} >= 0 AND TREAT({arr_var}.get({j_var}) AS JSON_OBJECT_T)"
-        f".get({key_q}).compare_to({tmp_key_var}) {op} 0 LOOP",
-        f"            {arr_var}.put({j_var} + 1, {arr_var}.get({j_var}), TRUE);",
-        f"            {j_var} := {j_var} - 1;",
-        "        END LOOP;",
-        f"        {arr_var}.put({j_var} + 1, {tmp_var}, TRUE);",
+        f"    FOR {i} IN 0 .. {arr}.get_size - 1 LOOP",
+        *(f"        {line}" for line in fetch),
+        f"        {order}({i}) := {i};",
         "    END LOOP;",
+        f"    FOR {k} IN 1 .. {arr}.get_size - 1 LOOP",
+        f"        {tmp} := {order}({k});",
+        f"        {j} := {k} - 1;",
+        f"        WHILE {j} >= 0 AND {cmp_}({order}({j}), {tmp}) > 0 LOOP",
+        f"            {order}({j} + 1) := {order}({j});",
+        f"            {j} := {j} - 1;",
+        "        END LOOP;",
+        f"        {order}({j} + 1) := {tmp};",
+        "    END LOOP;",
+        f"    FOR {i} IN 0 .. {arr}.get_size - 1 LOOP",
+        f"        {out}.append({arr}.get({order}({i})));",
+        "    END LOOP;",
+        f"    {arr} := {out};",
         "END;",
     ]
 

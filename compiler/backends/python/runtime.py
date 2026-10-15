@@ -402,6 +402,17 @@ def _each(value: Any) -> Any:
     raise TypeError(f"cannot iterate over {type(value).__name__}")
 
 
+def _sorted(items: Any, key: Any, reverse: bool = False, nulls_first: bool = False) -> list[Any]:
+    """The elements ordered by `key(element)`, once per element: equal keys keep the order they
+    have, and the elements whose key is missing come first or last as asked, whichever the direction."""
+    keyed = [(key(item), item) for item in items]
+    present = [pair for pair in keyed if pair[0] is not None]
+    absent = [pair[1] for pair in keyed if pair[0] is None]
+    present.sort(key=lambda pair: pair[0], reverse=reverse)
+    ordered = [pair[1] for pair in present]
+    return absent + ordered if nulls_first else ordered + absent
+
+
 def _record(**fields: Any) -> dict[str, Any]:
     """An object of the output: the fields that were left out are not in it."""
     written = {k: _written(v) for k, v in fields.items()}

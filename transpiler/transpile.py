@@ -50,6 +50,7 @@ from compiler.schema_generator import SchemaTypes
 from transpiler.anchors import AnchorScope, LoopRef, resolve_anchors, uses_value
 from transpiler.check import _Schemas
 from transpiler.expr import COMMENT_MARK, Block, comment_stmt, parse_block
+from transpiler.exprtypes import ExprTyper
 from transpiler.ids import assign_ids, ident_of, walk
 from transpiler.model import (
     CONFLICT_KEY,
@@ -65,6 +66,7 @@ from transpiler.model import (
     load_functional_file,
     prune_unfinished,
 )
+from transpiler.orderby import parse_order_by
 from transpiler.paths import expand_paths
 from transpiler.selector import (
     Selection,
@@ -236,6 +238,29 @@ class _Composite:
     ident: str
     cls: str
     needs: set[int]  # index offsets (in the composite's own frame) its function takes
+
+
+def _order_kind(text: str) -> str | None:
+    """How the values of an order key compare: `number` or `str`, from what the expression
+    produces (the result of a function, an operator, a literal); None when that is not known."""
+    try:
+        node = ast.parse(text.strip(), mode="eval").body
+    except SyntaxError:
+        return None
+    if isinstance(node, ast.BinOp) and (
+        not isinstance(node.op, ast.Add)
+        or any(
+            isinstance(n, ast.Constant) and isinstance(n.value, int | float)
+            for n in (node.left, node.right)
+        )
+    ):
+        return "number"  # arithmetic: a sum of a text and a number is not one
+    found = ExprTyper(None, {}, lambda message: None).infer(node)
+    if found and found <= {"number", "integer"}:
+        return "number"
+    if found and found <= {"string"}:
+        return "str"
+    return None
 
 
 class _Builder:
@@ -804,6 +829,35 @@ class _Builder:
             raise FnYamlError(f"{where}: unsupported source path {rule.source!r}")
         return text
 
+    def _ordered(self, iterable: str, rule: LoopRule, scope: AnchorScope, where: str) -> str:
+        """`iterable` inside the `sorted(...)` calls of the loop's `order_by`: one per key, the last
+        key innermost (the sort is stable, so the first decides and the next breaks its ties)."""
+        keys = parse_order_by(rule.order_by or "")
+        label = re.escape(rule.label or "")
+        for key in reversed(keys):
+            options = (", reverse=True" if key.desc else "") + (
+                ", nulls='first'" if key.nulls_first else ""
+            )
+            field = re.match(rf"^@(?:{label})?\.(\w+)$", key.expr.strip())
+            if field:
+                iterable = f"sorted({iterable}, key={field.group(1)!r}{options})"
+                continue
+            if find_selections(key.expr):
+                raise FnYamlError(
+                    f"{where}: an order_by key cannot hold a selection (a path with a condition in it)"
+                )
+            resolved = resolve_anchors(key.expr, scope, f"{where} order_by")
+            if resolved.uses_index:
+                raise FnYamlError(f"{where}: order_by cannot reference @index")
+            kind = _order_kind(resolved.text)
+            if kind is None:
+                raise FnYamlError(
+                    f"{where}: the type of the order key '{key.expr}' is not known: make it a number "
+                    "with to_number(...) or a text with to_string(...), or order by a field of the element"
+                )
+            iterable = f"sorted({iterable}, by={resolved.text}, kind={kind!r}{options})"
+        return iterable
+
     def _iterable(
         self,
         rule: LoopRule,
@@ -817,13 +871,8 @@ class _Builder:
         `scope` names the loop's own element/index as they appear where the
         `for` is written."""
         iterable = source
-        if rule.sort_key:
-            label = re.escape(rule.label or "")
-            m = re.match(rf"^@(?:{label})?\.(\w+)$", rule.sort_key.strip())
-            if not m:
-                raise FnYamlError(f"{where}: sort key must be a field of the item ('@.field')")
-            rev = ", reverse=True" if rule.sort_reverse else ""
-            iterable = f'sorted({iterable}, key="{m.group(1)}"{rev})'
+        if rule.order_by:
+            iterable = self._ordered(iterable, rule, scope, where)
         filter_text = None
         if rule.filter:
             if find_selections(rule.filter):

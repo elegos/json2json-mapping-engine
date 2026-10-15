@@ -681,7 +681,9 @@ def test_typed_nested_params_follow_the_input_schema():
             "no if/return/Null",
         ),
         ([loop([])], "at least one member"),
-        ([loop([field("a", "@.x")], sort={"key": "$.a + 1"})], "sort key"),
+        ([loop([field("a", "@.x")], order_by="if_else(@.a, @.b, @.c)")], "type of the order key"),
+        ([loop([field("a", "@.x")], order_by="@index")], "cannot reference @index"),
+        ([loop([field("a", "@.x")], order_by="to_number(@.a) desc nulls sideways")], "order_by"),
         ([loop([field("a", "@.x")], filter="@index > 1")], "filter cannot reference @index"),
         (
             [loop([field("a", "@.x"), field("b", "@.y", "F")])],

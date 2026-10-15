@@ -2865,8 +2865,7 @@ export function App() {
             name={nameOf(rule)}
             values={{
               label: rule.label ?? null,
-              sort_key: (r.sort_key as string | null) ?? null,
-              sort_reverse: Boolean(r.sort_reverse),
+              order_by: (r.order_by as string | null) ?? null,
               index_start: Number(r.index_start ?? 0),
               when_empty: (r.when_empty as LoopOptionValues["when_empty"]) ?? null,
               parallel: (r.parallel as number | null) ?? null,

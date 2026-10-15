@@ -54,6 +54,12 @@ rules:
 
   Groups are at the top of the file and run in order; the guards are the author's to write and
   must exclude one another (nothing checks it, a test case that matches two shows it).
+- **Ordering a list**: `order_by: "<expression> [asc|desc] [nulls first|last], ..."` on the loop, SQL's
+  `order by`: `order_by: "to_number(split_last(@.lineCode, '-')), @.createdAt desc"`. A key that is not a
+  plain field of the element must produce a number or a text the language knows (`to_number(...)`,
+  `to_string(...)`, `upper(...)`, arithmetic), not an `if_else` of fields: wrap it. An element with
+  no key goes last unless `nulls first`. Equal keys keep the source order. There is no `sort:` to
+  write any more.
 - A loop's `source` may start from an outer loop, as a `filter` may: `@2.refs[*]` or `@line.refs[*]`
   (`@` is the loop it sits in, `@2` the one outside it).
 - **An optional list left out when empty**: `when_empty: omit` on the loop (`list` writes `[]`). Unset,

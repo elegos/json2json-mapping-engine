@@ -98,11 +98,7 @@ def _rule_to_raw(rule: Rule, in_loop: bool = False, nested: bool = False) -> dic
         _put(raw, "label", rule.label)
         raw["source"] = rule.source
         _put(raw, "filter", rule.filter)
-        if rule.sort_key is not None:
-            sort: dict[str, Any] = {"key": rule.sort_key}
-            if rule.sort_reverse:
-                sort["reverse"] = True
-            raw["sort"] = sort
+        _put(raw, "order_by", rule.order_by)
         raw["output"] = _short(rule.output, "@." if nested else "$.")
         if rule.index_start:
             raw["index_start"] = rule.index_start

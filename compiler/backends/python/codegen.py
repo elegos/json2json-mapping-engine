@@ -10,11 +10,13 @@ mapping body become `_run(root, out)`. Types are annotations only: they are drop
 from __future__ import annotations
 
 import ast
+import copy
 from dataclasses import dataclass, field
 from typing import Any
 
 from compiler.backends.base import CodeGenError, CompiledUnit
 from compiler.function_registry import FunctionInfo
+from compiler.loop_iter import LoopIterError, parse_sort
 from compiler.validation import Validation
 
 _ARITH = {
@@ -90,6 +92,7 @@ class _Rewriter(ast.NodeTransformer):
         self.in_run = False
         self.bound: set[str] = set()  # names the mapping's statements assign or loop over
         self.fused: list[ast.FunctionDef] = []  # the per-element functions of such loops
+        self._item_var = "_e"  # the variable the `for` being read names (a sort key reads it)
 
     # -- declarations ------------------------------------------------------------------
     def visit_FunctionDef(self, node: ast.FunctionDef) -> ast.FunctionDef:
@@ -184,6 +187,8 @@ class _Rewriter(ast.NodeTransformer):
     # -- calls and loops ---------------------------------------------------------------
     def visit_Call(self, node: ast.Call) -> ast.expr:
         func = node.func
+        if isinstance(func, ast.Name) and func.id == "sorted" and node.args:
+            return self._sorted(node)
         if isinstance(func, ast.Name):
             if func.id in self.dataclasses:
                 if node.args:
@@ -203,6 +208,39 @@ class _Rewriter(ast.NodeTransformer):
         elif isinstance(func, ast.Attribute):
             raise CodeGenError(f"method call .{func.attr}(...) is not supported")
         return self.generic_visit(node)  # type: ignore[return-value]
+
+    def _sorted(self, node: ast.Call) -> ast.expr:
+        """`sorted(x, key="f" | by=<expression of the element>, reverse=, nulls=)`: the elements
+        ordered by `_sorted`, which keeps equal keys in order and puts the ones with no key first
+        or last as asked, whatever the direction."""
+        try:
+            sort = parse_sort(node)
+        except LoopIterError as exc:
+            raise CodeGenError(str(exc)) from exc
+        inner = self.visit(node.args[0])
+        var = self._item_var
+        if sort.field is not None:
+            body: ast.expr = _call("_get", _name(var), ast.Constant(value=sort.field))
+        else:
+            assert sort.by is not None
+            body = self.visit(copy.deepcopy(sort.by))
+        key = ast.Lambda(
+            args=ast.arguments(
+                posonlyargs=[],
+                args=[ast.arg(arg=var)],
+                kwonlyargs=[],
+                kw_defaults=[],
+                defaults=[],
+            ),
+            body=body,
+        )
+        return _call(
+            "_sorted",
+            inner,
+            key,
+            ast.Constant(value=sort.reverse),
+            ast.Constant(value=sort.nulls_first),
+        )
 
     def _parallel_loop(self, node: ast.For) -> ast.stmt | None:
         """A loop that only appends what one `@parallel` rule gives for each element (after
@@ -361,6 +399,7 @@ class _Rewriter(ast.NodeTransformer):
         )
 
     def visit_For(self, node: ast.For) -> ast.stmt:
+        self._item_var = _item_name(node.target)
         threaded = self._parallel_loop(node) or self._fused_loop(node)
         if threaded is not None:
             return threaded
@@ -375,13 +414,20 @@ class _Rewriter(ast.NodeTransformer):
         return _elements(self.visit(node))
 
 
+def _item_name(target: ast.expr) -> str:
+    """The variable a `for` names for its element (the second of `index, element`)."""
+    if isinstance(target, ast.Tuple) and len(target.elts) == 2:
+        target = target.elts[1]
+    return target.id if isinstance(target, ast.Name) else "_e"
+
+
 def _elements(node: ast.expr) -> ast.expr:
     """`node` (already visited) as what a `for` can run over: `_each(...)`, inside a call to
     `enumerate` or `sorted`."""
     if (
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)
-        and node.func.id in ("enumerate", "sorted")
+        and node.func.id in ("enumerate", "_sorted")
         and node.args
     ):
         node.args = [_elements(node.args[0]), *node.args[1:]]

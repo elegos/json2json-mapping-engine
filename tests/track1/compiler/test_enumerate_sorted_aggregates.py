@@ -19,7 +19,9 @@ def test_enumerate_binds_index_variable():
 def test_sorted_lowers_to_native_insertion_sort_no_sql_context():
     sql = compile_file(FIXTURES / "enumerate_sorted.map.py")
     assert "compare_to" in sql
-    assert ".put(" in sql and ", TRUE)" in sql
+    assert (
+        "INSERT" not in sql and "TABLE OF PLS_INTEGER INDEX BY PLS_INTEGER" in sql
+    )  # the positions
     assert "ORDER BY" not in sql  # native PL/SQL only, no SQL-context sort
 
 
@@ -55,11 +57,14 @@ def test_src_means_the_item_not_the_index_in_an_enumerate_loop():
     assert "fn_m_rule(v_srcroot, v_src, v_index," in sql
 
 
-def test_sorted_sorts_a_clone_not_the_source_array():
+def test_sorted_copies_into_a_new_array_not_the_source_array():
     from compiler.pipeline import compile_file
 
     sql = compile_file(FIXTURES / "enumerate_sorted.map.py")
-    assert ".clone AS JSON_ARRAY_T)" in sql
+    # the elements are copied, in order, into an array of the pass: the document's own array is
+    # never reordered under the other loops that read it
+    assert "v_sorted_0_0.append(v_forarr_0.get(v_sortord_0_0(" in sql
+    assert "v_forarr_0 := v_sorted_0_0;" in sql
 
 
 def test_comparison_with_none_is_is_null():

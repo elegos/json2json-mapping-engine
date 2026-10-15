@@ -21,6 +21,8 @@ from typing import Any, Literal
 
 import yaml
 
+from transpiler.orderby import parse_order_by
+
 FIELD_TYPES = ("str", "int", "number", "bool", "date", "datetime")
 _IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -101,8 +103,9 @@ class LoopRule:
     output: str
     label: str | None = None
     filter: str | None = None
-    sort_key: str | None = None
-    sort_reverse: bool = False
+    order_by: str | None = (
+        None  # `<expression> [asc|desc] [nulls first|last], ...` (transpiler/orderby.py)
+    )
     index_start: int = 0  # start-offset for `@index`
     # what an output list is when no element passed: left out (`omit`), written empty (`list`), or
     # (None) left out when the output schema does not require the list, else written empty
@@ -324,7 +327,8 @@ _LOOP_KEYS = _COMMON | {
     "label",
     "source",
     "filter",
-    "sort",
+    "sort",  # the earlier form of `order_by`: {key, reverse}
+    "order_by",
     "output",
     "index_start",
     "when_empty",
@@ -479,14 +483,21 @@ def _load_rule(where: str, raw: Any) -> Rule:
         )
     if kind == "loop":
         _check_keys(where, raw, _LOOP_KEYS)
+        order_by = _get_str(where, raw, "order_by")
         sort = raw.get("sort")
-        sort_key, sort_reverse = None, False
         if sort is not None:
+            if order_by is not None:
+                raise _err(where, "'sort' and 'order_by' say the same thing: keep 'order_by'")
             if not isinstance(sort, dict) or "key" not in sort:
                 raise _err(where, "'sort' must be a mapping with a 'key'")
             _check_keys(f"{where}.sort", sort, {"key", "reverse"})
-            sort_key = _get_str(f"{where}.sort", sort, "key", required=True)
-            sort_reverse = bool(sort.get("reverse", False))
+            key = _get_str(f"{where}.sort", sort, "key", required=True) or ""
+            order_by = key + (" desc" if bool(sort.get("reverse", False)) else "")
+        if order_by is not None:
+            try:
+                parse_order_by(order_by)
+            except ValueError as exc:
+                raise _err(where, f"'order_by': {exc}") from exc
         index_start = raw.get("index_start", 0)
         if not isinstance(index_start, int) or isinstance(index_start, bool):
             raise _err(where, "'index_start' must be an integer")
@@ -502,8 +513,7 @@ def _load_rule(where: str, raw: Any) -> Rule:
             output=_get_str(where, raw, "output", required=True) or "",
             label=label,
             filter=_get_str(where, raw, "filter"),
-            sort_key=sort_key,
-            sort_reverse=sort_reverse,
+            order_by=order_by,
             index_start=index_start,
             when_empty=when_empty,  # type: ignore[arg-type]
             parallel=_load_parallel(where, raw),
