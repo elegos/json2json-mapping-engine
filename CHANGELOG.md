@@ -10,6 +10,12 @@ section (see `packaging/release.py`).
 
 ## [Unreleased]
 
+### Changed
+
+- Installer: about half the files. The dependencies ship as byte-code only (no `.py` sources, type
+  stubs, C headers or packaging metadata beyond what `importlib.metadata` reads), so that an
+  installation on a machine that scans every file written is faster.
+
 ## [0.4.1] - 2026-10-15
 
 ### Fixed
