@@ -32,6 +32,11 @@ $.myList[discriminator = 'MY DISCRIMINATOR' and other = $.rootElement]
 
 - The first element for which the condition is true is used; if there is none, the object is
   **left out** of the output.
+- To take **the best** of several, add an order after the condition, as in SQL:
+  `$.events[kind = 'K1' order by to_number(rank) desc]` is the one with the highest `rank`
+  (`asc` is the default, `nulls first` / `nulls last` say where the elements with no key go; a
+  computed key must be a number or a text the tool knows, see [loops](page:functional/loops)). The
+  condition may be left out: `$.events[order by rank desc]`.
 - The rules inside read that element as `@`.
 - In the condition a bare name is a field of the element being tested, and `=` compares.
 
@@ -46,14 +51,18 @@ $.items[marker = 'TOTALS'].qty
 
 - If no element satisfies the condition, the value is **empty** (null), as for a field that is
   missing from the data.
+- The condition can ask about a **list inside the candidate**: `$.packages[any(i.ref == @2.ref for i in
+  items)].vol` is the volume of the first package that has an item with the line's `ref`
+  (`any`, `all`, `count`, see [Expression](page:functional/expression)). The condition can also
+  end in an `order by`, as above.
 - The condition can read the loop the rule is in: inside a loop over `$.lines[*]`,
   `$.prices[sku = @2.sku].price` is the price of the line's SKU (`@` is the price being tested,
   `@2` the line).
 - A name for it, in [Paths](page:functional/paths), saves repeating it:
   `totals` = `$.items[marker = 'TOTALS']`, then `@totals.qty` and `@totals.currency`.
 - The element is looked for **once in each rule**, however many times the rule reads it.
-- A condition cannot hold another one, and a loop's **filter** cannot use one. Read the value in
-  a field of the loop instead.
+- A condition cannot hold another selection, and a loop's **filter** cannot use one. Read the value
+  in a field of the loop instead.
 
 ## When the Source changes
 

@@ -1327,6 +1327,10 @@ export function App() {
       else if (state.view) setView(state.view);
       setCollapsed(new Set());
       await frames();
+      if (state.column) {
+        grid.current?.api.ensureColumnVisible(state.column);
+        await frames();
+      }
       if (state.select !== undefined) {
         const api = grid.current?.api;
         const row = state.select
@@ -2340,7 +2344,7 @@ export function App() {
         <ProjectButton recent={recent} onOpen={openProject} onPick={async (d) => {
             if (await switchGuard()) await openDir(d);
           }} />
-        <button title="Start: recent projects, new project" aria-label="Start wizard" onClick={() => setWizard(true)}>
+        <button data-tour="wizard" title="Start: recent projects, new project" aria-label="Start wizard" onClick={() => setWizard(true)}>
           🧙‍♂️
         </button>
         <MiddleEllipsis className="project" text={project ?? "no project"} />

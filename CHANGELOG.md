@@ -10,6 +10,17 @@ section (see `packaging/release.py`).
 
 ## [Unreleased]
 
+### Added
+
+- Suggestions while typing: the fields of a comprehension's variable (`any(x. for x in $.items)`), a
+  loop's own element in its filter and in the keys of its order, the keywords `for`, `if`, `else`,
+  `order by`, `asc`, `desc`, `nulls first|last`, and in the developer dialect `sorted(` with its
+  arguments and the values of `kind=` and `nulls=`.
+- The key of a loop's order by, in the Loop options dialog, suggests as you type.
+- Guide: a Loops page (sources, filter, options, order by, when empty) and the new forms in Source,
+  Expression and the Developer book. Tours: loop options, importing a document, validations; the
+  Validation column of the developer tour is brought into view.
+
 ### Changed
 
 - Installer: about half the files. The dependencies ship as byte-code only (no `.py` sources, type

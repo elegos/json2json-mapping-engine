@@ -24,6 +24,33 @@ When an operation cannot be written with the available functions, select the rul
 current element of the innermost loop; `src1` is the one around it) and `index` (its position;
 `index1` for the outer loop), and no `$` / `@` anchors.
 
+### Ordering and comprehensions in the dialect
+
+A loop's **order by** (see [Loops](page:functional/loops)) is written with `sorted`, always as the
+iterable of a `for`:
+
+```python
+for index, src in enumerate(sorted(root.items, key="sku", reverse=True), start=1):
+    ...
+```
+
+| Argument | Meaning |
+|---|---|
+| `key="field"` | Order by a field of the element. |
+| `by=<expression>` | Order by an expression of the element (`by=src.qty * src.price`). |
+| `kind="number"` / `"str"` | How a computed key compares; needed with `by=`, because the type of the key is not guessed. |
+| `reverse=True` | Descending. |
+| `nulls="first"` | The elements with no key come first (last by default, whichever the direction). |
+
+For several keys write one call per key, the **last key innermost**: `sorted(sorted(a, key="y"), key="x")`
+orders by `x`, then `y` (the sorts are stable: equal keys keep their order). `sorted` and
+`enumerate` are wrappers the code generator recognizes, not functions of the registry. Typing
+`sorted(` in the editor suggests the arguments.
+
+The other forms of the cells exist in the dialect with the same meaning: comprehensions
+(`count(x for x in root.items if x.qty > 1)`, `any(...)`, `all(...)`), `matches(text, "pattern")` and
+`x in ("A", "B")`. A comprehension's variable completes its fields as you type (`x.`).
+
 ## When the functional side moves
 
 If a user changes the Source or the Expression of a manual rule, the rule is flagged as **out of
