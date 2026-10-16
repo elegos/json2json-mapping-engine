@@ -8,7 +8,8 @@
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "shots": "node shots/run.mjs"
+    "shots": "node shots/run.mjs",
+    "tour-pages": "node shots/tour.mjs"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",

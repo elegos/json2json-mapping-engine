@@ -1,0 +1,42 @@
+[
+ {
+  "n": 1,
+  "x": 20.4,
+  "y": 56.1,
+  "w": 13.9,
+  "h": 4.6,
+  "text": "The loop's Target: the output list, with [*]. Its rules are indented under it."
+ },
+ {
+  "n": 2,
+  "x": 52.1,
+  "y": 56.1,
+  "w": 13.9,
+  "h": 4.6,
+  "text": "Source: the input list the loop runs over, with [*]."
+ },
+ {
+  "n": 3,
+  "x": 66,
+  "y": 56.1,
+  "w": 18.1,
+  "h": 4.6,
+  "text": "Expression: the loop's filter. Only the elements for which it is true are kept."
+ },
+ {
+  "n": 4,
+  "x": 37.5,
+  "y": 56.2,
+  "w": 1.5,
+  "h": 4.3,
+  "text": "The gear: order, numbering, what to write when nothing is left. Hover it for a summary of what is set."
+ },
+ {
+  "n": 5,
+  "x": 52.1,
+  "y": 60.8,
+  "w": 13.9,
+  "h": 9.2,
+  "text": "The rules under the loop read the current element as @."
+ }
+]

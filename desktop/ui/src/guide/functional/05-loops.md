@@ -9,6 +9,10 @@ each element, and each result is one element of the output list.
 | **Source** | The input list: `$.items[*]`. |
 | **Expression** | The loop's **filter**: only the elements for which it is true are kept (`@.qty > 0`, `not is_empty(@.weight)`). |
 
+```figure
+{"src": "loops.png", "alt": "A loop with a filter and options set"}
+```
+
 The rules inside the loop read the current element as `@` (`@.sku`), the one around it as `@2`,
 and its position as `@index`.
 
@@ -36,6 +40,10 @@ is set.
 | **First number** | `@index` starts from 0 (default) or from 1, or any whole number. |
 | **When there is nothing to list** | See below. |
 | **Parallel degree** | How many workers may map the elements at once, where the target allows it. |
+
+```figure
+{"src": "loop-options.png", "alt": "The loop options dialog"}
+```
 
 ### Ordering a list
 

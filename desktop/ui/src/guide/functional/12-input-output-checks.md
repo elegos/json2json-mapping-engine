@@ -4,6 +4,10 @@ A mapping can refuse a message before any rule runs, or check what it wrote. Tha
 **Validations** tab; its title shows how many validations each side has, for example
 *Validations (I: 2, O: 1)* (the JSON Schema check counts as one).
 
+```figure
+{"src": "validations.png", "alt": "The Validations view with an input check"}
+```
+
 There are two sides: **Input**, checked before the first rule, and **Output**, checked after the last.
 Each has:
 

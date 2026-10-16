@@ -17,6 +17,7 @@ section (see `packaging/release.py`).
   `order by`, `asc`, `desc`, `nulls first|last`, and in the developer dialect `sorted(` with its
   arguments and the values of `kind=` and `nulls=`.
 - The key of a loop's order by, in the Loop options dialog, suggests as you type.
+- Guide pictures regenerated, and new ones (loops, loop options, suggestions, validations, the import steps), taken in a headless browser on mocked states (`desktop/ui/shots/run.mjs`); a page on importing a document; the tours as pages, one picture per step (`shots/tour.mjs`).
 - Guide: a Loops page (sources, filter, options, order by, when empty) and the new forms in Source,
   Expression and the Developer book. Tours: loop options, importing a document, validations; the
   Validation column of the developer tour is brought into view.

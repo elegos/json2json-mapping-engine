@@ -86,6 +86,14 @@ and `avg` give nothing (the field is not written). An aggregate can be inside th
 The functions are the ones the project has: the tool's own and those a developer adds. Typing in
 the cell suggests them, with a short description of each.
 
+```figure
+{"src": "completion.png", "alt": "Suggestions while typing an expression"}
+```
+
+The suggestions follow what you are writing: the fields of the input after `$.` or `@.`, the fields
+of a comprehension's variable after `i.`, the loop labels after `@`, and the keywords (`for`, `if`,
+`order by`, `asc`, `desc`, `nulls first`…) and functions where a name can go.
+
 ## Several lines
 
 When the computation is long, give the intermediate steps a name. The **last line** is the value:

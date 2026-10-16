@@ -19,7 +19,7 @@
   "n": 3,
   "x": 45.4,
   "y": 18.9,
-  "w": 4.2,
+  "w": 9.8,
   "h": 15.1,
   "text": "The result of each case: PASS, FAIL, or output only when the case has no expected output. Click it for the details."
  },
@@ -44,7 +44,7 @@
   "x": 16,
   "y": 52.2,
   "w": 62.5,
-  "h": 30.1,
+  "h": 28.2,
   "text": "The output, or its difference from the expected one when they differ."
  }
 ]

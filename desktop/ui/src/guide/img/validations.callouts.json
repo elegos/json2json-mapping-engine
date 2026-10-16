@@ -1,0 +1,34 @@
+[
+ {
+  "n": 1,
+  "x": 15.3,
+  "y": 9.4,
+  "w": 76.4,
+  "h": 3.8,
+  "text": "How a check reads: only a true condition passes, and a comparison with a missing value is not true."
+ },
+ {
+  "n": 2,
+  "x": 15.3,
+  "y": 14.8,
+  "w": 76.4,
+  "h": 2.2,
+  "text": "Input checks run before any rule, on the document the mapping reads; Output checks run after the last rule, on the one it wrote."
+ },
+ {
+  "n": 3,
+  "x": 15.3,
+  "y": 22.2,
+  "w": 76.4,
+  "h": 2.2,
+  "text": "Check the document against the mapping's JSON Schema."
+ },
+ {
+  "n": 4,
+  "x": 15.3,
+  "y": 27.7,
+  "w": 76.4,
+  "h": 3.4,
+  "text": "A check of your own: an expression on $ that must be true, a code and a message for the report, and what to do when it is not: reject (no rule runs, no output) or warn."
+ }
+]

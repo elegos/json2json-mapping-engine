@@ -1,0 +1,50 @@
+[
+ {
+  "n": 1,
+  "x": 19.8,
+  "y": 6.4,
+  "w": 16.4,
+  "h": 2.3,
+  "text": "The rules by confidence: high, medium, low, and guesses. Start from the ones that are not high."
+ },
+ {
+  "n": 2,
+  "x": 0,
+  "y": 18.4,
+  "w": 28,
+  "h": 3.9,
+  "text": "Only what needs a look: leave it ticked to review just the rules that are not high-confidence."
+ },
+ {
+  "n": 3,
+  "x": 0,
+  "y": 18.4,
+  "w": 28.1,
+  "h": 78.2,
+  "text": "One row for each rule the assistant proposes, with the field it writes."
+ },
+ {
+  "n": 4,
+  "x": 29.3,
+  "y": 19.9,
+  "w": 69.5,
+  "h": 50,
+  "text": "The rule: where it reads, how it is computed, and what the assistant took it from."
+ },
+ {
+  "n": 5,
+  "x": 29.3,
+  "y": 33,
+  "w": 69.5,
+  "h": 3.8,
+  "text": "The words of the document the rule comes from, with their location."
+ },
+ {
+  "n": 6,
+  "x": 49,
+  "y": 21.6,
+  "w": 8.9,
+  "h": 3.3,
+  "text": "Accept the rule, or reject it. Nothing becomes a mapping until you apply the import."
+ }
+]

@@ -5,7 +5,8 @@
 // that file; one that does keeps its own, so a shot taken by hand can be dropped in beside it.
 //
 //   node shots/run.mjs [name ...]      (from desktop/ui; all shots when none is named)
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import react from "@vitejs/plugin-react";
 import { chromium } from "playwright-core";
@@ -98,8 +99,25 @@ for (const shot of shots) {
         b.textContent = "~/projects/" + b.textContent.replace(/^.*\//, "");
       }
     });
-    await shot.setup?.(page);
+    await shot.setup?.(page, { project, tmp: mkdtempSync(join(tmpdir(), "j2jme-shot-docs-")) });
     await page.waitForTimeout(400);
+    // what a user's screen would say: plain folders, the real assistant's name (not the stand-in's)
+    await page.evaluate(() => {
+      const plain = (t) =>
+        t
+          .replace(/\/tmp\/j2jme-shot-docs-\w+\//g, "~/documents/")
+          .replace(/j2jme-tour-shots-\w+/g, "orders-project")
+          .replace(/Stand-in assistant/g, "Claude Code");
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        const text = n.nodeValue ?? "";
+        if (plain(text) !== text) n.nodeValue = plain(text); // untouched text is left alone: an editor would notice
+      }
+      for (const el of document.querySelectorAll("input")) {
+        const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+        if (typeof el.value === "string" && plain(el.value) !== el.value) set.call(el, plain(el.value));
+      }
+    });
     const callouts = [];
     for (const [i, c] of (shot.callouts ?? []).entries()) {
       const box = await boxes(page, c.sel, c.first, shot.viewport ?? VIEWPORT);

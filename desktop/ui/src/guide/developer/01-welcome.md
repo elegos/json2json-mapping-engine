@@ -22,5 +22,6 @@ The `.fn.yaml` file is the **only source of truth**: the tool writes it from the
 - [Writing functions and overrides](page:developer/writing-functions): step by step, with a summary.
 - [Project settings and backends](page:developer/project).
 - [Build, check and test](page:developer/build).
+- [The developer tour, step by step](page:developer/tour): a picture of each step.
 
 The functional users' view is in the [Functional book](page:functional/welcome).

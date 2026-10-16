@@ -1,0 +1,42 @@
+[
+ {
+  "n": 1,
+  "x": 30.6,
+  "y": 25.2,
+  "w": 38.9,
+  "h": 7.7,
+  "text": "A name for the element, so that a rule in a nested loop can say @item.sku instead of @2.sku."
+ },
+ {
+  "n": 2,
+  "x": 30.6,
+  "y": 34,
+  "w": 38.9,
+  "h": 15.7,
+  "text": "The order of the list, like SQL's order by: one key per line, a direction and where the elements with no value go. The next key breaks the ties of the one before."
+ },
+ {
+  "n": 3,
+  "x": 30.6,
+  "y": 50.8,
+  "w": 38.9,
+  "h": 7.7,
+  "text": "The number @index starts from."
+ },
+ {
+  "n": 4,
+  "x": 30.6,
+  "y": 59.6,
+  "w": 38.9,
+  "h": 5.9,
+  "text": "What the output has when no element is left: the list is left out, or an empty list is written."
+ },
+ {
+  "n": 5,
+  "x": 30.6,
+  "y": 75.3,
+  "w": 38.9,
+  "h": 3,
+  "text": "Apply keeps the choices; the gear then shows them in a few words."
+ }
+]

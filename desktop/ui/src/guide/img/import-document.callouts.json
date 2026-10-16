@@ -1,0 +1,42 @@
+[
+ {
+  "n": 1,
+  "x": 19.8,
+  "y": 1.5,
+  "w": 24.8,
+  "h": 3.4,
+  "text": "The steps of an import: the document, the run, the questions, the review and the apply. You can go back to any step you have reached."
+ },
+ {
+  "n": 2,
+  "x": 1.2,
+  "y": 17.5,
+  "w": 97.6,
+  "h": 6.7,
+  "text": "The document: Excel, Word, PDF or text. Nothing is sent anywhere but to the assistant you choose below."
+ },
+ {
+  "n": 3,
+  "x": 1.2,
+  "y": 25.5,
+  "w": 97.6,
+  "h": 6.7,
+  "text": "Which assistant reads it."
+ },
+ {
+  "n": 4,
+  "x": 1.2,
+  "y": 40.2,
+  "w": 97.6,
+  "h": 25.1,
+  "text": "Optional: the profile, the name of the mapping and the two JSON Schemas. Left empty, the assistant proposes them and asks about what it cannot tell."
+ },
+ {
+  "n": 5,
+  "x": 90.3,
+  "y": 72.8,
+  "w": 8.5,
+  "h": 3.6,
+  "text": "Start: a short document is read in one run, a long one in batches."
+ }
+]
