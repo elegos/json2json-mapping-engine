@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
+import { CodeEditor, type Completer } from "./CodeEditor";
 import { type OrderKey, formatOrderBy, parseOrderBy } from "./orderBy";
 
 /** The advanced options of a loop rule, as the file keeps them (`sort`, `index_start`, `when_empty`...). */
@@ -16,6 +17,8 @@ interface Props {
   /** The loop's name in the grid, for the title. */
   name: string;
   values: LoopOptionValues;
+  /** Suggestions for a key's expression (the loop's element is `@`). */
+  complete?: Completer;
   onApply: (values: LoopOptionValues) => void;
   onCancel: () => void;
 }
@@ -24,7 +27,7 @@ const NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /** What a loop has set apart from its Source, Filter and Output, in one place: an icon beside the
  * loop opens it, so that every option of the file can be expressed without leaving the tool. */
-export function LoopOptions({ name, values, onApply, onCancel }: Props) {
+export function LoopOptions({ name, values, complete, onApply, onCancel }: Props) {
   const [label, setLabel] = useState(values.label ?? "");
   const [keys, setKeys] = useState<OrderKey[]>(parseOrderBy(values.order_by));
   const [start, setStart] = useState(String(values.index_start));
@@ -53,8 +56,9 @@ export function LoopOptions({ name, values, onApply, onCancel }: Props) {
         aria-label="Loop options"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
-          if (e.key === "Escape") onCancel();
-          if (e.key === "Enter" && (e.target as HTMLElement).tagName !== "SELECT") apply();
+          // an editor that used the key (it closed its suggestions) has prevented the default
+          if (e.key === "Escape" && !e.defaultPrevented) onCancel();
+          if (e.key === "Enter" && (e.target as HTMLElement).tagName !== "SELECT" && !(e.target as HTMLElement).closest(".cm-editor")) apply();
         }}
       >
         <h3>Loop options — {name}</h3>
@@ -67,12 +71,12 @@ export function LoopOptions({ name, values, onApply, onCancel }: Props) {
           <legend>Order the list by</legend>
           {keys.map((key, n) => (
             <div className="order-key" key={n}>
-              <input
+              <CodeEditor
+                className="order-expr"
                 value={key.expr}
-                spellCheck={false}
-                placeholder="@.field, or an expression: to_number(@.code)"
-                aria-label={`Key ${n + 1}`}
-                onChange={(e) => setKeys(keys.map((k, i) => (i === n ? { ...k, expr: e.target.value } : k)))}
+                completer={complete}
+                onCancel={onCancel}
+                onChange={(text) => setKeys(keys.map((k, i) => (i === n ? { ...k, expr: text } : k)))}
               />
               <select
                 aria-label={`Direction of key ${n + 1}`}

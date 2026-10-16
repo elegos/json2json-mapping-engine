@@ -2870,6 +2870,9 @@ export function App() {
               when_empty: (r.when_empty as LoopOptionValues["when_empty"]) ?? null,
               parallel: (r.parallel as number | null) ?? null,
             }}
+            complete={(text, cursor) =>
+              gridContext.complete?.(loopOptions, "order", text, cursor) ?? Promise.resolve({ from: cursor, items: [] })
+            }
             onCancel={() => setLoopOptions(null)}
             onApply={(values) => {
               edit(loopOptions, (target) => {

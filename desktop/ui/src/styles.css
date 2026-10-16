@@ -564,6 +564,8 @@ button.loop-options-button.set { opacity: 1; color: #2a5a9f; }
 .loop-options .order-keys { border: none; padding: 0; margin: 0 0 10px; display: flex; flex-direction: column; gap: 4px; }
 .loop-options .order-keys legend { padding: 0; margin-bottom: 3px; }
 .loop-options .order-key { display: flex; gap: 4px; align-items: center; }
-.loop-options .order-key input { flex: 1; min-width: 0; font: inherit; padding: 3px 6px; }
+.loop-options .order-key .order-expr { flex: 1; min-width: 0; height: auto; min-height: 24px; border: 1px solid ButtonBorder; border-radius: 2px; padding: 2px 4px; box-sizing: border-box; background: Field; }
+.loop-options .order-key .order-expr .cm-editor { height: auto; }
+.loop-options .order-key .order-expr:focus-within { outline: 1px solid Highlight; }
 .loop-options .order-key select { font: inherit; padding: 3px 4px; }
 .loop-options { width: min(560px, 94vw); }

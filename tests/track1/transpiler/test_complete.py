@@ -256,3 +256,35 @@ def test_a_check_offers_functions_but_not_value() -> None:
     found = labels("validations.input.checks[0]", "expect", "is_dig")
     assert "is_digits" in found
     assert "value" not in labels("validations.input.checks[0]", "expect", "")
+
+
+def test_the_variable_of_a_comprehension_lists_the_fields_of_its_element() -> None:
+    assert labels(CURRENCY, "expression", "any(i. for i in $.items)", 6) == ["sku", "qty", "total"]
+    assert labels(CURRENCY, "expression", "count(i for i in $.items if i.q") == ["qty"]
+    # a condition inside the list does not change what an element is
+    assert labels(CURRENCY, "expression", "sum(i.t for i in $.items[qty > 1])", 7) == ["total"]
+    assert "i" in labels(CURRENCY, "expression", "any(i.qty > 1 for i in $.items) and ")
+
+
+def test_a_comprehension_inside_a_selection_reads_the_candidates_fields() -> None:
+    text = "$.parties[any(a.x for a in items) and "
+    # `items` is a field of the candidate: the variable is its element
+    assert "a" in labels(CURRENCY, "expression", text + "a")
+
+
+def test_a_loops_filter_and_order_key_read_its_element() -> None:
+    assert labels(LINES, "expression", "@.") == ["sku", "qty", "total"]
+    assert labels(LINES, "order", "@.") == ["sku", "qty", "total"]
+    assert "value" not in labels(LINES, "order", "va")
+
+
+def test_the_developer_dialect_knows_sorted_and_comprehension_variables() -> None:
+    inside = f"{LINES}.rules[0]"
+    assert "sorted" in labels(inside, "code", "so")
+    args = labels(inside, "code", "sorted(root.items, ")
+    assert {"key=", "by=", "kind=", "reverse=", "nulls="} <= set(args)
+    assert "key=" not in labels(inside, "code", "len(")
+    assert labels(inside, "code", 'sorted(root.items, kind="n') == ["number"]
+    assert labels(inside, "code", 'sorted(root.items, nulls="') == ["first", "last"]
+    text = "[i. for i in root.items]"
+    assert labels(inside, "code", text, 3) == ["sku", "qty", "total"]

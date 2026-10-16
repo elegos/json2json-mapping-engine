@@ -35,7 +35,17 @@ await button.click();
 await page.waitForSelector(".loop-options");
 await page.screenshot({ path: join(out, "1-loop-options.png") });
 await page.click(".loop-options .order-keys button:has-text(\"Add a key\")");
-await page.fill(".loop-options .order-key input", "@.sku");
+await page.click(".loop-options .order-key .cm-content");
+await page.keyboard.type("@.");
+await page.waitForSelector(".cm-tooltip-autocomplete", { timeout: 5000 }).then(
+  async () => console.log("suggestions:", (await page.locator(".cm-tooltip-autocomplete li").allTextContents()).join(" | ")),
+  () => console.log("no suggestions"),
+);
+await page.screenshot({ path: join(out, "1b-order-suggestions.png") });
+await page.keyboard.press("Escape");
+await page.keyboard.type("sku");
+await page.waitForTimeout(300);
+if ((await page.locator(".loop-options").count()) === 0) throw new Error("Escape in the editor closed the dialog");
 await page.selectOption('.loop-options select[aria-label="Direction of key 1"]', "desc");
 await page.fill('.loop-options label:has-text("First number") input', "1");
 await page.selectOption('.loop-options label:has-text("When there is nothing") select', "omit");
@@ -44,7 +54,7 @@ await page.waitForSelector(".loop-options", { state: "detached" });
 const after = page.locator('.ag-cell[col-id="kind"] button.loop-options-button.set').first();
 console.log("icon now says:", await after.getAttribute("title"));
 await after.click();
-console.log("reopened with:", await page.inputValue(".loop-options .order-key input"),
+console.log("reopened with:", await page.locator(".loop-options .order-key .cm-content").innerText(),
   "|", await page.inputValue('.loop-options label:has-text("When there is nothing") select'));
 await page.click('.loop-options button:has-text("Cancel")');
 await browser.close();
