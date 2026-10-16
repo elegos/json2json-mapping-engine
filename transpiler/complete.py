@@ -28,7 +28,11 @@ from transpiler.selector import _HEAD, replace_selections, split_selector
 
 Schema = dict[str, Any]
 
-_KEYWORDS = ("and", "or", "not", "in", "True", "False", "None")
+_KEYWORDS = (
+    "and", "or", "not", "in", "True", "False", "None",
+    "for", "if", "else",  # comprehensions: `count(x for x in $.list if x.n > 1)`
+    "order by", "asc", "desc", "nulls first", "nulls last",  # a selection's / aggregate's order
+)  # fmt: skip
 
 
 @dataclass
