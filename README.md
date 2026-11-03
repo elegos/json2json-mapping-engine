@@ -1,4 +1,4 @@
-# <img src="./desktop/branding/icon.svg" alt="JSON 2 JSON mapping engine logo" width="48"/> json2json-mapping-engine
+# <img src="./desktop/branding/icon.svg" alt="JSON 2 JSON mapping engine logo" width="34"/> json2json-mapping-engine
 
 [![Latest release](https://git.giacomofurlan.name/elegos/json2json-mapping-engine/badges/release.svg)](https://git.giacomofurlan.name/elegos/json2json-mapping-engine/releases)
 [![CI (latest commit)](https://git.giacomofurlan.name/elegos/json2json-mapping-engine/actions/workflows/ci.yml/badge.svg?branch=main)](https://git.giacomofurlan.name/elegos/json2json-mapping-engine/actions?workflow=ci.yml)
