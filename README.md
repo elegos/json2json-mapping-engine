@@ -1,3 +1,4 @@
+<a name="json2json-mapping-engine" />
 # <img src="./desktop/branding/icon.svg" alt="JSON 2 JSON mapping engine logo" width="34"/> json2json-mapping-engine
 
 [![Latest release](https://git.giacomofurlan.name/elegos/json2json-mapping-engine/badges/release.svg)](https://git.giacomofurlan.name/elegos/json2json-mapping-engine/releases)
@@ -13,11 +14,12 @@ A **compiled, hard-typed** JSON-to-JSON mapping engine designed for polyglot ent
 > [!NOTE]
 > **No runtime interpreters. No framework overhead. Just deterministic, production-ready native code tailored for your specific execution environment.**
 
+<a name="contents" />
 ## 📑 Contents
 - [🔀 json2json-mapping-engine](#json2json-mapping-engine)
   - [📑 Contents](#contents)
   - [🏛️ Why This Engine Exists](#why-this-engine-exists)
-  - [🎯 Supported \& Upcoming Backends](#supported--upcoming-backends)
+  - [🎯 Supported \& Upcoming Backends](#supported-upcoming-backends)
   - [🧩 How it works](#how-it-works)
   - [🎯 Targets](#targets)
   - [🖥️ Desktop tool](#desktop-tool)
@@ -27,8 +29,9 @@ A **compiled, hard-typed** JSON-to-JSON mapping engine designed for polyglot ent
   - [🤖 CI](#ci)
   - [🛠️ Development](#development)
   - [📚 Documentation](#documentation)
-  - [📜 Open Source License \& The Commercial Exception](#open-source-license--the-commercial-exception)
+  - [📜 Open Source License \& The Commercial Exception](#open-source-license-the-commercial-exception)
 
+<a name="why-this-engine-exists" />
 ## 🏛️ Why This Engine Exists
 
 In modern enterprise architectures, data mapping between decoupled systems—ranging from legacy transactional databases to distributed big data pipelines—is a major source of technical debt, silent production failures, and performance bottlenecks. 
@@ -41,6 +44,7 @@ Traditional approaches fall into two flawed categories:
 
 ---
 
+<a name="supported-upcoming-backends" />
 ## 🎯 Supported & Upcoming Backends
 
 The engine architecture separates the front-end (rule transpilation and schema verification) from the back-end (code generation). This allows it to target entirely different computing paradigms with the same set of rules:
@@ -50,6 +54,7 @@ The engine architecture separates the front-end (rule transpilation and schema v
 *   **Java** (⏳ Planned): Target for cloud-native microservices and robust backend ecosystems.
 *   **PySpark** (⏳ Planned): Target for big data engineering, translating schema mappings into optimized DataFrame transformations for distributed clusters.
 
+<a name="how-it-works" />
 ## 🧩 How it works
 
 ```
@@ -61,6 +66,7 @@ JSON Schemas ──► stubs ───────────────┘
 Everything up to the type checker is target-agnostic; only the backend emits code.
 Project settings live in `mapper.toml`.
 
+<a name="targets" />
 ## 🎯 Targets
 
 | Target | State |
@@ -70,6 +76,7 @@ Project settings live in `mapper.toml`.
 
 Writing another one: [`docs/backends/writing-a-backend.md`](docs/backends/writing-a-backend.md).
 
+<a name="desktop-tool" />
 ## 🖥️ Desktop tool
 
 A Tauri app (Linux AppImage, Windows installer and portable zip, macOS dmg) to edit rules in a
@@ -82,6 +89,7 @@ See [`desktop/README.md`](desktop/README.md).
 
 ![Desktop tool](./docs/images/project-rules.png)
 
+<a name="code-generation-before-after" />
 ## 🧩 Code Generation: Before & After
 
 Instead of interpreting rules at runtime, `json2json-mapping-engine` takes a declarative functional mapping and compiles it into the exact code a senior engineer would write manually.
@@ -127,6 +135,7 @@ def map_json(source: dict) -> dict:
     }
 ```
 
+<a name="install" />
 ## 📦 Install
 
 - 📥 **Desktop tool and CLI**: download from the project's releases page (see the release badge).
@@ -155,6 +164,7 @@ dev_scripts/start_dev.sh      # the app in dev mode, with the settings Wayland n
 
 Details in [`desktop/README.md`](desktop/README.md).
 
+<a name="quick-start" />
 ## 🚀 Quick start
 
 ```sh
@@ -166,12 +176,14 @@ mapper verify     # check a published folder against its manifest.json
 
 Try it on the sample project in `desktop/fixtures/orders-project`.
 
+<a name="ci" />
 ## 🤖 CI
 
 `mapper check` and `mapper build` need no Python on the runner:
 `packaging/install-mapper.sh` installs the engine version pinned in `mapper.toml`.
 Works on Forgejo Actions and GitHub Actions: [`docs/CI.md`](docs/CI.md).
 
+<a name="development" />
 ## 🛠️ Development
 
 ```sh
@@ -182,6 +194,7 @@ uv run mapper test --integration   # needs an Oracle database
 
 Both pipelines (`.forgejo/workflows` and `.github/workflows`) are kept in sync.
 
+<a name="documentation" />
 ## 📚 Documentation
 
 - 🏛️ [Architecture](docs/ARCHITECTURE.md)
@@ -191,6 +204,7 @@ Both pipelines (`.forgejo/workflows` and `.github/workflows`) are kept in sync.
 - 🧪 [Oracle runtime spike notes](docs/spike-notes.md)
 - 📝 [Changelog](CHANGELOG.md)
 
+<a name="open-source-license-the-commercial-exception" />
 ## 📜 Open Source License & The Commercial Exception
 
 Copyright (C) 2026 Giacomo Furlan.
