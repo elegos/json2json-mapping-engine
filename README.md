@@ -14,26 +14,20 @@ A **compiled, hard-typed** JSON-to-JSON mapping engine designed for polyglot ent
 > **No runtime interpreters. No framework overhead. Just deterministic, production-ready native code tailored for your specific execution environment.**
 
 ## 📑 Contents
-
-- [🔀 json2json-mapping-engine](#-json2json-mapping-engine)
-  - [📑 Contents](#-contents)
-  - [🏛️ Why This Engine Exists](#️-why-this-engine-exists)
-  - [🎯 Supported \& Upcoming Backends](#-supported--upcoming-backends)
-  - [🧩 How it works](#-how-it-works)
-  - [🎯 Targets](#-targets)
-  - [🖥️ Desktop tool](#️-desktop-tool)
-  - [🧩 Code Generation: Before \& After](#-code-generation-before--after)
-    - [1. The Source Rule (`orders.fn.yaml`)](#1-the-source-rule-ordersfnyaml)
-    - [2. The Compiled Outputs (Zero Dependencies)](#2-the-compiled-outputs-zero-dependencies)
-      - [🔹 Target: PL/SQL (Optimized for Oracle Database)](#-target-plsql-optimized-for-oracle-database)
-      - [🔹 Target: Python (Clean \& Type-Hinted)](#-target-python-clean--type-hinted)
-  - [📦 Install](#-install)
-  - [🚀 Quick start](#-quick-start)
-  - [🤖 CI](#-ci)
-  - [🛠️ Development](#️-development)
-  - [📚 Documentation](#-documentation)
-  - [📜 Open Source License \& The Commercial Exception](#-open-source-license--the-commercial-exception)
-    - [⚠️ The Generated Output Exception](#️-the-generated-output-exception)
+- [🔀 json2json-mapping-engine](#json2json-mapping-engine)
+  - [📑 Contents](#contents)
+  - [🏛️ Why This Engine Exists](#why-this-engine-exists)
+  - [🎯 Supported \& Upcoming Backends](#supported--upcoming-backends)
+  - [🧩 How it works](#how-it-works)
+  - [🎯 Targets](#targets)
+  - [🖥️ Desktop tool](#desktop-tool)
+  - [🧩 Code Generation: Before \& After](#code-generation-before-after)
+  - [📦 Install](#install)
+  - [🚀 Quick start](#quick-start)
+  - [🤖 CI](#ci)
+  - [🛠️ Development](#development)
+  - [📚 Documentation](#documentation)
+  - [📜 Open Source License \& The Commercial Exception](#open-source-license--the-commercial-exception)
 
 ## 🏛️ Why This Engine Exists
 
