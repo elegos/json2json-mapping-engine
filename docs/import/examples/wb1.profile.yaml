@@ -1,0 +1,63 @@
+profile_version: 1
+name: style_a_hotel
+description: Older event-style specs, rule and source in one cell, review dialogue inside the cells.
+applies_to: [reservation_task]
+layout:
+  rule_unit: row_per_target
+  columns:
+    Element: target
+    Mandatory: mandatory
+    Mapping: rule+source
+    Notes: note
+    Comments: review_thread
+  structure_notes:
+    - A Header band and a Body band, each with its own column header row.
+    - Vertical merges continue an expression over several rows.
+conventions:
+  - topic: index_base
+    context: code
+    value: 0
+    explanation: "`rooms[0]` is the first element."
+    basis: document_evidence
+    confirmed: true
+  - topic: index_base
+    context: prose
+    value: 1
+    basis: document_evidence
+    confirmed: true
+  - topic: index_base
+    context: positional_rows
+    value: 1
+    explanation: "`extra1[1]`, `extra1[2]` are segments of one string, not array indices."
+    basis: user_answer
+    confirmed: true
+  - topic: array_notation
+    value: {"[]": every element, "[*]": every element, no_brackets: every element, "[0]": first element}
+    basis: document_evidence
+    confirmed: true
+  - topic: null_rule
+    value: null, empty string and missing are the same; an optional target without value is omitted
+    basis: user_answer
+    confirmed: true
+  - topic: mandatory_vocabulary
+    value: {Y: mandatory, N: optional}
+    explanation: A trailing blank in `Y ` is noise.
+    basis: document_evidence
+    confirmed: true
+  - topic: marker_meaning
+    context: yellow_fill
+    value: attention, no further meaning
+    basis: inferred
+    confirmed: false
+  - topic: date_dialect
+    value: {YYYYMMDDHH24MISS: yyyyMMddHHmmss, UTC: convert to UTC and print with Z}
+    basis: user_answer
+    confirmed: true
+  - topic: concatenation_operators
+    value: "|| is plain concatenation; quotes may be unbalanced (typos)"
+    basis: document_evidence
+    confirmed: true
+  - topic: lookup_not_found
+    value: omit the target field
+    basis: default
+    confirmed: false

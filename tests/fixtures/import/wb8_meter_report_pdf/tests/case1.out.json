@@ -1,0 +1,15 @@
+{
+  "report": {
+    "meter": "MT-0042",
+    "site": "S7 / North plant",
+    "periodStart": "2026-04-30T23:00:00Z",
+    "periodEnd": "2026-05-01T03:00:00Z",
+    "count": 3,
+    "total": 23.625,
+    "average": 7.88,
+    "maxValue": 12.125,
+    "qualityIssues": 2,
+    "firstSample": 10.25,
+    "unit": "kWh"
+  }
+}

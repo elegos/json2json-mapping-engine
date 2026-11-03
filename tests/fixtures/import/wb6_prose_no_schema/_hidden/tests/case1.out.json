@@ -1,0 +1,36 @@
+{
+  "notices": [
+    {
+      "id": "OR-1",
+      "recipient": "MARK REED",
+      "phone": "3331234567",
+      "address": "12 Lime Street, BS1 4DJ, Bristol",
+      "totalWeightGrams": 76500,
+      "urgent": true,
+      "deliveryDate": "14/03/2026",
+      "carrierCode": "TNT",
+      "note": "Doorbell broken"
+    },
+    {
+      "id": "OR-2",
+      "recipient": "ANNA WHITE",
+      "phone": "025550101",
+      "address": "12 Lime Street, BS1 4DJ, Bristol",
+      "totalWeightGrams": 76500,
+      "urgent": false,
+      "deliveryDate": "14/03/2026",
+      "carrierCode": "TNT",
+      "note": "Handling by two operators"
+    },
+    {
+      "id": "OR-4",
+      "recipient": "SARA BLACK",
+      "address": "12 Lime Street, BS1 4DJ, Bristol",
+      "totalWeightGrams": 76500,
+      "urgent": false,
+      "deliveryDate": "14/03/2026",
+      "carrierCode": "TNT",
+      "note": "Fragile"
+    }
+  ]
+}

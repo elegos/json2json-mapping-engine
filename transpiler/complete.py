@@ -8,6 +8,7 @@ the project's JSON Schemas; the tool shows the answer in a drop-down. The semant
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -20,14 +21,19 @@ from transpiler.model import (
     LookupRule,
     LoopRule,
     ObjectRule,
+    PathsSection,
     Rule,
 )
 from transpiler.paths import expand_paths
-from transpiler.selector import _HEAD, replace_selections, split_selector
+from transpiler.selector import _HEAD, _closing, replace_selections, split_selector
 
 Schema = dict[str, Any]
 
-_KEYWORDS = ("and", "or", "not", "in", "True", "False", "None")
+_KEYWORDS = (
+    "and", "or", "not", "in", "True", "False", "None",
+    "for", "if", "else",  # comprehensions: `count(x for x in $.list if x.n > 1)`
+    "order by", "asc", "desc", "nulls first", "nulls last",  # a selection's / aggregate's order
+)  # fmt: skip
 
 
 @dataclass
@@ -100,9 +106,15 @@ def _basename(output: str) -> str:
 
 
 def _context(
-    file: FunctionalFile, path: str, inp: _Schemas, out: _Schemas, dollar: Node
+    file: FunctionalFile,
+    path: str,
+    inp: _Schemas,
+    out: _Schemas,
+    dollar: Node,
+    own_element: bool = False,
 ) -> _Context | None:
-    """Walk to the rule at `path` (on the file with paths expanded), collecting what it sees."""
+    """Walk to the rule at `path` (on the file with paths expanded), collecting what it sees.
+    With `own_element` a loop's own element is seen too (the Filter and the order of a loop read it)."""
     steps = [int(n) for n in re.findall(r"rules\[(\d+)\]", path)]
     if not steps:
         return None
@@ -116,7 +128,8 @@ def _context(
         if step >= len(rules):
             return None
         rule = rules[step]
-        if depth == len(steps) - 1:
+        last = depth == len(steps) - 1
+        if last and not (own_element and isinstance(rule, LoopRule)):
             siblings = {
                 (r.field if isinstance(r, FieldRule) else _basename(r.output))
                 for i, r in enumerate(rules)
@@ -146,10 +159,13 @@ def _context(
                 if isinstance(rule, LoopRule)
                 else f"element selected by the object's Source ({source})",
             ]
+        if last:
+            return _Context(items, labels, out_node, set(), notes, loops)
         rules = rule.rules
     return None
 
 
+_CHECK_PATH = re.compile(r"validations\.(input|output)\.checks\[\d+\]$")
 _RUN = re.compile(r"[\w@$.\[\]*]*$")
 _ANCHOR = re.compile(r"\$|@[A-Za-z_]\w*|@\d+|@")
 
@@ -192,24 +208,47 @@ def complete(
     `column` is `target`, `source`, `expression` or `code` (a rule's `code_override`:
     the developer dialect, with `root`, `src`, `src1`... instead of anchors)."""
     inp, out = _Schemas(input_schema), _Schemas(output_schema)
+    check = _CHECK_PATH.match(path) if column == "expect" else None
+    # `order` is the key of a loop's order by: an expression of the loop's element
     expanded = expand_paths(file)
     section = file.paths
+    if check:
+        # an extra check reads `$` as the whole document it checks (the output on the output side),
+        # with no Paths section and no loop around it, only the lookups and the functions
+        inp = out if check.group(1) == "output" else inp
+        section = PathsSection()
+        column = "expression"
     real_root: Node = inp.root if inp.root is not None else UNKNOWN
     dollar: Node = real_root
     if section.root and inp.root is not None:
         reached, _m = inp.resolve(inp.root, section.root.removeprefix("$"))
         dollar = reached if reached is not None else UNKNOWN
-    ctx = _context(expanded, path, inp, out, dollar)
+    ctx = (
+        _Context([], [], UNKNOWN, set())
+        if check
+        else _context(expanded, path, inp, out, dollar, column in ("expression", "order"))
+    )
     if ctx is None:
         return Completion(cursor, [])
     before = text[:cursor]
     if _inside_string(before):
+        values = _STRING_VALUES.search(before) if column == "code" else None
+        if values:
+            options = _KIND_VALUES if values.group(1) == "kind" else _NULLS_VALUES
+            typed = values.group(2)
+            return Completion(
+                cursor - len(typed),
+                [Item(v, v, "value") for v in options if v.startswith(typed)],
+            )
         return Completion(cursor, [])
+    with_value = column == "expression"
+    if column == "order":
+        column = "expression"
     if column == "target":
         return _target(before, cursor, ctx, out)
 
     if column == "code":
-        return _code(before, cursor, ctx, inp, real_root, functions)
+        return _code(text, before, cursor, ctx, inp, real_root, functions)
 
     # a condition `$.list[...]` in a Source or an expression: the element is the one being tested
     items, labels = ctx.items, ctx.labels
@@ -256,6 +295,25 @@ def complete(
                 return items[i], True
         return None, False
 
+    bound = (
+        _comprehension_vars(text, anchor_node, inp, items[-1] if items else dollar, in_condition)
+        if column == "expression"
+        else {}
+    )
+    var = re.match(r"[A-Za-z_]\w*", token)
+    if var and var.group(0) in bound and token[var.end() :].startswith((".", "[")):
+        rest = token[var.end() :]
+        node = bound[var.group(0)]
+        cut = max(rest.rfind("."), rest.rfind("]"))
+        chain, partial = rest[: cut + 1], rest[cut + 1 :]
+        if chain.endswith("]"):
+            return Completion(cursor, [])
+        chain = chain.removesuffix(".")
+        if chain:
+            reached, _missing = inp.resolve(node, chain)
+            node = reached if reached is not None else UNKNOWN
+        return Completion(cursor - len(partial), _fields(inp, node, partial))
+
     if anchor_match and anchor_match.group(0) == token and token.startswith("@"):
         return Completion(start, _rank(_labels(file, labels), token[1:]))
     if anchor_match:
@@ -284,7 +342,9 @@ def complete(
         current = items[-1] if items else dollar
         found += _fields(inp, current, "", insert_plain=True)
     if column == "expression":
-        found.append(Item("value", "value", "value", "the Source's value"))
+        found += [Item(n, n, "variable", "the element of the comprehension") for n in bound]
+        if not check and with_value:
+            found.append(Item("value", "value", "value", "the Source's value"))
         registry = functions if functions is not None else builtin_functions()
         found += [
             Item(f.name, f.name + "(", "function", f.signature(), f.doc, f.origin)
@@ -292,6 +352,91 @@ def complete(
         ]
         found += [Item(k, k, "keyword") for k in _KEYWORDS]
     return Completion(start, _rank(found, partial))
+
+
+_FOR_IN = re.compile(r"\bfor\s+([A-Za-z_]\w*)\s+in\s+")
+_PATH_HEAD = re.compile(r"\$|@(?:\d+|[A-Za-z_]\w*)?|[A-Za-z_]\w*")
+
+
+def _blank_strings(text: str) -> str:
+    """`text` with the inside of its string literals blanked, offsets kept."""
+    out, quote = [], ""
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if quote:
+            if ch == "\\" and i + 1 < len(text):
+                out += [" ", " "]
+                i += 2
+                continue
+            if ch == quote:
+                quote = ""
+                out.append(ch)
+            else:
+                out.append(" ")
+        else:
+            if ch in "'\"":
+                quote = ch
+            out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+def _path_at(text: str, start: int) -> str:
+    """The path (an anchor or a name, then `.name` and `[...]`) that begins at `start`."""
+    head = _PATH_HEAD.match(text, start)
+    if head is None:
+        return ""
+    end = head.end()
+    while end < len(text):
+        if text[end] == "." and re.match(r"[A-Za-z_]", text[end + 1 : end + 2]):
+            end = _PATH_HEAD.match(text, end + 1).end()  # type: ignore[union-attr]
+        elif text[end] == "[":
+            close = _closing(text, end)
+            if close is None:
+                break
+            end = close + 1
+        else:
+            break
+    return text[start:end]
+
+
+def _comprehension_vars(
+    text: str,
+    anchor_node: Callable[[str], tuple[Node, bool]],
+    inp: _Schemas,
+    current: Node,
+    relative: bool,
+) -> dict[str, Node]:
+    """The variables of the comprehensions of `text` (`for x in <path>`), each with the node of
+    one element of its list. A name that is not a variable reads a field of the current element
+    when `relative` (inside a selection's condition). Scopes are not told apart."""
+    clean = _blank_strings(text)
+    found: dict[str, Node] = {}
+    for m in _FOR_IN.finditer(clean):
+        path = _path_at(clean, m.end())
+        head = _PATH_HEAD.match(path)
+        if head is None:
+            continue
+        name, rest = head.group(0), path[head.end() :]
+        # a selection's condition inside the list does not change the element's type
+        rest = re.sub(r"\[(?!\s*(?:\*|\d*)\s*\])[^\]]*\]", "[*]", rest)
+        if not rest.endswith("]"):
+            rest += "[*]"
+        if name in found:
+            base, chain = found[name], rest
+        else:
+            base, known = anchor_node(name)
+            if known and base is not None:
+                chain = rest
+            elif relative and name not in ("$", "root") and not name.startswith("@"):
+                base, chain = current, "." + name + rest
+            else:
+                found[m.group(1)] = UNKNOWN
+                continue
+        reached, _missing = inp.resolve(base, chain)
+        found[m.group(1)] = reached if reached is not None else UNKNOWN
+    return found
 
 
 def _unclosed_bracket(before: str) -> int | None:
@@ -366,7 +511,41 @@ def _target(before: str, cursor: int, ctx: _Context, out: _Schemas) -> Completio
 _CODE_RUN = re.compile(r"[\w.\[\]*]*$")
 
 
+_STRING_VALUES = re.compile(r"\b(kind|nulls)\s*=\s*[\"'](\w*)$")
+_KIND_VALUES = ("number", "str")
+_NULLS_VALUES = ("first", "last")
+_SORTED_ARGS = (
+    ("key=", 'the field to order by: key="price"'),
+    ("by=", "an expression of the element to order by: by=src.qty * src.price"),
+    ("kind=", 'how the key compares: kind="number" or kind="str" (needed for a computed key)'),
+    ("reverse=", "reverse=True: descending"),
+    ("nulls=", 'nulls="first": the elements with no key come first (default: last)'),
+)
+
+
+def _sorted_items(before: str) -> list[Item]:
+    """`sorted(array, key=..., by=..., kind=..., reverse=..., nulls=...)` is a wrapper of the dialect
+    (not a function of the registry): the call itself, and its keyword arguments inside it."""
+    found = [Item("sorted", "sorted(", "function", "sorted(array, key=...): the array ordered")]
+    depth, quote, call = 0, "", []
+    for i, ch in enumerate(before):
+        if quote:
+            quote = "" if ch == quote else quote
+        elif ch in "'\"":
+            quote = ch
+        elif ch in "([{":
+            depth += 1
+            call.append((ch, i))
+        elif ch in ")]}":
+            depth -= 1
+            call.pop() if call else None
+    if call and call[-1][0] == "(" and re.search(r"\bsorted\s*$", before[: call[-1][1]]):
+        found += [Item(n, n, "keyword", doc) for n, doc in _SORTED_ARGS]
+    return found
+
+
 def _code(
+    text: str,
     before: str,
     cursor: int,
     ctx: _Context,
@@ -377,13 +556,18 @@ def _code(
     """The developer dialect of a `code_override`: `root` is the document, `src` the element of
     the innermost loop (`src1` the one around it), `index` / `index1` their positions."""
     token = _CODE_RUN.search(before).group(0)  # type: ignore[union-attr]
+    token = re.sub(r"^[^A-Za-z_]*", "", token)  # a `[` that opens a list is not part of the name
     start = cursor - len(token)
     names: dict[str, Node] = {"root": root}
     for offset, node in enumerate(reversed(ctx.items)):
         names["src" if offset == 0 else f"src{offset}"] = node
+    bound = _comprehension_vars(
+        text, lambda n: (names.get(n), n in names), inp, UNKNOWN, False
+    )
+    inside = {**names, **bound}
     if "." in token:
         head, _, tail = token.partition(".")
-        base = names.get(head)
+        base = inside.get(head)
         if base is None:
             return Completion(cursor, [])
         cut = tail.rfind(".")
@@ -408,6 +592,8 @@ def _code(
         for i, n in enumerate(names)
     ]
     found += [Item(n, n, "value", "local variable") for n in local]
+    found += [Item(n, n, "value", "the element of the comprehension") for n in bound]
+    found += _sorted_items(before)
     for offset, is_loop in enumerate(reversed(ctx.loops)):
         if is_loop:  # an object that selects an element has no position
             n = "index" if offset == 0 else f"index{offset}"

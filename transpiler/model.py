@@ -21,6 +21,8 @@ from typing import Any, Literal
 
 import yaml
 
+from transpiler.orderby import parse_order_by
+
 FIELD_TYPES = ("str", "int", "number", "bool", "date", "datetime")
 _IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -101,9 +103,13 @@ class LoopRule:
     output: str
     label: str | None = None
     filter: str | None = None
-    sort_key: str | None = None
-    sort_reverse: bool = False
+    order_by: str | None = (
+        None  # `<expression> [asc|desc] [nulls first|last], ...` (transpiler/orderby.py)
+    )
     index_start: int = 0  # start-offset for `@index`
+    # what an output list is when no element passed: left out (`omit`), written empty (`list`), or
+    # (None) left out when the output schema does not require the list, else written empty
+    when_empty: Literal["omit", "list"] | None = None
     parallel: int | None = None  # `@parallel(degree=N)` on the loop's element function
     description: str | None = None
     rules: list[Rule] = dc_field(default_factory=list)
@@ -176,6 +182,45 @@ class SchemasSection:
 
 
 @dataclass
+class CheckSpec:
+    """An extra validation of the document: `expect` (an expression on `$`) must hold, else the
+    check fails with its `code` and `message`; `reject` stops the mapping (no output), `warn` only
+    reports."""
+
+    id: str
+    expect: str
+    code: str
+    message: str
+    action: Literal["reject", "warn"] = "reject"
+    description: str | None = None
+
+
+@dataclass
+class SideChecks:
+    """One side of the `validations:` section. `schema`: the document is validated against the
+    mapping's JSON Schema (best effort: the host may do it upstream or downstream instead)."""
+
+    schema: bool = False
+    checks: list[CheckSpec] = dc_field(default_factory=list)
+
+
+@dataclass
+class ValidationsSection:
+    """The file's `validations:` section: what is checked on the input before any rule runs, and
+    on the output after the last."""
+
+    input: SideChecks = dc_field(default_factory=SideChecks)
+    output: SideChecks = dc_field(default_factory=SideChecks)
+
+    def side(self, name: str) -> SideChecks:
+        return self.input if name == "input" else self.output
+
+    @property
+    def active(self) -> bool:
+        return any(s.schema or s.checks for s in (self.input, self.output))
+
+
+@dataclass
 class FunctionalFile:
     name: str
     id: str
@@ -183,6 +228,7 @@ class FunctionalFile:
     path: Path | None = None
     paths: PathsSection = dc_field(default_factory=PathsSection)
     schemas: SchemasSection = dc_field(default_factory=SchemasSection)
+    validations: ValidationsSection = dc_field(default_factory=ValidationsSection)
     # the project-wide lookups, read as `@label` like the mapping's own (transpiler/shared_lookups.py);
     # set when the file is loaded and never written into it
     shared: dict[str, LookupRule] = dc_field(default_factory=dict)
@@ -257,6 +303,11 @@ def _load_rule_id(where: str, raw: dict[str, Any]) -> str | None:
     return rid
 
 
+def is_group(rule: ObjectRule) -> bool:
+    """An object whose `output` is `$`: its rules write into the enclosing root, under its guard."""
+    return rule.output.strip() == "$"
+
+
 _COMMON = {"id", "kind", "description"}
 _FIELD_KEYS = _COMMON | {
     "field",
@@ -276,9 +327,11 @@ _LOOP_KEYS = _COMMON | {
     "label",
     "source",
     "filter",
-    "sort",
+    "sort",  # the earlier form of `order_by`: {key, reverse}
+    "order_by",
     "output",
     "index_start",
+    "when_empty",
     "parallel",
     "rules",
 }
@@ -430,17 +483,27 @@ def _load_rule(where: str, raw: Any) -> Rule:
         )
     if kind == "loop":
         _check_keys(where, raw, _LOOP_KEYS)
+        order_by = _get_str(where, raw, "order_by")
         sort = raw.get("sort")
-        sort_key, sort_reverse = None, False
         if sort is not None:
+            if order_by is not None:
+                raise _err(where, "'sort' and 'order_by' say the same thing: keep 'order_by'")
             if not isinstance(sort, dict) or "key" not in sort:
                 raise _err(where, "'sort' must be a mapping with a 'key'")
             _check_keys(f"{where}.sort", sort, {"key", "reverse"})
-            sort_key = _get_str(f"{where}.sort", sort, "key", required=True)
-            sort_reverse = bool(sort.get("reverse", False))
+            key = _get_str(f"{where}.sort", sort, "key", required=True) or ""
+            order_by = key + (" desc" if bool(sort.get("reverse", False)) else "")
+        if order_by is not None:
+            try:
+                parse_order_by(order_by)
+            except ValueError as exc:
+                raise _err(where, f"'order_by': {exc}") from exc
         index_start = raw.get("index_start", 0)
         if not isinstance(index_start, int) or isinstance(index_start, bool):
             raise _err(where, "'index_start' must be an integer")
+        when_empty = _get_str(where, raw, "when_empty")
+        if when_empty not in (None, "omit", "list"):
+            raise _err(where, f"'when_empty' must be 'omit' or 'list' — got {when_empty!r}")
         label = _get_str(where, raw, "label")
         if label is not None and not _IDENT.match(label):
             raise _err(where, f"invalid label {label!r}")
@@ -450,9 +513,9 @@ def _load_rule(where: str, raw: Any) -> Rule:
             output=_get_str(where, raw, "output", required=True) or "",
             label=label,
             filter=_get_str(where, raw, "filter"),
-            sort_key=sort_key,
-            sort_reverse=sort_reverse,
+            order_by=order_by,
             index_start=index_start,
+            when_empty=when_empty,  # type: ignore[arg-type]
             parallel=_load_parallel(where, raw),
             description=_get_str(where, raw, "description"),
             rules=_load_children(where, raw),
@@ -463,8 +526,10 @@ def _load_rule(where: str, raw: Any) -> Rule:
         if not _IDENT.match(label):
             raise _err(where, f"invalid label {label!r}")
         entries = raw.get("entries")
-        if not isinstance(entries, dict) or not entries:
-            raise _err(where, "'entries' must be a non-empty mapping")
+        if entries is None:
+            entries = {}  # a table to fill in later: it finds nothing until then
+        if not isinstance(entries, dict):
+            raise _err(where, "'entries' must be a mapping")
         type_ = _get_str(where, raw, "type")
         if type_ is not None and type_ not in FIELD_TYPES:
             raise _err(where, f"'type' must be one of {', '.join(FIELD_TYPES)} — got {type_!r}")
@@ -498,7 +563,7 @@ def parse_functional(raw: Any, default_id: str, path: Path | None = None) -> Fun
     where = str(path) if path else "<fn.yaml>"
     if not isinstance(raw, dict):
         raise _err(where, "top level must be a mapping")
-    _check_keys(where, raw, {"name", "id", "rules", "paths", "schemas"})
+    _check_keys(where, raw, {"name", "id", "rules", "paths", "schemas", "validations"})
     file_id = raw.get("id", default_id)
     if not isinstance(file_id, str) or not _IDENT.match(file_id):
         raise _err(where, f"invalid file id {file_id!r}")
@@ -511,6 +576,7 @@ def parse_functional(raw: Any, default_id: str, path: Path | None = None) -> Fun
     qualify_paths(rules)
     paths = _load_paths(where, raw.get("paths"), rules)
     schemas = _load_schemas(where, raw.get("schemas"))
+    validations = _load_validations(where, raw.get("validations"))
     file = FunctionalFile(
         name=str(raw.get("name", file_id)),
         id=file_id,
@@ -518,6 +584,7 @@ def parse_functional(raw: Any, default_id: str, path: Path | None = None) -> Fun
         path=path,
         paths=paths,
         schemas=schemas,
+        validations=validations,
     )
     from transpiler.shared_lookups import attach  # noqa: PLC0415 - it imports this module
 
@@ -552,6 +619,70 @@ def _load_schemas(where: str, raw: Any) -> SchemasSection:
         if value is not None and (not isinstance(value, str) or not value.strip()):
             raise _err(where, f"schemas.{key} must be a file path, got {value!r}")
     return SchemasSection(input=raw.get("input"), output=raw.get("output"))
+
+
+CHECK_ACTIONS = ("reject", "warn")
+_CODE = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]*$")
+
+
+def _load_validations(where: str, raw: Any) -> ValidationsSection:
+    if raw is None:
+        return ValidationsSection()
+    if not isinstance(raw, dict):
+        raise _err(where, "'validations' must be a mapping")
+    _check_keys(f"{where}.validations", raw, {"input", "output"})
+    result = ValidationsSection()
+    ids: set[str] = set()
+    codes: set[str] = set()
+    for name in ("input", "output"):
+        at = f"validations.{name}"
+        body = raw.get(name)
+        if body is None:
+            continue
+        if not isinstance(body, dict):
+            raise _err(at, "must be a mapping")
+        _check_keys(at, body, {"schema", "checks"})
+        schema = body.get("schema", False)
+        if not isinstance(schema, bool):
+            raise _err(at, "'schema' must be true or false")
+        checks: list[CheckSpec] = []
+        items = body.get("checks") or []
+        if not isinstance(items, list):
+            raise _err(at, "'checks' must be a list")
+        for i, item in enumerate(items):
+            here = f"{at}.checks[{i}]"
+            if not isinstance(item, dict):
+                raise _err(here, "must be a mapping")
+            _check_keys(here, item, {"id", "expect", "code", "message", "action", "description"})
+            check_id = _load_rule_id(here, item)
+            if check_id is None:
+                raise _err(here, "missing required key 'id'")
+            if check_id in ids:
+                raise _err(
+                    here, f"the id {check_id!r} is used twice (ids are shared by both sides)"
+                )
+            ids.add(check_id)
+            expect = _get_str(here, item, "expect", required=True)
+            code = _get_str(here, item, "code", required=True)
+            assert expect is not None and code is not None
+            if not expect.strip():
+                raise _err(here, "'expect' is empty")
+            if not _CODE.match(code):
+                raise _err(here, f"invalid code {code!r} (letters, digits, '_', '-', '.')")
+            if code in codes or code in ("SCHEMA_INPUT", "SCHEMA_OUTPUT"):
+                raise _err(here, f"the code {code!r} is used twice")
+            codes.add(code)
+            action = item.get("action", "reject")
+            if action not in CHECK_ACTIONS:
+                raise _err(here, f"'action' must be 'reject' or 'warn' — got {action!r}")
+            message = _get_str(here, item, "message") or code
+            checks.append(
+                CheckSpec(
+                    check_id, expect, code, message, action, _get_str(here, item, "description")
+                )
+            )
+        setattr(result, name, SideChecks(schema, checks))
+    return result
 
 
 def _load_paths(where: str, raw: Any, rules: list[Rule]) -> PathsSection:
@@ -596,8 +727,8 @@ def qualify_source(path: str, in_loop: bool) -> str:
     outside a loop (`id` = `$.id`), the loop's element inside one (`sku` = `@.sku`).
     `$.name` always means the root, so both spellings are accepted everywhere."""
     text = path.strip()
-    if not text or text[0] in "$@":
-        return text
+    if not text or text[0] in "$@" or text.startswith("split_list("):
+        return text  # (the parts of a text are no path)
     return f"{'@' if in_loop else '$'}.{text}"
 
 
@@ -678,7 +809,22 @@ def functional_from_dict(data: dict[str, Any]) -> FunctionalFile:
         path=Path(data["path"]) if data.get("path") else None,
         paths=PathsSection(**data.get("paths", {})),
         schemas=SchemasSection(**data.get("schemas", {})),
+        validations=_validations_from_dict(data.get("validations")),
         shared={k: LookupRule(**v) for k, v in data.get("shared", {}).items()},
+    )
+
+
+def _validations_from_dict(data: dict[str, Any] | None) -> ValidationsSection:
+    if not data:
+        return ValidationsSection()
+    return ValidationsSection(
+        *(
+            SideChecks(
+                bool(data.get(name, {}).get("schema", False)),
+                [CheckSpec(**c) for c in data.get(name, {}).get("checks", [])],
+            )
+            for name in ("input", "output")
+        )
     )
 
 

@@ -9,6 +9,8 @@ describe("golden case files", () => {
     expect(jsonProblem("errors", "[]")).toBeNull();
     expect(jsonProblem("errors", "[1]")).toMatch(/list of rule ids/);
     expect(jsonProblem("errors", '{"a": 1}')).toMatch(/list of rule ids/);
+    expect(jsonProblem("rejected", '["REQ-16"]')).toBeNull();
+    expect(jsonProblem("warnings", "[1]")).toMatch(/list of check codes/);
   });
 
   it("indents, and refuses what is not JSON", () => {
@@ -17,7 +19,7 @@ describe("golden case files", () => {
   });
 
   it("tells what changed and the first thing in the way of saving it", () => {
-    const saved: Files = { input: "{}\n", expected: null, errors: "[]\n" };
+    const saved: Files = { input: "{}\n", expected: null, errors: "[]\n", rejected: null, warnings: null };
     expect(changedRoles(saved, saved)).toEqual([]);
     expect(changedRoles(saved, { ...saved, expected: "{}" })).toEqual(["expected"]);
     expect(firstProblem(saved, { ...saved, expected: "{", errors: null })).toEqual({

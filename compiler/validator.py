@@ -29,7 +29,7 @@ _ALWAYS_BLOCKED_NODE_TYPES: tuple[type[ast.AST], ...] = (
 _BLOCKED_CALL_NAMES = {"exec", "eval"}
 
 # The sole exception to the module-scope assignment ban (§Language subset).
-_RESERVED_MODULE_ASSIGN = "__id__"
+_RESERVED_MODULE_ASSIGNS = ("__id__", "__validation__")
 
 
 class ValidatorError(Exception):
@@ -124,7 +124,7 @@ class Validator(ast.NodeVisitor):
             if isinstance(target, ast.Name):
                 if self._function_depth == 0:
                     if (
-                        target.id == _RESERVED_MODULE_ASSIGN
+                        target.id in _RESERVED_MODULE_ASSIGNS
                         and isinstance(node.value, ast.Constant)
                         and isinstance(node.value.value, str)
                     ):

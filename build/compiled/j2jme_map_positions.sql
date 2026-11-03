@@ -14,27 +14,39 @@ END J2JME_MAP_POSITIONS;
 
 CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAP_POSITIONS AS
     FUNCTION fn_positions_first(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_first__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN TREAT(p_root.get_Object('tx').get_Array('list').get(0) AS JSON_OBJECT_T).get_String('id');
+        v_first__ret := TREAT(p_root.get_Object('tx').get_Array('list').get(0) AS JSON_OBJECT_T).get_String('id');
+        IF v_first__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_first__ret;
     END fn_positions_first;
 
     FUNCTION fn_positions_second_qty(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN NUMBER IS
+        v_second_qty__ret NUMBER;
     BEGIN
         p_omitted := FALSE;
-        RETURN TREAT(p_root.get_Object('tx').get_Array('list').get(1) AS JSON_OBJECT_T).get_Number('qty');
+        v_second_qty__ret := TREAT(p_root.get_Object('tx').get_Array('list').get(1) AS JSON_OBJECT_T).get_Number('qty');
+        IF v_second_qty__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_second_qty__ret;
     END fn_positions_second_qty;
 
     FUNCTION fn_positions_last_tag(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_last_tag__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN p_root.get_Object('tx').get_Array('tags').get_String(2);
+        v_last_tag__ret := p_root.get_Object('tx').get_Array('tags').get_String(2);
+        IF v_last_tag__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_last_tag__ret;
     END fn_positions_last_tag;
 
     FUNCTION fn_positions_flagged(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_flagged__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN (CASE WHEN MAPPING_OWNER.J2JME_FUNCTIONS.truthy(TREAT(p_root.get_Object('tx').get_Array('list').get(0) AS JSON_OBJECT_T).get('flag')) THEN 'T' ELSE 'F' END);
+        v_flagged__ret := (CASE WHEN MAPPING_OWNER.J2JME_FUNCTIONS.truthy(TREAT(p_root.get_Object('tx').get_Array('list').get(0) AS JSON_OBJECT_T).get('flag')) THEN 'T' ELSE 'F' END);
+        IF v_flagged__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_flagged__ret;
     END fn_positions_flagged;
 
     PROCEDURE map_positions (

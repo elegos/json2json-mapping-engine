@@ -1,5 +1,7 @@
 """The Python backend: every mapping is a module `map_<id>.py` with `map_<id>(source)` (raises
-`MappingError` when rules failed) and `map_<id>_safe(source)` (gives `(output, rule errors)`),
+`MappingError` when rules failed, `MappingRejected` when a validation rejects) and
+`map_<id>_safe(source)` (gives `(output, rule errors)`, plus the report of the checks for a mapping
+that validates),
 next to the shared `j2jme_runtime.py`. `source` is the JSON text or the parsed document."""
 
 from __future__ import annotations
@@ -16,6 +18,7 @@ from compiler.backends.integration import CaseResult, IntegrationContext, judge
 from compiler.backends.python import codegen, runtime
 from compiler.function_registry import project_functions
 from compiler.scope_resolver import ScopeResolution
+from compiler.validation import Validation
 
 RUNTIME_FILE = "j2jme_runtime.py"
 DEFAULT_MAX_PARALLEL = 4
@@ -29,6 +32,8 @@ def parse_date(s, fmt):
     """The date written in `s` with format `fmt` (YYYY, MM, DD, HH24, MI, SS), as text."""
     from datetime import datetime
 
+    if s is None:
+        return None  # a missing text gives a missing date, as TO_DATE(NULL) does
     for token, directive in {_STRPTIME!r}.items():
         fmt = fmt.replace(token, directive)
     return datetime.strptime(s, fmt).date().isoformat()
@@ -111,7 +116,11 @@ class PythonBackend(Backend):
         return int(self.config.get("max_parallel", DEFAULT_MAX_PARALLEL))
 
     def compile_module(
-        self, tree: ast.Module, mapping_id: str, scope_resolution: ScopeResolution | None = None
+        self,
+        tree: ast.Module,
+        mapping_id: str,
+        scope_resolution: ScopeResolution | None = None,
+        validation: Validation | None = None,
     ) -> codegen.PythonUnit:
         # the project is the working directory (a build and a golden run both start there)
         return codegen.compile_module(
@@ -119,6 +128,7 @@ class PythonBackend(Backend):
             mapping_id,
             project_functions(Path.cwd()),
             "none" if self.max_parallel < 2 else self.config.get("parallel", "thread"),
+            validation,
         )
 
     def unit_from_json(self, data: dict[str, Any]) -> codegen.PythonUnit:
@@ -160,9 +170,10 @@ class PythonBackend(Backend):
                     )
                     continue
                 source = json.loads(case.input_path.read_text())
-                output, errors = getattr(module, f"map_{mapping_id}_safe")(source)
-                twin = _twin_problem(module, mapping_id or "", source, output, errors)
-                results.append(judge(case, output, errors, twin))
+                output, errors, *rest = getattr(module, f"map_{mapping_id}_safe")(source)
+                report = rest[0] if rest else None
+                twin = _twin_problem(module, mapping_id or "", source, output, errors, report)
+                results.append(judge(case, output, errors, twin, report))
                 context.log(
                     f"{case.mapping}/{case.name}: {'ok' if results[-1].passed else 'FAILED'}"
                 )
@@ -191,16 +202,24 @@ def _load_modules(folder: Path, mapping_ids: set[str]) -> dict[str, Any]:
         sys.path.remove(str(folder))
 
 
-def _twin_problem(module: Any, mapping_id: str, source: Any, output: Any, errors: list) -> str:
-    """The raising entry point must agree with the safe one: raise exactly when there are errors,
-    and give the same output when there are none."""
+def _twin_problem(
+    module: Any, mapping_id: str, source: Any, output: Any, errors: list, report: list | None = None
+) -> str:
+    """The raising entry point must agree with the safe one: reject exactly when a check rejects,
+    raise exactly when there are rule errors, and give the same output when there are none."""
     raising = getattr(module, f"map_{mapping_id}")
+    rejected = any(item["action"] == "reject" for item in report or [])
     try:
         plain = raising(source)
     except Exception as exc:  # noqa: BLE001
-        if errors and type(exc).__name__ == "MappingError":
+        kind = type(exc).__name__
+        if rejected and kind == "MappingRejected":
             return ""
-        return f"map_{mapping_id} raised {type(exc).__name__} but map_{mapping_id}_safe reported no error"
+        if errors and not rejected and kind == "MappingError":
+            return ""
+        return f"map_{mapping_id} raised {kind} but map_{mapping_id}_safe reported no error"
+    if rejected:
+        return f"map_{mapping_id} did not raise although map_{mapping_id}_safe rejected the input"
     if errors:
         return f"map_{mapping_id} did not raise although map_{mapping_id}_safe reported {len(errors)} error(s)"
     return (

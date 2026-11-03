@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Report",
+  "type": "object",
+  "required": [
+    "report"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "report": {
+      "type": "object",
+      "required": [
+        "meter",
+        "site",
+        "count",
+        "total",
+        "qualityIssues",
+        "unit"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "meter": {
+          "type": "string"
+        },
+        "site": {
+          "type": "string"
+        },
+        "periodStart": {
+          "type": "string"
+        },
+        "periodEnd": {
+          "type": "string"
+        },
+        "count": {
+          "type": "integer"
+        },
+        "total": {
+          "type": "number"
+        },
+        "average": {
+          "type": "number"
+        },
+        "maxValue": {
+          "type": "number"
+        },
+        "qualityIssues": {
+          "type": "integer"
+        },
+        "firstSample": {
+          "type": "number"
+        },
+        "unit": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

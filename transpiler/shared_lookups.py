@@ -152,7 +152,7 @@ def uses(file: FunctionalFile, label: str) -> bool:
                 getattr(rule, "source", None),
                 getattr(rule, "guard", None),
                 getattr(rule, "filter", None),
-                getattr(rule, "sort_key", None),
+                getattr(rule, "order_by", None),
             )
         ):
             return True

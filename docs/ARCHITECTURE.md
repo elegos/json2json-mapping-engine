@@ -199,7 +199,7 @@ build logic of its own.
 
 ```mermaid
 flowchart LR
-    DEV(["Developer"]) --> UI["Desktop tool (M6)<br/>rule grid, validation, LLM assist"]
+    DEV(["Developer"]) --> UI["Desktop tool (M6)<br/>rule grid, validation, expression builder"]
     DEV --> IDE["IDE<br/>(.map.py + generated stubs)"]
     DEV --> CLI["mapper CLI<br/>transpile · compile · build · check · test"]
     UI -->|"edits"| FNY[".fn.yaml"]
@@ -242,7 +242,7 @@ flowchart LR
 | `return Null` | emit field explicitly as JSON null (`"field": null`) |
 | `return <expr>` | emit field with value |
 | Local variables | `x = <expr>` inside a function or expression block; names are mangled by the compiler to avoid collision with loop variables in the wider scope |
-| Operators | `+ - * / // % == != < > <= >= and or not` |
+| Operators | `+ - * / // % == != < > <= >= and or not`, and `in` / `not in` with a literal list of texts or of numbers (`x in ("A", "B")`; a missing `x` is in nothing) |
 | Literals | `str`, `int`, `float`, `bool`, `None` |
 | Attribute access | `root.a.b.c` → JSON path `$srcroot.a.b.c` |
 | Type union | `T \| None` for nullable fields; `T \| Null` for explicitly-nullable fields |
@@ -298,15 +298,20 @@ Three distinct return forms control how a field is emitted:
 | Form | Field in output | JSON value |
 |---|---|---|
 | `return <expr>` | present | computed value |
+| `return <expr>` that is `None` (a missing value) | absent | *(not emitted)* |
 | `return Null` | present | `null` |
 | `return` (bare) | absent | *(not emitted)* |
+
+The rule is the same wherever a value reaches the output: a rule, `out.F = expr`, a field of an
+object, an element of a list. `None` writes nothing; `Null` writes a null. Golden mapping `null_forms`.
 
 `Null` is a DSL keyword, not Python's `None`. The validator treats `return Null` as
 a typed sentinel and rejects it if the declared return type does not include `Null`.
 A bare `return` is always valid regardless of return type — it signals that this
 invocation produces no contribution to the output, equivalent to a field-level skip.
 
-In PL/SQL the Code Generator emits a two-flag guard per field:
+In PL/SQL a function sets `p_omitted` for a bare `return` and for a value that is NULL (`return Null`
+leaves it false and returns NULL, written as a typed null: `put(key, NULL)` is ambiguous). Roughly:
 
 ```plsql
 IF NOT v_ord_lin_skip THEN
@@ -407,6 +412,55 @@ schemas:
 The schemas in the header are read for the check, the types and the build cache key (a change
 to the file rebuilds the mapping). The tool never executes anything from them.
 
+### Validations of the input and the output
+
+A file may check the document before any rule runs (the input) and the result after the last (the
+output). A check refuses or flags a message that is well-formed but not acceptable for this mapping
+(a VAT number of 11 digits, a field mandatory only in some cases); it is not a rule (it writes no
+field) and not a loop `filter` (that skips one element, this refuses the message).
+
+```yaml
+validations:
+  input:
+    schema: true               # also validate against the mapping's JSON Schema (default: off)
+    checks:
+      - id: vat_format         # unique over both sides; names the check's function
+        expect: "not $.vatId or (is_digits($.vatId) and length($.vatId) == 11)"
+        code: REQ-16           # unique in the file; what the report carries
+        message: "The VAT number must have 11 digits"   # default: the code
+        action: reject         # reject (default) | warn
+  output:
+    checks: [ ... ]            # `$` is the output; `schema` is the output's JSON Schema
+```
+
+- `expect` is an expression on `$` (the input for `input`, the output for `output`) that must be
+  **true**; a comparison with a missing value is not true, so the condition says what a missing value
+  means (`not $.x or ...`, or `$.x` for a mandatory field). It is type-checked against the
+  matching schema, and the lookups can be read.
+- All the checks of a side are run and every failed one is reported (they are pure). A failed
+  `reject` on the input runs no rule; one on the output drops the output. A `warn` only adds to the
+  report.
+- With `schema: true` the document is validated against the schema file of the mapping. **Best
+  effort**: Oracle's validator (`DBMS_JSON_SCHEMA.IS_VALID`, 23ai) does not look at `format`, and the
+  Python one (`jsonschema`) does not either; use a check where exactness matters. If the schema
+  check fails, the checks that cannot run on the document are not reported on top of it. The schema is
+  **embedded in the generated artifact** (a function of the package, a constant of the module), in a
+  canonical form whose hash is in the generated code; the host does not deploy a schema file or a
+  table.
+- Failures have a `side` (`input` / `output`), a `code` (`SCHEMA_INPUT` / `SCHEMA_OUTPUT` for the
+  schema check), a `message` and an `action`.
+
+The contract of the entry points when a mapping validates (a mapping without validations keeps the
+one in §Generated artifact):
+
+| Target | `map_<id>_safe` | `map_<id>` |
+|---|---|---|
+| PL/SQL | `(p_src, p_out, p_err, p_report OUT CLOB)`: `p_report` is a JSON array of `{side, code, message, action}` (empty when all passed, warnings included); `p_out` is NULL and `p_err` `[]` for a rejected message | raises the reserved code with `{"mapping", "rejected": true, "checks": [{side, code, action}]}` |
+| Python | `(output, rule errors, report)`; `output` is `None` for a rejected message | raises `MappingRejected` (`.report`) |
+
+The golden cases state `<case>.expected_rejected.json` (the codes of the checks that reject the case,
+which then has no output) and `<case>.expected_warnings.json` (the codes that warn).
+
 ### Rules not defined yet
 
 A rule with no Source and no Expression (and no override), a loop with no Source, or a
@@ -469,6 +523,41 @@ null; a built-in whose result would be empty (`split_first`, `split_nth` on an e
 `a`, `b`, null, null, null, `f`, null for 1 to 7, and null beyond the end or for `n < 1`; a null
 text gives null in every text function. Golden mapping: `empty_text`.
 
+**Text, numbers and dates without patterns.** Patterns are the last resort: they cost more to run
+and are the one place the backends differ (below). What is common has a function of its own:
+`upper(s)`, `lower(s)`, `trim(s)` (spaces only), `length(s)`; `substring(s, start [, length])` (the
+first character is 1; a start below 1 is 1), `left(s, n)`, `right(s, n)` (all of `s` when it is
+shorter); `pad_left(s, width [, fill])`, `pad_right(...)` (a longer text is left as it is, never
+cut); the tests `contains(s, part)`, `starts_with(s, prefix)`, `ends_with(s, suffix)`, which are
+false when either is missing or empty; `abs(x)`, `floor(x)`, `ceil(x)`; and
+`format_date(s, fmt)`, which writes a date or an ISO-8601 date and time with the tokens `YYYY`,
+`MM`, `DD`, `HH24`, `MI`, `SS` (any case, with separators; any other letter is an error on every
+backend, though Oracle itself knows more) without moving it to another time zone. The empty-text
+rule above applies: a result that would be empty is null. Letters with a special upper-case form
+(`ß`) follow Python's rules on the Python backend and the database's language settings on PL/SQL.
+Golden mapping: `builtins_more`.
+
+Timestamps and days: `rfc3339_normalize(ts [, digits])` and `to_utc(ts [, digits])` write the
+fraction of a second as it is, or with `digits` digits (`3` for milliseconds, `0` for none);
+`parse_timestamp(s, fmt)` reads a date and time written as `fmt` (`YYYY`, `MM`, `MON` for the
+English month abbreviation, `DD`, `HH24`, `HH12` with `AM`, `MI`, `SS`; it needs a year, a month
+and a day) and gives ISO-8601 without a zone; `days_between(start, end)` is the whole calendar days
+between the dates of two ISO-8601 texts (negative if `end` is earlier) and `add_days(date, n)` the
+date `n` days on, as `YYYY-MM-DD`. Text: `is_digits(s)` is true when `s` is made of the digits 0-9 only (null for a missing or empty one);
+`split_last(s, sep)` is the part after the last `sep`;
+`join(list [, sep])` and `join((expr for x in list if cond) [, sep])` write the texts of a list one
+after the other (missing and empty ones left out, a comprehension in parentheses because a
+separator follows it). Golden mapping: `builtins_dates`.
+
+`matches(s, pattern)` is true when the **whole** of `s` fits `pattern` (null for a missing `s`), for
+a text that must have a shape (`[A-Z]{3}[XYZ][0-9]{7}`). Its pattern must be a literal text in a
+portable subset (`compiler/portable_regex.py`): characters, `.`, `[a-z]` and `[^0-9]` (characters and
+ranges only), `( )`, `|`, and the quantifiers `* + ? {n} {n,} {n,m}`; a metacharacter is written with a
+`\` before it. What a dialect reads in its own way is refused at build time, with the reason: `^` and
+`$` (the whole text is matched), `\d \w \s \b`, back-references, `(?...)`, lazy and possessive
+quantifiers, `[:alpha:]`, an empty alternative. Python runs it as `re.fullmatch`, PL/SQL as
+`REGEXP_LIKE(s, '^(' || pattern || ')$')`, so the two agree.
+
 **Regular expressions are the one place where backends are not interchangeable.** The pattern of
 `regexp_replace` and `regexp_group` is written in the dialect of the backend that runs the mapping
 (Python's `re` for the Python backend, Oracle's `REGEXP_*` for PL/SQL); the tool does not translate
@@ -487,6 +576,16 @@ directly). Because of this, a call to one of these can only appear as the direct
 of a `return`, an `out.<field> = ...` assignment, or an `.append(...)` argument — not
 nested inside a larger expression. In the Python subset the array/field arguments are
 positional: `max(<array>, "<field name>")`.
+
+The same functions take a **comprehension** when only some elements count or the value is computed:
+`count(x for x in $.items if cond)`, `sum(abs(x.qty) for x in $.items if x.ok)`, likewise `max`,
+`min`, `avg` (one `for`, any number of `if`s). An aggregate may stand in the condition or in the value of another, to any depth: the inner one runs inside the loop of the outer, for each element, and may read the outer element's variable (`count(l for l in $.lines if not any(any(i.ref == l.ref for i in p.items) for p in $.packages))`); each level multiplies the cost by the length of its list. `any(condition for x in list if filter)` and `all(...)` are true when one element (every element) is true, with Python's truthiness: a missing value is false, an empty set is false for `any` and true for `all`; the loop stops at the first element that decides. It is one loop on every
+backend, the value of an element left out is never computed, a missing value is skipped as SQL does,
+and with nothing left `sum` and `count` give 0 and `max`, `min`, `avg` give null. The check types
+the element from the list's schema (an unknown field is reported with the closest name). In the
+Python subset it is a generator expression (the only use of one besides a loop's filter). On
+PL/SQL an aggregate that is part of a larger expression (`round(sum(...), 2)`) is first computed
+into a local of the function, so it may appear anywhere in a rule's expression.
 
 **The registry.** The built-ins are declared once, as typed Python with docstrings, in
 `compiler/builtins.py`; the project's `fn/*.fn` files are read the same way (with `ast`:
@@ -906,7 +1005,8 @@ self-describing, not silent:
 ```
 
 **The Python target** (`compiler/backends/python/`) raises `MappingError`, as below, from `map_<id>`,
-and its `map_<id>_safe` gives `(output, rule errors)`; see the Python backend in the implementation plan
+and its `map_<id>_safe` gives `(output, rule errors)` (a third part, the report of the checks, when the
+mapping validates: §Validations of the input and the output); see the Python backend in the implementation plan
 for the run-time rules it keeps. The generated modules need **Python 3.10 or later** (the program that
 calls them chooses its interpreter: nothing in `mapper.toml` does, and the runtime refuses an older one
 when it is imported); `3.14t`, the free-threaded build, is what makes `parallel = "thread"` faster.
@@ -1531,7 +1631,7 @@ the repository, so that they show up in review and a deploy reads what was revie
 the tool puts them in `.gitignore` and removes them from the repository, and CI builds and deploys
 them instead. All other `build/` contents are ephemeral and git-ignored.
 
-The switch is `mapper artifacts ignore` / `track` (in the desktop tool, *Generated files…*;
+The switch is `mapper artifacts ignore` / `track` (in the desktop tool, *Project properties › Generated files*;
 `cli/artifacts_mode.py`). `ignore` replaces what `.gitignore` says about `build/compiled` with
 `build/compiled/` and runs `git rm -r --cached` on it: the removal is **staged, never committed**
 (the commit is the user's), and the files stay on disk. `track` takes the rule out (turning a
@@ -1551,12 +1651,16 @@ project), which is one of the sources, so a change of it shows as a changed sour
 compares the manifest too: a source or output that is new, gone or changed is a problem. It is also
 written last when publishing (§Build CLI, `mapper publish`), so a reader never sees half a set.
 
-An LLM is embedded in the tool for two purposes:
+An LLM is used for two things, and only these:
 
-1. **Validation suggestions** — when a rule fails to compile, the LLM proposes a corrected
-   expression in natural language before showing raw errors.
-2. **Expression builder** — the LLM translates the free-text `description` field into
-   a candidate expression for the `transform` field.
+1. **Expression builder** — the LLM translates the free-text `description` field into
+   a candidate expression for the `transform` field. The candidate must pass the check and is
+   shown with its result on the golden sample; it is never applied without the user's consent.
+2. **Import of an external project** (§Migration from existing mapping files).
+
+Validation suggestions are *not* LLM work: the check says which cell is wrong and why, and adds
+a deterministic "did you mean 'x'?" for a misspelt name (the closest property of the object where
+it was looked up, or the closest variable or function in scope).
 
 **LLM backend options** (user-configurable):
 
@@ -1613,7 +1717,7 @@ enforced project-wide; a collision is a build error.
   label: order                      # anchor label: @order.x or @2.x (positional)
   source: $.source.orders[*]        # source array path
   filter: "@.status == 'ACTIVE'"    # optional filter expression
-  sort: {key: "@.orderDate", reverse: false}   # optional; applied before filter/index
+  order_by: "@.orderDate desc nulls last"      # optional; applied before filter/index
   output: $.Output.Orders[*]        # destination array path
   description: "One output record per active source order."
   rules:
@@ -1630,6 +1734,37 @@ enforced project-wide; a collision is a build error.
       rules:
         # ...
 ```
+
+A rule of kind `object` with `output: $` is a **group**: its rules write into the root of the
+output, all or none according to its `guard`, in the order of the file. There is no notion of
+alternative shapes (`oneOf`) in a mapping: when the output schema is one, whoever writes the mapping
+guards the rules of each shape (a group per shape), and what the schema calls required is only what
+every shape requires. Nothing checks that the guards exclude one another; a test case that matches
+two shows it. Golden mapping: `groups`.
+
+**`when_empty`** (`omit` | `list`) says what the output list is when no element passed: left out, or
+written as `[]`. Unset, it is left out when the output schema does not require the list, and written
+empty when it does (without an output schema, written empty). `omit` on a required list is an error of
+the check. At the top of the file a list left out is built by a function of its own that returns it, or
+nothing; the loops that write one list are built together, in the order of the rules. Golden cases:
+`tests/track1/transpiler/test_when_empty.py`.
+
+**A loop's `source`** can start from the loop it is written in (`@.refs[*]`), from one outside it
+(`@2.refs[*]`, `@line.refs[*]`) or from the document (`$.refs[*]`): the anchors resolve as they do in a
+`filter`. A loop that does not enclose the one written is an error of the check.
+
+A loop can also walk the **parts of a text**: `source: "split_list(<text>, <separator>)"` (any text
+expression, e.g. `split_list(split_nth($.notes[0].noteText, '|', 8), ',')`). Each part is one element,
+read as `@` (a text: `split_nth(@, ':', 1)`), `@index` works, and a `filter` may drop the empty ones
+(`not is_empty(@)`); an empty part is a null element, a missing or empty text has no elements.
+`split_list` is only a loop's source: no other expression reads it. PL/SQL builds the list in the
+functions package and reads each element with `get_String`.
+
+`source` is a list, or `$`: a loop over the document itself has the whole message as its one element,
+which is how a list with a single element built from the message is written (with a `filter`, a
+block written only when a condition holds). A missing list has no elements. Several loops of one
+container may name the same `output` list: they add to it in the order of the rules (the check
+refuses duplicates for any other kind of rule). Golden mapping: `document_loop`.
 
 **`filter`** (optional) is a boolean expression, in the same expression
 language and scope-anchor rules as `transform.expression` (§Expression
@@ -1651,21 +1786,33 @@ language subset (§Permitted constructs). In hand-written bootstrap `.map.py`
 files, the same effect is achieved by writing that guard directly — there is
 no separate `filter:` keyword outside `.fn.yaml`.
 
-**`sort`** (optional) orders the source array before iteration — and, since
-`@index` (§Scope anchors) only ever numbers "whatever order the loop actually
-iterates in", `sort` is what makes an index *meaningful* rather than an
-artifact of source-JSON ordering. `key` is a field-reference expression (same
-anchor rules as `filter`); `reverse` defaults to `false`. Applied before
-`filter` and before index assignment, so `@index` counts positions in the
-*sorted, unfiltered* — no: sorted, then filtered — sequence. (Filtering after
-sorting means indices are contiguous over the elements that survive the
-filter, not over the original array; this is the only order the two
-compose in.) In bootstrap `.map.py` this is the `sorted(<array>, key="<field>")`
-/ `sorted(<array>, key="<field>", reverse=True)` idiom (§Built-in functions'
-sibling note doesn't cover this — `sorted`/`enumerate` are for-loop-iterable
-wrappers, not builtins, recognized directly by the Code Generator and lowered
-to a native in-place sort using `JSON_ELEMENT_T.compare_to()`, same
-no-SQL-context principle as aggregation).
+**`order_by`** (optional) orders the source array before iteration — and, since `@index` (§Scope
+anchors) only ever numbers "whatever order the loop actually iterates in", it is what makes an index
+*meaningful* rather than an artifact of source-JSON ordering. It is SQL's `order by`:
+
+```
+<expression> [asc | desc] [nulls first | nulls last] {, <expression> ...}
+```
+
+Each key is any expression of the element (`@.f`, `to_number(split_last(@.code, '-'))`), computed once
+per element; ascending and nulls last are the defaults. An element whose key is missing goes first or
+last as stated, whichever the direction; elements with equal keys keep the order they have, so the
+next key breaks the ties of the one before. A key that is not a plain field of the element must have
+a known type — number or text, from the function or operator that produces it (`to_number`,
+`to_string`, `upper`, arithmetic) — because that is how two keys are compared. The same clause orders
+a selection (§Selecting one element). The earlier form `sort: {key: "@.f", reverse: true}` still
+loads and is written back as `order_by: "@.f desc"`. Applied before `filter` and before index
+assignment: sorted, then filtered, then numbered (indices are contiguous over the elements that
+survive the filter).
+
+In the developer dialect (`.map.py`) this is `sorted(<array>, key="<field>")` or `sorted(<array>,
+by=<expression of the loop variable>, kind="number" | "str")`, each with `reverse=True` and
+`nulls="first"` as needed, one call per key with the last key innermost (stable sorts), always
+inside a `for` iterable (`sorted`/`enumerate` are wrappers recognized by the Code Generator, not
+built-ins). The Python backend runs it as `_sorted` (keys once per element, equal keys in order);
+PL/SQL computes the keys into a collection, puts the positions in order with a stable insertion
+sort and copies the elements into a new array, so the document's own array is never reordered
+under the other loops that read it. Golden cases: `tests/track1/transpiler/test_order_by.py`.
 
 **`@index`** — a loop that wants a progressive per-element number pairs its
 `for` with Python's real `enumerate()`: `for i, x in enumerate(<array>):` (0-based)
@@ -1818,6 +1965,11 @@ An `object` rule can pick it with a condition in its Source:
   writes it out in full (`@.discriminator == 'MY DISCRIMINATOR'`), as it does for Sources.
 - Because the object can be left out (like one with a guard), its output schema type must allow
   null (`"type": ["object", "null"]`); `check` reports it, as the build would.
+- **Which one, when several match**: an `order by` after the condition (`$.myList[kind = 'K1' order by
+  rank desc]`, or alone: `$.myList[order by createdAt]`) takes the first element in that order, the
+  same clause as a loop's `order_by` (§Loop rule): any expression of the candidate, `asc | desc`, `nulls
+  first | last`, several keys. Ties keep the list's order, and an element with no key is never the
+  best unless every one lacks it. Without it the first in the list's own order is taken.
 - An object has a guard **or** a source, not both. A plain loop is still the way to map every
   matching element.
 - Lowering: `transpiler/selector.py` turns the object into a loop with that filter whose
@@ -1848,7 +2000,7 @@ rules:
 - Aliases are text (§Paths section), so `@totals.qty` is `$.items[marker = 'TOTALS'].qty`. The
   alias value may hold one condition, and `check` validates it where it is defined and where
   it is used.
-- A condition cannot hold another selection, a loop's `filter` and `sort` cannot hold one (read it
+- A condition cannot hold another selection (it can hold an aggregate over a list of the candidate: `$.packages[any(i.ref == @2.ref for i in items)].vol`, the variable of its `for` being its own and every other bare name a field of the candidate), a loop's `filter` and `order_by` cannot hold one (read it
   in the loop's fields), and a path has one selection (`$.a[x = 1].b[y = 2].c` is not supported).
 - Lowering (`_Builder._picker` / `_extract` in `transpiler/transpile.py`): each distinct
   selection (list path + condition + enclosing loops) becomes **one function** in the `.map.py`

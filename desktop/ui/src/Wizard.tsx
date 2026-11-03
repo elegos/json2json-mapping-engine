@@ -27,9 +27,11 @@ interface Props {
   onCreated: (dir: string, properties: boolean) => void;
   onClose: () => void;
   onHelp: () => void;
+  /** Import a functional document into `dir` (the wizard closes; the import takes the screen). */
+  onImport: (dir: string) => void;
 }
 
-type Step = "start" | "project" | "mappings" | "done";
+type Step = "start" | "project" | "mappings" | "done" | "importProject";
 
 const errorText = (e: unknown) => String(e instanceof Error ? e.message : e);
 
@@ -44,6 +46,7 @@ export function Wizard({
   onCreated,
   onClose,
   onHelp,
+  onImport,
 }: Props) {
   const [step, setStep] = useState<Step>("start");
   const [dir, setDir] = useState("");
@@ -122,6 +125,22 @@ export function Wizard({
             }}
             onClose={onClose}
             onHelp={onHelp}
+            onImport={() => setStep("importProject")}
+          />
+        )}
+        {step === "importProject" && (
+          <ImportProjectPage
+            recent={recent}
+            onPick={onImport}
+            onOpenDialog={async () => {
+              const picked = await chooseProject(recent[0], "Project to import into");
+              if (picked) onImport(picked);
+            }}
+            onNew={() => {
+              setError("");
+              setStep("project");
+            }}
+            onBack={() => setStep("start")}
           />
         )}
         {step === "project" && (
@@ -195,6 +214,7 @@ export function Wizard({
             mappings={mappings}
             onAdded={(name) => setMappings((m) => [...m, name])}
             onDone={() => setStep("done")}
+            onImport={() => onImport(dir.trim())}
             created={made}
           />
         )}
@@ -225,6 +245,7 @@ function StartPage(props: {
   onNew: () => void;
   onClose: () => void;
   onHelp: () => void;
+  onImport: () => void;
 }) {
   const [missing, setMissing] = useState<ReadonlySet<string>>(new Set());
   useEffect(() => {
@@ -260,6 +281,9 @@ function StartPage(props: {
         <button onClick={props.onOpenDialog}>Open project…</button>
         <button className="primary" onClick={props.onNew}>
           New project…
+        </button>
+        <button onClick={props.onImport} title="Read a functional specification (Excel, Word, PDF, text) and propose the rules">
+          Import a document…
         </button>
         <button onClick={props.onHelp}>Help</button>
       </div>
@@ -368,6 +392,7 @@ function MappingsPage(props: {
   created: boolean;
   onAdded: (name: string) => void;
   onDone: () => void;
+  onImport: () => void;
 }) {
   const [name, setName] = useState("");
   const [input, setInput] = useState("");
@@ -447,9 +472,54 @@ function MappingsPage(props: {
         <button disabled={busy || problem !== null} onClick={() => void add()}>
           {props.mappings.length ? "Add another mapping" : "Add mapping"}
         </button>
+        <button disabled={busy} onClick={props.onImport} title="Read a functional specification and propose the rules">
+          Import a document…
+        </button>
         <button className="primary" disabled={busy} onClick={props.onDone}>
           {props.mappings.length ? "Done — open the project" : "Skip — open the project"}
         </button>
+      </div>
+    </>
+  );
+}
+
+/** Which project the document goes into: one opened before, one chosen, or a new one. */
+function ImportProjectPage(props: {
+  recent: string[];
+  onPick: (dir: string) => void;
+  onOpenDialog: () => void;
+  onNew: () => void;
+  onBack: () => void;
+}) {
+  const [missing, setMissing] = useState<ReadonlySet<string>>(new Set());
+  useEffect(() => {
+    let live = true;
+    void Promise.all(props.recent.map((d) => listFnFiles(d).then(() => null, () => d))).then(
+      (gone) => live && setMissing(new Set(gone.filter((d): d is string => d !== null))),
+    );
+    return () => {
+      live = false;
+    };
+  }, [props.recent]);
+  return (
+    <>
+      <h3>Import a document — which project?</h3>
+      <ul className="wizard-recent" aria-label="Projects">
+        {props.recent.length === 0 && <li className="empty">No project opened yet.</li>}
+        {props.recent.map((d) => (
+          <li key={d} className={missing.has(d) ? "gone" : undefined} title={d}>
+            <button className="link" disabled={missing.has(d)} onClick={() => props.onPick(d)}>
+              {d}
+            </button>
+          </li>
+        ))}
+      </ul>
+      <div className="wizard-actions">
+        <button onClick={props.onOpenDialog}>Other project…</button>
+        <button onClick={props.onNew}>New project…</button>
+      </div>
+      <div className="modal-buttons">
+        <button onClick={props.onBack}>Back</button>
       </div>
     </>
   );

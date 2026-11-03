@@ -1,0 +1,35 @@
+{
+  "quote": {
+    "number": "Q-2026-017",
+    "issuedAt": "2026-03-14T23:30:00-02:00",
+    "currency": "EUR",
+    "customer": {
+      "id": "C-88",
+      "name": "  Alder Tools Ltd ",
+      "vatId": "12345678901"
+    },
+    "lines": [
+      {
+        "sku": "AX-1",
+        "qty": 3,
+        "unitPrice": 10.005,
+        "discountPct": 10
+      },
+      {
+        "sku": "BX-2",
+        "qty": 1,
+        "unitPrice": 99.99
+      },
+      {
+        "sku": "CX-3",
+        "qty": 12,
+        "unitPrice": 0.335,
+        "discountPct": 5.5
+      }
+    ],
+    "terms": {
+      "paymentDays": 45,
+      "incoterm": "DAP"
+    }
+  }
+}

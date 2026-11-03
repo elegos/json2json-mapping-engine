@@ -54,6 +54,11 @@ class TypeCheckError(Exception):
     pass
 
 
+def _is_field_name(index: ast.expr) -> bool:
+    """`x["return"]`: a field read by name (one whose name is a Python keyword), not a position."""
+    return isinstance(index, ast.Constant) and isinstance(index.value, str)
+
+
 def _strip_none(type_expr: str) -> tuple[list[str], bool]:
     parts = [p.strip() for p in type_expr.split("|")]
     nullable = "None" in parts or "Null" in parts
@@ -150,7 +155,9 @@ class _Shapes:
                 raise TypeCheckError(
                     f"{path}.{fname}: field not declared on output class '{schema_name}'"
                 )
-            self.compat(base, nullable, sf.type_expr, f"{path}.{fname}")
+            # a property the schema does not require may be left out: a value that may be omitted fits
+            optional = sf.type_expr if sf.required else f"{sf.type_expr} | None"
+            self.compat(base, nullable, optional, f"{path}.{fname}")
         for sf in schema_cls.fields:
             if sf.required and sf.name not in local:
                 raise TypeCheckError(
@@ -296,6 +303,8 @@ class _ExprTypeChecker:
             base_type = self.type_of(node.value, scope)
             return self._attr_type(base_type, node.attr)
         if isinstance(node, ast.Subscript):
+            if _is_field_name(node.slice):
+                return self._attr_type(self.type_of(node.value, scope), node.slice.value)  # type: ignore[attr-defined]
             return self._element_type(self.type_of(node.value, scope))
         return ANY
 
@@ -311,6 +320,9 @@ class _ExprTypeChecker:
             base_type = self.type_of_in_function(node.value, param_types)
             return self._attr_type(base_type, node.attr)
         if isinstance(node, ast.Subscript):
+            if _is_field_name(node.slice):
+                base = self.type_of_in_function(node.value, param_types)
+                return self._attr_type(base, node.slice.value)  # type: ignore[attr-defined]
             return self._element_type(self.type_of_in_function(node.value, param_types))
         return ANY
 
@@ -466,6 +478,13 @@ def check_module(
             scope_type[id(scope)] = ANY
             continue
         candidates, _nullable = _strip_none(source_type)
+        if (
+            isinstance(scope.source_expr, ast.Name)
+            and scope.source_expr.id == "root"
+            and len(candidates) == 1
+        ):
+            scope_type[id(scope)] = candidates[0]  # `source: $`: the document is the one element
+            continue
         if len(candidates) != 1 or not candidates[0].startswith("list["):
             raise TypeCheckError(
                 f"loop source does not resolve to an array type (got '{source_type}')"
@@ -478,7 +497,7 @@ def check_module(
     )
 
     if output_schema is not None:
-        root_cls = output_schema.classes[output_schema.root_type]
+        root_cls = output_schema.root_class()
         missing = [f.name for f in root_cls.fields if f.required and f.name not in assigned_fields]
         if missing:
             raise TypeCheckError(f"required output field(s) not assigned: {', '.join(missing)}")
@@ -601,7 +620,7 @@ def _check_write(
 ) -> None:
     if output_schema is None:
         return
-    root_cls = output_schema.classes[output_schema.root_type]
+    root_cls = output_schema.root_class()
     declared = next((f for f in root_cls.fields if f.name == field_name), None)
     if declared is None:
         raise TypeCheckError(f"assignment to undeclared output field 'out.{field_name}'")
@@ -616,6 +635,8 @@ def _check_write(
             )
         declared_type_expr = list_bases[0]
     declared_bases, declared_nullable = _strip_none(declared_type_expr)
+    if not declared.required and not unwrap_list:
+        declared_nullable = True  # a property the schema does not require may be left out
 
     if (
         isinstance(value, ast.Call)
@@ -629,12 +650,10 @@ def _check_write(
     if checker.shapes is not None and (
         produced_base.startswith("list[") or produced_base in checker.shapes.local_classes
     ):
-        checker.shapes.compat(
-            produced_base,
-            produced_nullable,
-            declared.type_expr if not unwrap_list else declared_type_expr,
-            f"out.{field_name}",
-        )
+        schema_expr = declared.type_expr if not unwrap_list else declared_type_expr
+        if declared_nullable and not _strip_none(schema_expr)[1]:
+            schema_expr = f"{schema_expr} | None"  # a property the schema does not require
+        checker.shapes.compat(produced_base, produced_nullable, schema_expr, f"out.{field_name}")
         return
     if produced_base != ANY and produced_base not in declared_bases:
         raise TypeCheckError(

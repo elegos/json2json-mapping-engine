@@ -1,0 +1,22 @@
+{
+  "quote": {
+    "number": "Q-2026-019",
+    "issuedAt": "2026-07-02T10:00:00Z",
+    "currency": "EUR",
+    "customer": {
+      "id": "C-92",
+      "name": "Cedar Co",
+      "vatId": "ABC"
+    },
+    "lines": [
+      {
+        "sku": "ZZ-1",
+        "qty": 1,
+        "unitPrice": 1
+      }
+    ],
+    "terms": {
+      "paymentDays": 10
+    }
+  }
+}

@@ -11,6 +11,11 @@ Case layout (per mapping, by basename of `mappings/<name>.map.py`):
     tests/golden/<name>/<case>.expected_errors.json
                                                optional — the rule ids `_safe` must report
                                                (a JSON list); without it any rule error fails
+    tests/golden/<name>/<case>.expected_rejected.json
+                                               optional — a mapping that validates: the codes of the
+                                               checks that reject the case (it then has no output)
+    tests/golden/<name>/<case>.expected_warnings.json
+                                               optional — the codes of the checks that only warn
 """
 
 from __future__ import annotations

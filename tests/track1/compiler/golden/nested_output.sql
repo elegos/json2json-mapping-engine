@@ -15,22 +15,38 @@ END NESTED_OUTPUT;
 CREATE OR REPLACE PACKAGE BODY NESTED_OUTPUT AS
     FUNCTION fn_nested_output_line_rule(p_root IN JSON_OBJECT_T, p_o IN JSON_OBJECT_T, p_l IN JSON_OBJECT_T, p_j IN NUMBER, p_omitted OUT BOOLEAN) RETURN JSON_OBJECT_T IS
         v_line_rule__dc JSON_OBJECT_T;
+        v_val_line_rule__v0 NUMBER;
+        v_val_line_rule__v1 VARCHAR2(4000 CHAR);
+        v_val_line_rule__v2 NUMBER;
     BEGIN
         p_omitted := FALSE;
         v_line_rule__dc := JSON_OBJECT_T();
-        v_line_rule__dc.put('Pos', p_j);
-        v_line_rule__dc.put('LineId', p_l.get_String('id'));
-        v_line_rule__dc.put('Price', p_l.get_Number('price'));
+        v_val_line_rule__v0 := p_j;
+        IF v_val_line_rule__v0 IS NOT NULL THEN
+            v_line_rule__dc.put('Pos', v_val_line_rule__v0);
+        END IF;
+        v_val_line_rule__v1 := p_l.get_String('id');
+        IF v_val_line_rule__v1 IS NOT NULL THEN
+            v_line_rule__dc.put('LineId', v_val_line_rule__v1);
+        END IF;
+        v_val_line_rule__v2 := p_l.get_Number('price');
+        IF v_val_line_rule__v2 IS NOT NULL THEN
+            v_line_rule__dc.put('Price', v_val_line_rule__v2);
+        END IF;
         RETURN v_line_rule__dc;
     END fn_nested_output_line_rule;
 
     FUNCTION fn_nested_output_tax_rule(p_root IN JSON_OBJECT_T, p_o IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN JSON_OBJECT_T IS
         v_tax_rule__dc JSON_OBJECT_T;
+        v_val_tax_rule__v0 NUMBER;
     BEGIN
         p_omitted := FALSE;
         IF (p_o.get_String('taxRate') IS NOT NULL) THEN
             v_tax_rule__dc := JSON_OBJECT_T();
-            v_tax_rule__dc.put('Rate', p_o.get_Number('taxRate'));
+            v_val_tax_rule__v0 := p_o.get_Number('taxRate');
+            IF v_val_tax_rule__v0 IS NOT NULL THEN
+                v_tax_rule__dc.put('Rate', v_val_tax_rule__v0);
+            END IF;
             RETURN v_tax_rule__dc;
         ELSE
             p_omitted := TRUE;
@@ -47,61 +63,90 @@ CREATE OR REPLACE PACKAGE BODY NESTED_OUTPUT AS
         v_order_rule__rc1 JSON_OBJECT_T;
         v_order_rule__ro1 BOOLEAN;
         v_order_rule__dc JSON_OBJECT_T;
-        v_order_rule__rc2 JSON_OBJECT_T;
-        v_order_rule__ro2 BOOLEAN;
+        v_val_order_rule__v2 VARCHAR2(4000 CHAR);
+        v_order_rule__rc3 JSON_OBJECT_T;
+        v_order_rule__ro3 BOOLEAN;
     BEGIN
         p_omitted := FALSE;
         v_order_rule_lines := JSON_ARRAY_T();
-        v_forarr_0 := TREAT(p_o.get_Array('lines').clone AS JSON_ARRAY_T);
-        DECLARE
-            v_sortj_0 PLS_INTEGER;
-            v_sorttmp_0 JSON_ELEMENT_T;
-            v_sorttmpkey_0 JSON_ELEMENT_T;
-        BEGIN
-            FOR v_sortk_0 IN 1 .. v_forarr_0.get_size - 1 LOOP
-                v_sorttmp_0 := v_forarr_0.get(v_sortk_0);
-                v_sorttmpkey_0 := TREAT(v_sorttmp_0 AS JSON_OBJECT_T).get('price');
-                v_sortj_0 := v_sortk_0 - 1;
-                WHILE v_sortj_0 >= 0 AND TREAT(v_forarr_0.get(v_sortj_0) AS JSON_OBJECT_T).get('price').compare_to(v_sorttmpkey_0) > 0 LOOP
-                    v_forarr_0.put(v_sortj_0 + 1, v_forarr_0.get(v_sortj_0), TRUE);
-                    v_sortj_0 := v_sortj_0 - 1;
-                END LOOP;
-                v_forarr_0.put(v_sortj_0 + 1, v_sorttmp_0, TRUE);
-            END LOOP;
-        END;
-        v_order_rule_cnt0 := 1;
-        FOR v_i_0 IN 0 .. v_forarr_0.get_size - 1 LOOP
-            v_order_rule_l := TREAT(v_forarr_0.get(v_i_0) AS JSON_OBJECT_T);
-            IF (v_order_rule_l.get_Boolean('active') = TRUE) THEN
-                v_order_rule_j := v_order_rule_cnt0;
-                v_order_rule_cnt0 := v_order_rule_cnt0 + 1;
+        v_forarr_0 := p_o.get_Array('lines');
+        IF v_forarr_0 IS NOT NULL THEN
+            DECLARE
+                TYPE t_key_0_0 IS TABLE OF JSON_ELEMENT_T INDEX BY PLS_INTEGER;
+                TYPE t_ord_0_0 IS TABLE OF PLS_INTEGER INDEX BY PLS_INTEGER;
+                v_sortkey_0_0 t_key_0_0;
+                v_sortord_0_0 t_ord_0_0;
+                v_sorted_0_0 JSON_ARRAY_T := JSON_ARRAY_T();
+                v_sorttmp_0_0 PLS_INTEGER;
+                v_sortj_0_0 PLS_INTEGER;
+                FUNCTION v_sortnul_0_0(p IN PLS_INTEGER) RETURN BOOLEAN IS
+                BEGIN RETURN v_sortkey_0_0(p) IS NULL OR v_sortkey_0_0(p).is_Null; END;
+                FUNCTION v_sortcmp_0_0(a IN PLS_INTEGER, b IN PLS_INTEGER) RETURN PLS_INTEGER IS
                 BEGIN
-                    v_order_rule__rc1 := fn_nested_output_line_rule(p_root, p_o, v_order_rule_l, v_order_rule_j, v_order_rule__ro1);
-                EXCEPTION
-                    WHEN OTHERS THEN
-                        IF NOT p__errors.has('line_rule') THEN
-                            p__errors.put('line_rule', SQLERRM);
-                        END IF;
-                        v_order_rule__ro1 := TRUE;
+                    IF v_sortnul_0_0(a) THEN RETURN CASE WHEN v_sortnul_0_0(b) THEN 0 ELSE 1 END; END IF;
+                    IF v_sortnul_0_0(b) THEN RETURN -1; END IF;
+                    IF v_sortkey_0_0(a).compare_to(v_sortkey_0_0(b)) < 0 THEN RETURN -1; END IF;
+                    IF v_sortkey_0_0(a).compare_to(v_sortkey_0_0(b)) > 0 THEN RETURN 1; END IF;
+                    RETURN 0;
                 END;
-                IF NOT v_order_rule__ro1 THEN
-                    v_order_rule_lines.append(v_order_rule__rc1);
+            BEGIN
+                FOR v_sorti_0_0 IN 0 .. v_forarr_0.get_size - 1 LOOP
+                    v_sortkey_0_0(v_sorti_0_0) := TREAT(v_forarr_0.get(v_sorti_0_0) AS JSON_OBJECT_T).get('price');
+                    v_sortord_0_0(v_sorti_0_0) := v_sorti_0_0;
+                END LOOP;
+                FOR v_sortk_0_0 IN 1 .. v_forarr_0.get_size - 1 LOOP
+                    v_sorttmp_0_0 := v_sortord_0_0(v_sortk_0_0);
+                    v_sortj_0_0 := v_sortk_0_0 - 1;
+                    WHILE v_sortj_0_0 >= 0 AND v_sortcmp_0_0(v_sortord_0_0(v_sortj_0_0), v_sorttmp_0_0) > 0 LOOP
+                        v_sortord_0_0(v_sortj_0_0 + 1) := v_sortord_0_0(v_sortj_0_0);
+                        v_sortj_0_0 := v_sortj_0_0 - 1;
+                    END LOOP;
+                    v_sortord_0_0(v_sortj_0_0 + 1) := v_sorttmp_0_0;
+                END LOOP;
+                FOR v_sorti_0_0 IN 0 .. v_forarr_0.get_size - 1 LOOP
+                    v_sorted_0_0.append(v_forarr_0.get(v_sortord_0_0(v_sorti_0_0)));
+                END LOOP;
+                v_forarr_0 := v_sorted_0_0;
+            END;
+        END IF;
+        v_order_rule_cnt0 := 1;
+        IF v_forarr_0 IS NOT NULL THEN
+            FOR v_i_0 IN 0 .. v_forarr_0.get_size - 1 LOOP
+                v_order_rule_l := TREAT(v_forarr_0.get(v_i_0) AS JSON_OBJECT_T);
+                IF (v_order_rule_l.get_Boolean('active') = TRUE) THEN
+                    v_order_rule_j := v_order_rule_cnt0;
+                    v_order_rule_cnt0 := v_order_rule_cnt0 + 1;
+                    BEGIN
+                        v_order_rule__rc1 := fn_nested_output_line_rule(p_root, p_o, v_order_rule_l, v_order_rule_j, v_order_rule__ro1);
+                    EXCEPTION
+                        WHEN OTHERS THEN
+                            IF NOT p__errors.has('line_rule') THEN
+                                p__errors.put('line_rule', SQLERRM);
+                            END IF;
+                            v_order_rule__ro1 := TRUE;
+                    END;
+                    IF NOT v_order_rule__ro1 THEN
+                        v_order_rule_lines.append(v_order_rule__rc1);
+                    END IF;
                 END IF;
-            END IF;
-        END LOOP;
+            END LOOP;
+        END IF;
         v_order_rule__dc := JSON_OBJECT_T();
-        v_order_rule__dc.put('OrderId', p_o.get_String('id'));
+        v_val_order_rule__v2 := p_o.get_String('id');
+        IF v_val_order_rule__v2 IS NOT NULL THEN
+            v_order_rule__dc.put('OrderId', v_val_order_rule__v2);
+        END IF;
         BEGIN
-            v_order_rule__rc2 := fn_nested_output_tax_rule(p_root, p_o, v_order_rule__ro2);
+            v_order_rule__rc3 := fn_nested_output_tax_rule(p_root, p_o, v_order_rule__ro3);
         EXCEPTION
             WHEN OTHERS THEN
                 IF NOT p__errors.has('tax_rule') THEN
                     p__errors.put('tax_rule', SQLERRM);
                 END IF;
-                v_order_rule__ro2 := TRUE;
+                v_order_rule__ro3 := TRUE;
         END;
-        IF NOT v_order_rule__ro2 THEN
-            v_order_rule__dc.put('Tax', v_order_rule__rc2);
+        IF NOT v_order_rule__ro3 THEN
+            v_order_rule__dc.put('Tax', v_order_rule__rc3);
         END IF;
         v_order_rule__dc.put('Lines', v_order_rule_lines);
         RETURN v_order_rule__dc;
@@ -121,26 +166,28 @@ CREATE OR REPLACE PACKAGE BODY NESTED_OUTPUT AS
         DECLARE
             v_forarr_1 JSON_ARRAY_T := v_srcroot.get_Array('orders');
         BEGIN
-            FOR v_i_1 IN 0 .. v_forarr_1.get_size - 1 LOOP
-                DECLARE
-                    v_o JSON_OBJECT_T := TREAT(v_forarr_1.get(v_i_1) AS JSON_OBJECT_T);
-                BEGIN
+            IF v_forarr_1 IS NOT NULL THEN
+                FOR v_i_1 IN 0 .. v_forarr_1.get_size - 1 LOOP
                     DECLARE
-                        v_result_order_rule JSON_OBJECT_T;
-                        v_omitted_order_rule BOOLEAN;
+                        v_o JSON_OBJECT_T := TREAT(v_forarr_1.get(v_i_1) AS JSON_OBJECT_T);
                     BEGIN
-                        v_result_order_rule := fn_nested_output_order_rule(v_srcroot, v_o, v_rule_errors, v_omitted_order_rule);
-                        IF NOT v_omitted_order_rule THEN
-                            v_arr_Orders.append(v_result_order_rule);
-                        END IF;
-                    EXCEPTION
-                        WHEN OTHERS THEN
-                            IF NOT v_errors.EXISTS('order_rule') THEN
-                                v_errors('order_rule') := SQLERRM;
+                        DECLARE
+                            v_result_order_rule JSON_OBJECT_T;
+                            v_omitted_order_rule BOOLEAN;
+                        BEGIN
+                            v_result_order_rule := fn_nested_output_order_rule(v_srcroot, v_o, v_rule_errors, v_omitted_order_rule);
+                            IF NOT v_omitted_order_rule THEN
+                                v_arr_Orders.append(v_result_order_rule);
                             END IF;
+                        EXCEPTION
+                            WHEN OTHERS THEN
+                                IF NOT v_errors.EXISTS('order_rule') THEN
+                                    v_errors('order_rule') := SQLERRM;
+                                END IF;
+                        END;
                     END;
-                END;
-            END LOOP;
+                END LOOP;
+            END IF;
         END;
 
         DECLARE
@@ -206,26 +253,28 @@ CREATE OR REPLACE PACKAGE BODY NESTED_OUTPUT AS
         DECLARE
             v_forarr_1 JSON_ARRAY_T := v_srcroot.get_Array('orders');
         BEGIN
-            FOR v_i_1 IN 0 .. v_forarr_1.get_size - 1 LOOP
-                DECLARE
-                    v_o JSON_OBJECT_T := TREAT(v_forarr_1.get(v_i_1) AS JSON_OBJECT_T);
-                BEGIN
+            IF v_forarr_1 IS NOT NULL THEN
+                FOR v_i_1 IN 0 .. v_forarr_1.get_size - 1 LOOP
                     DECLARE
-                        v_result_order_rule JSON_OBJECT_T;
-                        v_omitted_order_rule BOOLEAN;
+                        v_o JSON_OBJECT_T := TREAT(v_forarr_1.get(v_i_1) AS JSON_OBJECT_T);
                     BEGIN
-                        v_result_order_rule := fn_nested_output_order_rule(v_srcroot, v_o, v_rule_errors, v_omitted_order_rule);
-                        IF NOT v_omitted_order_rule THEN
-                            v_arr_Orders.append(v_result_order_rule);
-                        END IF;
-                    EXCEPTION
-                        WHEN OTHERS THEN
-                            IF NOT v_errors.EXISTS('order_rule') THEN
-                                v_errors('order_rule') := SQLERRM;
+                        DECLARE
+                            v_result_order_rule JSON_OBJECT_T;
+                            v_omitted_order_rule BOOLEAN;
+                        BEGIN
+                            v_result_order_rule := fn_nested_output_order_rule(v_srcroot, v_o, v_rule_errors, v_omitted_order_rule);
+                            IF NOT v_omitted_order_rule THEN
+                                v_arr_Orders.append(v_result_order_rule);
                             END IF;
+                        EXCEPTION
+                            WHEN OTHERS THEN
+                                IF NOT v_errors.EXISTS('order_rule') THEN
+                                    v_errors('order_rule') := SQLERRM;
+                                END IF;
+                        END;
                     END;
-                END;
-            END LOOP;
+                END LOOP;
+            END IF;
         END;
 
         DECLARE

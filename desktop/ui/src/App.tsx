@@ -1,4 +1,4 @@
-import type { ColDef, ICellRendererParams, ValueSetterParams } from "ag-grid-community";
+import type { ColDef, ICellRendererParams, RowStyle, ValueSetterParams } from "ag-grid-community";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AgGridReact } from "ag-grid-react";
 import { type Choice, Confirm } from "./Confirm";
@@ -7,17 +7,25 @@ import { VersionControl } from "./VersionControl";
 import { CompletingCellEditor, type GridContext } from "./CompletingCellEditor";
 import { Lookups } from "./Lookups";
 import { Paths } from "./Paths";
+import { Validations } from "./Validations";
 import { ProjectProperties } from "./ProjectProperties";
 import { Golden } from "./Golden";
 import { goldenDiagnostics } from "./goldenResult";
 import { GoldenImport } from "./GoldenImport";
 import { nameProblem } from "./mappings";
+import { LocalSettings, type LocalState } from "./LocalSettings";
+import { RunMenu } from "./RunMenu";
+import { LoopOptions, type LoopOptionValues, loopOptionsSummary } from "./LoopOptions";
+import { NewRuleDialog, type NewRuleValues } from "./NewRuleDialog";
 import { PromptDialog, type PromptField } from "./PromptDialog";
+import { RuleTip } from "./RuleTip";
 import { OutputInputButton } from "./OutputInput";
 import { RunReport } from "./RunReport";
 import { dirName, inputDialogDir, mappedFilePath, outputCell, type OutputSource } from "./ruleOutput";
 
 /** The folder the last input of a run was taken from (a convenience of this machine). */
+/** How long a dropped rule stays lit (the `dropped` animation in styles.css). */
+const DROP_FLASH_MS = 750;
 const LAST_INPUT_DIR = "lastInputDir";
 /** "1" when the user chose to always save the mapping before running it again on its input. */
 const SAVE_BEFORE_RUN = "saveBeforeRun";
@@ -43,9 +51,11 @@ import {
   type ConfigValues,
 } from "./projectConfig";
 import { ProjectButton } from "./ProjectButton";
+import { ImportView } from "./ImportView";
 import { Wizard } from "./Wizard";
 import { Guide } from "./Guide";
 import { HelpMenu } from "./HelpMenu";
+import { LicenseInfo } from "./LicenseInfo";
 import { Tour } from "./Tour";
 import { TOURS } from "./tourSteps";
 import type { TourState } from "./tour";
@@ -128,7 +138,12 @@ import {
 import {
   changedColumns,
   columnOf,
+  childCount,
   descendants,
+  moveRule,
+  pathAfterMove,
+  siblingOver,
+  splitPath,
   insertionPoint,
   diagnosticsByRule,
   expressionOf,
@@ -159,6 +174,9 @@ import {
   STATE_FILTERS,
   targetPath,
   type StateFilter,
+  validationsLabel,
+  validationsOf,
+  type ValidationsSection,
 } from "./model";
 import { MiddleEllipsis } from "./MiddleEllipsis";
 import { OverridePane } from "./OverridePane";
@@ -211,7 +229,6 @@ function mappingName(file: string): string {
   return file.replace(/^.*\//, "").replace(/\.fn\.yaml$/, "");
 }
 
-const COMMANDS = ["transpile", "build", "check", "publish"] as const;
 
 export function App() {
   const [python, setPython] = useState<PythonStatus | null>(null);
@@ -238,8 +255,11 @@ export function App() {
   goldenDirtyRef.current = goldenDirty;
   const [recent, setRecent] = useState<string[]>(loadRecent);
   const [wizard, setWizard] = useState(false);
+  /** The project a document is being imported into (the import takes the whole screen). */
+  const [importing, setImporting] = useState<string | null>(null);
   const [guide, setGuide] = useState<string | null>(null);
   const [explorer, setExplorer] = useState(false);
+  const [license, setLicense] = useState(false);
   /** A project to show the properties of as soon as it is the open one (the wizard asked). */
   const [propertiesFor, setPropertiesFor] = useState<string | null>(null);
   const [tourRun, setTourRun] = useState<{ book: Book; index: number } | null>(null);
@@ -285,7 +305,7 @@ export function App() {
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const filterInput = useRef<HTMLInputElement>(null);
   const [lookupsVersion, setLookupsVersion] = useState(0);
-  const [view, setView] = useState<"rules" | "lookups" | "paths" | "golden" | "project">("rules");
+  const [view, setView] = useState<"rules" | "lookups" | "paths" | "validations" | "golden" | "project">("rules");
   // mapper.toml: the form's descriptors, the file's values, the draft being edited
   const [configSchema, setConfigSchema] = useState<ConfigSchema | null>(null);
   const [configSaved, setConfigSaved] = useState("");
@@ -802,6 +822,24 @@ export function App() {
     }
   }, [project, ask]);
 
+  /** What Project properties shows of this machine and repository (see `LocalSettings`). */
+  const [local, setLocal] = useState<LocalState>({ publishDir: null, buildDir: null, artifacts: null });
+  const [localTick, setLocalTick] = useState(0);
+  useEffect(() => {
+    if (!project || view !== "project") return;
+    let stale = false;
+    void Promise.all([
+      publishDirGet(project).catch(() => null),
+      buildDirGet(project).catch(() => null),
+      artifactsState(project).catch(() => null),
+    ]).then(([publishDir, buildDir, artifacts]) => {
+      if (!stale) setLocal({ publishDir, buildDir, artifacts });
+    });
+    return () => {
+      stale = true;
+    };
+  }, [project, view, localTick]);
+
   /** Commit the generated files (build/compiled), or leave them to CI: .gitignore and the git index. */
   const chooseArtifacts = useCallback(async () => {
     if (!project) return;
@@ -1186,6 +1224,21 @@ export function App() {
     [remember],
   );
 
+  const editValidations = useCallback(
+    (change: (section: ValidationsSection) => void) => {
+      remember(treeRef.current, "validations");
+      setTree((old) => {
+        if (!old) return old;
+        const copy = structuredClone(old);
+        const section = validationsOf(copy);
+        change(section);
+        copy.validations = section;
+        return copy;
+      });
+    },
+    [remember],
+  );
+
   /** Target / Source edits are done by the Python worker (one implementation of the path rules). */
   const remoteEdit = useCallback(
     async (op: "retarget" | "set_source", path: string, value: string) => {
@@ -1274,6 +1327,10 @@ export function App() {
       else if (state.view) setView(state.view);
       setCollapsed(new Set());
       await frames();
+      if (state.column) {
+        grid.current?.api.ensureColumnVisible(state.column);
+        await frames();
+      }
       if (state.select !== undefined) {
         const api = grid.current?.api;
         const row = state.select
@@ -1383,20 +1440,119 @@ export function App() {
 
   const selectedRow = () => grid.current?.api?.getSelectedRows()[0];
 
-  const addRule = useCallback(async (kind: string, atRoot = false) => {
-    const current = treeRef.current;
-    if (!current) return;
-    const at = atRoot ? { parent: null, index: null } : insertionPoint(selectedRow());
-    try {
-      const next = await changeStructure(current, { op: "add_rule", ...at, kind });
-      remember(current);
-      setTree(next);
-      if (at.parent) setCollapsed((old) => new Set([...old].filter((p) => p !== at.parent)));
-      setStatus("");
-    } catch (e) {
-      setStatus(String(e instanceof Error ? e.message : e));
+  const [newRule, setNewRule] = useState<{ kind: string; at: { parent: string | null; index: number | null } } | null>(null);
+  /** The loop whose advanced options are open (its row path). */
+  const [loopOptions, setLoopOptions] = useState<string | null>(null);
+
+  /** Adds the rule; the reason it was refused, or null once added. */
+  const insertRule = useCallback(
+    async (kind: string, at: { parent: string | null; index: number | null }, values: NewRuleValues = {}): Promise<string | null> => {
+      const current = treeRef.current;
+      if (!current) return null;
+      try {
+        const next = await changeStructure(current, { op: "add_rule", ...at, kind, ...values });
+        remember(current);
+        setTree(next);
+        if (at.parent) setCollapsed((old) => new Set([...old].filter((p) => p !== at.parent)));
+        setStatus("");
+        // bring the new rule into view once the grid has it
+        const index = at.index ?? childCount(current, at.parent);
+        const added = `${at.parent ? `${at.parent}.` : ""}rules[${index}]`;
+        setTimeout(() => {
+          const node = grid.current?.api?.getRowNode(added);
+          if (node) grid.current?.api.ensureNodeVisible(node, "bottom");
+        }, 60);
+        return null;
+      } catch (e) {
+        return String(e instanceof Error ? e.message : e);
+      }
+    },
+    [remember],
+  );
+
+  /** A field, object or loop asks its name (and, for a field, type and Req.) in a dialog first;
+   *  a lookup is added at once. */
+  const addRule = useCallback(
+    (kind: string, atRoot = false) => {
+      if (!treeRef.current) return;
+      const at = atRoot ? { parent: null, index: null } : insertionPoint(selectedRow());
+      if (kind === "lookup") void insertRule(kind, at).then((error) => error && setStatus(error));
+      else setNewRule({ kind, at });
+    },
+    [insertRule],
+  );
+
+  /** The rule that has just been dropped (its path) and when its highlight began. */
+  const dropped = useRef<{ path: string; at: number } | null>(null);
+
+  /** Opens a one-row gap where a dragged rule would land: the rows from there on slide down (the
+   *  CSS `translate`, which ag-grid's own `transform` positioning leaves alone). Null closes it. */
+  const markDrop = useCallback((sibling: string | null, after = false, dragged: string | null = null) => {
+    const api = grid.current?.api;
+    document.querySelectorAll<HTMLElement>(".grid .ag-row").forEach((el) => {
+      el.style.translate = "";
+      el.classList.remove("drag-source");
+    });
+    if (!api || sibling === null) return;
+    const first = api.getRowNode(sibling);
+    if (!first || first.rowIndex === null) return;
+    let from = first.rowIndex;
+    const height = first.rowHeight ?? 42;
+    if (after) {
+      // behind the sibling and everything inside it
+      from += 1;
+      for (let i = from; i < api.getDisplayedRowCount(); i++) {
+        const path = api.getDisplayedRowAtIndex(i)?.data?.path as string | undefined;
+        if (!path?.startsWith(`${sibling}.rules[`)) break;
+        from = i + 1;
+      }
     }
-  }, [remember]);
+    document.querySelectorAll<HTMLElement>(".grid .ag-row[row-index]").forEach((el) => {
+      if (Number(el.getAttribute("row-index")) >= from) el.style.translate = `0 ${height}px`;
+      if (dragged !== null && el.getAttribute("row-id") === dragged) el.classList.add("drag-source");
+    });
+  }, []);
+
+  /** The sibling the pointer is over while a rule is dragged, and whether it lands behind it. */
+  const dropTarget = (e: { node: { data?: Row }; overNode?: { data?: Row } | null }) => {
+    const dragged = e.node.data?.path;
+    const over = e.overNode?.data?.path;
+    if (!dragged || !over) return null;
+    const sibling = siblingOver(dragged, over);
+    if (!sibling || sibling === dragged) return null;
+    return { dragged, sibling, after: splitPath(sibling).index > splitPath(dragged).index };
+  };
+
+  const dropRule = useCallback(
+    (found: { dragged: string; sibling: string; after: boolean } | null, overSomething: boolean) => {
+      const current = treeRef.current;
+      if (!current) return;
+      if (!found) {
+        if (overSomething) setStatus("A rule moves only among the rules of its own level (the root, an object or a loop).");
+        return;
+      }
+      const moved = moveRule(current, found.dragged, found.sibling, found.after);
+      if (!moved) return;
+      const { parent, index: from } = splitPath(found.dragged);
+      remember(current);
+      setTree(moved.tree);
+      setCollapsed((old) => new Set([...old].map((p) => pathAfterMove(p, parent, from, moved.index))));
+      setStatus("");
+      // the rule that landed lights up for a moment. Kept in a ref and given to the row by its class
+      // and style (not by touching the element), so that a row the grid draws again meanwhile goes on
+      // from where the animation was instead of losing it
+      const landed = `${parent ? `${parent}.` : ""}rules[${moved.index}]`;
+      dropped.current = { path: landed, at: Date.now() + 80 };
+      setTimeout(() => {
+        const node = grid.current?.api?.getRowNode(landed);
+        if (node) grid.current?.api.redrawRows({ rowNodes: [node] });
+      }, 80);
+      setTimeout(() => {
+        dropped.current = null;
+      }, DROP_FLASH_MS + 400);
+    },
+    [remember],
+  );
 
   const deleteRule = useCallback(async (path?: string) => {
     const current = treeRef.current;
@@ -1944,6 +2100,20 @@ export function App() {
     return [
       {
         headerName: "",
+        colId: "drag",
+        width: 34,
+        pinned: "left",
+        sortable: false,
+        suppressMovable: true,
+        resizable: false,
+        rowDrag: (p) => p.data !== undefined,
+        rowDragText: (p) => (p.rowNode?.data ? nameOf(p.rowNode.data.rule) : ""),
+        cellClass: "drag-cell",
+        valueGetter: () => "",
+        tooltipValueGetter: () => "Drag to reorder among the rules of the same level",
+      },
+      {
+        headerName: "",
         colId: "warn",
         width: 56,
         pinned: "left",
@@ -1989,8 +2159,34 @@ export function App() {
             </span>
           ) : null,
       },
-      { headerName: "Kind",
-        colId: "kind", valueGetter: (p) => p.data?.rule.kind, width: 80 },
+      {
+        headerName: "Kind",
+        colId: "kind",
+        valueGetter: (p) => p.data?.rule.kind,
+        width: 96,
+        // a loop has options beyond its Source, Filter and Output: the icon beside it opens them
+        cellRenderer: (p: ICellRendererParams<Row>) => {
+          const rule = p.data?.rule;
+          if (rule?.kind !== "loop") return p.value;
+          const summary = loopOptionsSummary(rule as unknown as Record<string, unknown>);
+          return (
+            <span>
+              loop{" "}
+              <button
+                className={summary ? "link loop-options-button set" : "link loop-options-button"}
+                title={summary ? `Loop options: ${summary}` : "Loop options (order, numbering, when empty…)"}
+                aria-label="Loop options"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setLoopOptions(p.data!.path);
+                }}
+              >
+                ⚙
+              </button>
+            </span>
+          );
+        },
+      },
       {
         headerName: "Type",
         colId: "type",
@@ -2077,6 +2273,13 @@ export function App() {
         width: 260,
         editable: true,
         valueGetter: (p) => p.data?.rule.description ?? "",
+        // long, often several lines: edited in a text area (Shift+Enter breaks a line) and read in
+        // full in a bubble that scrolls
+        cellEditor: "agLargeTextCellEditor",
+        cellEditorPopup: true,
+        cellEditorParams: { rows: 6, cols: 60, maxLength: 4000 },
+        tooltipComponent: RuleTip,
+        tooltipValueGetter: (p) => String(p.value ?? ""),
         valueSetter: (p: ValueSetterParams<Row>) => {
           edit(p.data.path, (r) => {
             r.description = String(p.newValue ?? "") || null;
@@ -2118,6 +2321,13 @@ export function App() {
         width: 220,
         editable: editableFor(["field"]),
         valueGetter: (p) => (p.data?.rule.kind === "field" ? p.data.rule.validation.notes ?? "" : ""),
+        // long, often several lines: edited in a text area (Shift+Enter breaks a line) and read in
+        // full in a bubble that scrolls
+        cellEditor: "agLargeTextCellEditor",
+        cellEditorPopup: true,
+        cellEditorParams: { rows: 6, cols: 60, maxLength: 4000 },
+        tooltipComponent: RuleTip,
+        tooltipValueGetter: (p) => String(p.value ?? ""),
         valueSetter: (p: ValueSetterParams<Row>) => {
           edit(p.data.path, (r) => {
             if (r.kind === "field") r.validation.notes = String(p.newValue ?? "") || null;
@@ -2134,7 +2344,7 @@ export function App() {
         <ProjectButton recent={recent} onOpen={openProject} onPick={async (d) => {
             if (await switchGuard()) await openDir(d);
           }} />
-        <button title="Start: recent projects, new project" aria-label="Start wizard" onClick={() => setWizard(true)}>
+        <button data-tour="wizard" title="Start: recent projects, new project" aria-label="Start wizard" onClick={() => setWizard(true)}>
           🧙‍♂️
         </button>
         <MiddleEllipsis className="project" text={project ?? "no project"} />
@@ -2156,50 +2366,29 @@ export function App() {
             Version control…
           </button>
           {/* transpile, build and publish are the developer's: a functional user only checks */}
-          {COMMANDS.filter((c) => developerMode || c === "check").map((c) => (
-            <button
-              key={c}
-              disabled={!canBuild}
-              title={c === "publish" ? "Check and build, then write the files and manifest.json to the publish folder" : undefined}
-              onClick={() => run(c)}
-            >
-              {c[0].toUpperCase() + c.slice(1)}
-            </button>
-          ))}
-          {developerMode && (
-            <button
-              disabled={!canBuild || busy}
-              title="Choose the folder Publish writes to, on this machine"
-              onClick={() => void choosePublishDir()}
-            >
-              Publish folder…
-            </button>
-          )}
-          {developerMode && (
-            <button
-              disabled={!canBuild || busy}
-              title="For a project in a synced folder: the folder on this machine the build goes to"
-              onClick={() => project && void syncedGate(project, true).catch((e) => setStatus(String(e)))}
-            >
-              Build folder…
-            </button>
-          )}
-          {developerMode && (
-            <button
-              disabled={!canBuild || busy}
-              title="Commit the generated files, or leave them to CI (.gitignore)"
-              onClick={() => void chooseArtifacts()}
-            >
-              Generated files…
-            </button>
-          )}
+          <RunMenu
+            disabled={!canBuild}
+            steps={
+              developerMode
+                ? [
+                    { id: "transpile", label: "Transpile", title: "Rule tree to .map.py files" },
+                    { id: "build", label: "Build", title: "Transpile and compile into build/compiled" },
+                    { id: "check", label: "Check…", title: "Regenerate and compare with the committed files" },
+                    { id: "publish", label: "Publish", title: "Check and build, then write the files and manifest.json to the publish folder" },
+                  ]
+                : []
+            }
+            onRun={(c) => run(c)}
+          />
         </span>
         <HelpMenu
           onGuide={() => setGuide("functional")}
           onExplorer={() => setExplorer((on) => !on)}
           onTour={(book) => void startTour(book)}
+          onLicense={() => setLicense(true)}
         />
       </header>
+      {license && <LicenseInfo onClose={() => setLicense(false)} />}
       {tourCopy && (
         <div className="banner">Tutorial project: read-only, nothing here is kept.</div>
       )}
@@ -2253,6 +2442,12 @@ export function App() {
               <button className={view === "paths" ? "tab active" : "tab"} onClick={() => setView("paths")}>
                 Paths
               </button>
+              <button
+                className={view === "validations" ? "tab active" : "tab"}
+                onClick={() => setView("validations")}
+              >
+                {tree ? validationsLabel(tree) : "Validations"}
+              </button>
               <button className={view === "golden" ? "tab active" : "tab"} onClick={() => setView("golden")}>
                 Golden{goldenDirty ? " ●" : ""}
               </button>
@@ -2276,7 +2471,19 @@ export function App() {
                 remember(treeRef.current, "config");
                 setConfig(next);
               }}
-            />
+            >
+              {developerMode && (
+                <LocalSettings
+                  state={local}
+                  synced={sharedMode}
+                  onPublishDir={() => void choosePublishDir().then(() => setLocalTick((t) => t + 1))}
+                  onBuildDir={() =>
+                    project && void syncedGate(project, true).catch((e) => setStatus(String(e))).then(() => setLocalTick((t) => t + 1))
+                  }
+                  onArtifacts={() => void chooseArtifacts().then(() => setLocalTick((t) => t + 1))}
+                />
+              )}
+            </ProjectProperties>
           )}
           {/* kept while the mapping is open, so a draft survives a visit to another view */}
           {tree && current && (
@@ -2303,6 +2510,16 @@ export function App() {
               paths={tree.paths}
               issues={(diagnostics.get("") ?? []).filter((d) => d.message.startsWith("paths:"))}
               onChange={editPaths}
+            />
+          )}
+          {tree && view === "validations" && (
+            <Validations
+              validations={validationsOf(tree)}
+              diagnostics={diagnostics}
+              onChange={editValidations}
+              complete={(path, text, cursor) =>
+                gridContext.complete?.(path, "expect", text, cursor) ?? Promise.resolve({ from: cursor, items: [] })
+              }
             />
           )}
           {tree && project && view === "lookups" && (
@@ -2333,13 +2550,13 @@ export function App() {
                   `lookup:${path}`,
                 )
               }
-              onAdd={() => void addRule("lookup", true)}
+              onAdd={() => addRule("lookup", true)}
               onDelete={(path) => void deleteRule(path)}
             />
           )}
           {tree && view === "rules" && (
             <div className="toolbar">
-              <AddMenu onAdd={(kind) => void addRule(kind)} />
+              <AddMenu onAdd={(kind) => addRule(kind)} />
               <button onClick={() => void deleteRule()}>Delete</button>
               <select
                 className="state-filter"
@@ -2402,6 +2619,18 @@ export function App() {
               getRowId={(p) => p.data.path}
               ref={grid}
               tooltipShowDelay={200}
+              tooltipInteraction
+              onRowDragMove={(e) => {
+                const found = dropTarget(e);
+                markDrop(found?.sibling ?? null, found?.after, found?.dragged ?? null);
+              }}
+              onRowDragLeave={() => markDrop(null)}
+              onRowDragCancel={() => markDrop(null)}
+              onRowDragEnd={(e) => {
+                markDrop(null);
+                dropRule(dropTarget(e), !!e.overNode?.data);
+              }}
+              tooltipHideDelay={600000}
               context={gridContext}
               defaultColDef={{
                 sortable: false,
@@ -2421,7 +2650,13 @@ export function App() {
               // the row classes (validation edge) were not redrawn while the editor was open
               onCellEditingStopped={(e) => e.api.redrawRows()}
               onSelectionChanged={(e) => setSelectedPath(e.api.getSelectedRows()[0]?.path ?? null)}
+              getRowStyle={(p) =>
+                dropped.current && p.data?.path === dropped.current.path
+                  ? ({ "--drop-elapsed": `${Math.min(0, dropped.current.at - Date.now())}ms` } as RowStyle)
+                  : undefined
+              }
               rowClassRules={{
+                "just-dropped": (p) => dropped.current !== null && p.data?.path === dropped.current.path,
                 "row-error": (p) =>
                   (diagnostics.get(p.data?.path ?? "") ?? []).some((d: { severity: string }) => d.severity === "error"),
                 // a rule with nothing defined is drawn apart (its "ignored" warning is not a problem)
@@ -2542,6 +2777,22 @@ export function App() {
             if (properties) setPropertiesFor(dir);
           }}
           onClose={() => setWizard(false)}
+          onImport={async (dir) => {
+            if (!(await switchGuard())) return;
+            setWizard(false);
+            if (dir !== project) await openDir(dir);
+            setImporting(dir);
+          }}
+        />
+      )}
+      {importing !== null && (
+        <ImportView
+          project={importing}
+          onClose={() => setImporting(null)}
+          onApplied={async (mapping) => {
+            setImporting(null);
+            await reloadFiles(mapping);
+          }}
         />
       )}
       {tourRun && (
@@ -2607,6 +2858,44 @@ export function App() {
           onClose={() => setVersionControl(false)}
           onChanged={() => void reloadFiles(current ? mappingName(current) : null)}
           ensureSaved={() => guardRef.current("Save before continuing?", "Continue without saving")}
+        />
+      )}
+      {loopOptions !== null && tree && (() => {
+        const rule = ruleAt(tree, loopOptions);
+        if (!rule || rule.kind !== "loop") return null;
+        const r = rule as unknown as Record<string, unknown>;
+        return (
+          <LoopOptions
+            name={nameOf(rule)}
+            values={{
+              label: rule.label ?? null,
+              order_by: (r.order_by as string | null) ?? null,
+              index_start: Number(r.index_start ?? 0),
+              when_empty: (r.when_empty as LoopOptionValues["when_empty"]) ?? null,
+              parallel: (r.parallel as number | null) ?? null,
+            }}
+            complete={(text, cursor) =>
+              gridContext.complete?.(loopOptions, "order", text, cursor) ?? Promise.resolve({ from: cursor, items: [] })
+            }
+            onCancel={() => setLoopOptions(null)}
+            onApply={(values) => {
+              edit(loopOptions, (target) => {
+                if (target.kind === "loop") Object.assign(target, values);
+              });
+              setLoopOptions(null);
+            }}
+          />
+        );
+      })()}
+      {newRule && (
+        <NewRuleDialog
+          kind={newRule.kind}
+          onSubmit={async (values) => {
+            const error = await insertRule(newRule.kind, newRule.at, values);
+            if (error === null) setNewRule(null);
+            return error;
+          }}
+          onCancel={() => setNewRule(null)}
         />
       )}
       {prompt && (

@@ -63,6 +63,19 @@ const paths: TourStep = {
   state: { view: "paths" },
 };
 
+const validations: TourStep = {
+  id: "validations",
+  title: "Validations",
+  label: "the Validations view",
+  text:
+    "Checks on the documents themselves. Each side can name a JSON Schema the input (or the output) must satisfy, " +
+    "and add checks of its own: an expression that must be true, and what to do when it is not, refuse the message or only flag it. " +
+    "Typing an expression suggests the fields of the document, as in the grid.",
+  target: [".tabs", ".validations"],
+  side: "bottom",
+  state: { view: "validations" },
+};
+
 const golden: TourStep = {
   id: "golden",
   title: "Golden cases",
@@ -91,7 +104,7 @@ export const FUNCTIONAL_TOUR: TourDef = compose("functional", "Quick tour", base
     label: "the Rules view",
     text:
       "The mapping is a grid of rules, one row for each part of the output document. " +
-      "The tabs above it switch between the views of a mapping: Rules, Lookups, Paths and Golden. We look at each.",
+      "The tabs above it switch between the views of a mapping: Rules, Lookups, Paths, Validations and Golden. We look at each.",
     target: [".tabs", ".ag-root-wrapper"],
     side: "bottom",
   },
@@ -109,7 +122,8 @@ export const FUNCTIONAL_TOUR: TourDef = compose("functional", "Quick tour", base
     label: "the Source column",
     text:
       "Where the value comes from in the input. $ is the document root, @ the current element of the loop " +
-      "the row sits in. A plain number or text, like 27, is a constant.",
+      "the row sits in. A plain number or text, like 27, is a constant. " +
+      "$.parties[role = 'X'] picks the first element that satisfies a condition; add order by to pick the best of several: [role = 'X' order by rank desc].",
     target: '.ag-header-cell[col-id="source"]',
     side: "bottom",
   },
@@ -119,7 +133,8 @@ export const FUNCTIONAL_TOUR: TourDef = compose("functional", "Quick tour", base
     label: "the Expression column",
     text:
       "How the value is computed, when it is not copied as it is. Empty means “= Source value”. " +
-      "In an expression, value is the Source's value. Typing suggests fields and functions.",
+      "In an expression, value is the Source's value. Typing suggests fields, functions and the keywords (for, if, order by…); " +
+      "inside count(x for x in $.items), x. suggests the fields of an element. any and all ask whether one or every element satisfies a condition, matches checks the shape of a text.",
     target: '.ag-header-cell[col-id="expression"]',
     side: "bottom",
   },
@@ -149,9 +164,24 @@ export const FUNCTIONAL_TOUR: TourDef = compose("functional", "Quick tour", base
     id: "loop",
     title: "Loops",
     label: "a loop rule",
-    text: "A loop builds a list of the output from a list of the input, one element for each. The rules under it are applied to every element.",
+    text:
+      "A loop builds a list of the output from a list of the input, one element for each. The rules under it are applied to every element. " +
+      "Its Source is the input list, its Expression the filter that decides which elements are kept; the Source can also start from an outer loop (@2.refs[*]) " +
+      "or run over the parts of a text (split_list(@.notes, \",\")).",
     target: ".ag-row-selected",
     side: "bottom",
+    state: { select: "lines" },
+  },
+  {
+    id: "loop-options",
+    title: "Loop options",
+    label: "the loop options button",
+    text:
+      "The gear opens everything else a loop can say: a name for its element, the order of the list (order by, with several keys, descending, empty values first or last), " +
+      "the number @index starts from, what to write when nothing is left (leave the list out or write an empty one) and the parallel degree. " +
+      "The order is applied before the filter and the numbering.",
+    target: ".ag-row-selected button.loop-options-button",
+    side: "left",
     state: { select: "lines" },
   },
   {
@@ -164,8 +194,19 @@ export const FUNCTIONAL_TOUR: TourDef = compose("functional", "Quick tour", base
     target: ".schema-status",
     side: "bottom",
   },
+  {
+    id: "import",
+    title: "Importing a document",
+    label: "the wizard button",
+    text:
+      "The wizard (here) also opens “Import a document…”: it reads a functional specification (Excel, Word, PDF or text) and proposes the rules. " +
+      "A long document is read in batches, several at a time; the questions it cannot answer by itself appear while it works, and you review the result before it becomes a mapping.",
+    target: '[data-tour="wizard"]',
+    side: "bottom",
+  },
   lookups,
   paths,
+  validations,
   golden,
   {
     id: "check",
@@ -208,7 +249,7 @@ export const DEVELOPER_TOUR: TourDef = compose(
       title: "Developer mode",
       label: "the Developer mode switch",
       text:
-        "Switch it on to see what functional users do not need: the validation column, the code of each rule, and the Transpile and Build buttons. " +
+        "Switch it on to see what functional users do not need: the validation column, the code of each rule, and the Transpile, Build and Publish steps of the Check button. " +
         "It is on for this tour.",
       target: ".switches",
       side: "top",
@@ -222,6 +263,7 @@ export const DEVELOPER_TOUR: TourDef = compose(
         "Look at the coloured edge of the rows: green is validated, amber needs a look.",
       target: '.ag-header-cell[col-id="validation"]',
       side: "bottom",
+      state: { column: "validation" },
     },
     {
       id: "override",
@@ -229,7 +271,8 @@ export const DEVELOPER_TOUR: TourDef = compose(
       label: "the override pane",
       text:
         "Unit price is a manual rule: its code was taken over and is written in the Python subset, with root and src instead of $ and @. " +
-        "The pane shows it next to what the tool would generate from the Source and Expression.",
+        "The pane shows it next to what the tool would generate from the Source and Expression. " +
+        "A loop's order by is written there as sorted(array, key=…, reverse=…, nulls=…) inside the for; typing sorted( suggests the arguments, and x. inside a comprehension suggests the fields.",
       target: ".override-pane",
       side: "top",
       state: { select: "unit" },
@@ -248,6 +291,7 @@ export const DEVELOPER_TOUR: TourDef = compose(
     },
     lookups,
     paths,
+    validations,
     golden,
     {
       id: "project",
@@ -263,11 +307,12 @@ export const DEVELOPER_TOUR: TourDef = compose(
     {
       id: "build",
       title: "Save, transpile, build, check",
-      label: "the Save, Transpile, Build and Check buttons",
+      label: "the Save and Check buttons",
       text:
-        "Transpile turns the rules into the intermediate Python code (.map.py), without compiling it. " +
-        "Build does that and compiles it to the backend's code, in the build folder.\n\n" +
         "Check verifies that what is committed still matches the sources, and reports what is wrong. " +
+        "Its caret lists the other steps: Transpile turns the rules into the intermediate Python code " +
+        "(.map.py), Build compiles it to the backend's code in the build folder, Publish writes the result " +
+        "to the publish folder.\n\n" +
         "mapper test runs the golden cases, from a terminal.",
       target: '[data-tour="actions"]',
       side: "bottom",

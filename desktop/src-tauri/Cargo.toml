@@ -1,8 +1,9 @@
 [package]
 name = "j2jme-desktop"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Desktop tool for the JSON-to-JSON mapping engine"
+license = "GPL-3.0-only"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

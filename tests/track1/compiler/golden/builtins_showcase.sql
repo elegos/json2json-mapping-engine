@@ -41,45 +41,66 @@ END BUILTINS_SHOWCASE;
 
 CREATE OR REPLACE PACKAGE BODY BUILTINS_SHOWCASE AS
     FUNCTION fn_builtins_showcase_rounded_amount(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN NUMBER IS
+        v_rounded_amount__ret NUMBER;
     BEGIN
         p_omitted := FALSE;
-        RETURN ROUND(p_root.get_Number('amount'), 2);
+        v_rounded_amount__ret := ROUND(p_root.get_Number('amount'), 2);
+        IF v_rounded_amount__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_rounded_amount__ret;
     END fn_builtins_showcase_rounded_amount;
 
     FUNCTION fn_builtins_showcase_full_name(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_full_name__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN (p_root.get_String('firstName') || ' ' || p_root.get_String('lastName'));
+        v_full_name__ret := (p_root.get_String('firstName') || ' ' || p_root.get_String('lastName'));
+        IF v_full_name__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_full_name__ret;
     END fn_builtins_showcase_full_name;
 
     FUNCTION fn_builtins_showcase_tier_label(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_tier_label__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN (CASE WHEN (p_root.get_Number('score') >= 90) THEN 'GOLD' ELSE 'STANDARD' END);
+        v_tier_label__ret := (CASE WHEN (p_root.get_Number('score') >= 90) THEN 'GOLD' ELSE 'STANDARD' END);
+        IF v_tier_label__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_tier_label__ret;
     END fn_builtins_showcase_tier_label;
 
     FUNCTION fn_builtins_showcase_ref_first(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_ref_first__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN J2JME_FUNCTIONS.split_first(p_root.get_String('ref'), '|');
+        v_ref_first__ret := J2JME_FUNCTIONS.split_first(p_root.get_String('ref'), '|');
+        IF v_ref_first__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_ref_first__ret;
     END fn_builtins_showcase_ref_first;
 
     FUNCTION fn_builtins_showcase_ref_second(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_ref_second__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN J2JME_FUNCTIONS.split_nth(p_root.get_String('ref'), '|', 2);
+        v_ref_second__ret := J2JME_FUNCTIONS.split_nth(p_root.get_String('ref'), '|', 2);
+        IF v_ref_second__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_ref_second__ret;
     END fn_builtins_showcase_ref_second;
 
     FUNCTION fn_builtins_showcase_currency(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_currency__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN J2JME_FUNCTIONS.lookup(p_root.get_String('countryCode'), p_root.get_Object('currencyTable'), 'EUR');
+        v_currency__ret := J2JME_FUNCTIONS.lookup(p_root.get_String('countryCode'), p_root.get_Object('currencyTable'), 'EUR');
+        IF v_currency__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_currency__ret;
     END fn_builtins_showcase_currency;
 
     FUNCTION fn_builtins_showcase_shipped_on(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN DATE IS
+        v_shipped_on__ret DATE;
     BEGIN
         p_omitted := FALSE;
-        RETURN TO_DATE(p_root.get_String('shippedOn'), 'YYYY-MM-DD');
+        v_shipped_on__ret := TO_DATE(p_root.get_String('shippedOn'), 'YYYY-MM-DD');
+        IF v_shipped_on__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_shipped_on__ret;
     END fn_builtins_showcase_shipped_on;
 
     PROCEDURE map_builtins_showcase (

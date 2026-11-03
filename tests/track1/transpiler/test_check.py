@@ -9,6 +9,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from cli.main import app
+from compiler.function_registry import all_functions
 from transpiler.check import check_functional, schemas_for
 from transpiler.model import (
     FieldRule,
@@ -24,12 +25,12 @@ FN = PROJECT / "mappings" / "functional" / "orders.fn.yaml"
 runner = CliRunner()
 
 
-def check(mutate=None):
+def check(mutate=None, functions=None):
     tree = load_functional_file(FN)
     if mutate:
         mutate(tree)
     inp, out = schemas_for(PROJECT, "orders")
-    return check_functional(tree, inp, out)
+    return check_functional(tree, inp, out, functions)
 
 
 def errors(issues):
@@ -46,7 +47,11 @@ def test_unknown_target_and_wrong_type() -> None:
         tree.rules[1].type = "int"
 
     found = errors(check(mutate))
-    assert ("rules[0]", "target", "'Nope' is not in the output schema") in found
+    assert (
+        "rules[0]",
+        "target",
+        "'Nope' is not in the output schema",
+    ) in found  # nothing close: no guess
     assert any(r == "rules[1]" and c == "type" for r, c, _ in found)
     # the required output field OrderId is now missing
     assert any("requires OrderId" in m for _, _, m in found)
@@ -67,7 +72,11 @@ def test_source_and_reference_must_exist_in_the_input() -> None:
         loop.rules[0].transform.expression = "@.skuu"
 
     found = errors(check(mutate))
-    assert ("rules[0]", "source", "'idd' is not in the input schema") in found
+    assert (
+        "rules[0]",
+        "source",
+        "'idd' is not in the input schema — did you mean 'id'?",
+    ) in found
     assert any(r == "rules[1]" and c == "expression" and "contry" in m for r, c, m in found)
     assert any(r.endswith(".rules[0]") and "skuu" in m for r, _, m in found)
 
@@ -467,7 +476,7 @@ def test_a_code_override_is_checked_too() -> None:
 
 
 def test_a_code_override_name_that_nothing_defines_is_an_error() -> None:
-    assert _call_issues("root.name + missing", "manual") == ["'missing' is not defined"]
+    assert _call_issues("root.name + zzq", "manual") == ["'zzq' is not defined"]
     assert _call_issues("x = root.name\nx + y + y", "manual") == ["'y' is not defined"]
     # `src`/`index` exist only inside a loop; the root, the block's variables and functions do
     assert _call_issues("src.name", "manual") == ["'src' is not defined"]
@@ -514,3 +523,106 @@ def test_an_unfinished_rule_is_a_warning_unless_the_output_schema_requires_it() 
     [(rule, severity, message)] = _unfinished_issues(required)
     assert (rule, severity) == ("rules[0]", "error")
     assert "required by the output schema" in message
+
+
+def test_a_misspelt_name_gets_a_did_you_mean() -> None:
+    def mutate(tree):
+        tree.rules[0].field = "OrderID"  # the case is a typo too
+        tree.rules[1].transform.expression = "upper($.countri)"
+
+    found = errors(check(mutate))
+    assert (
+        "rules[0]",
+        "target",
+        "'OrderID' is not in the output schema — did you mean 'OrderId'?",
+    ) in found
+    assert any(
+        r == "rules[1]"
+        and "'countri' is not in the input schema" in m
+        and "did you mean 'country'?" in m
+        for r, _, m in found
+    )
+
+
+def test_a_name_that_resembles_nothing_gets_no_guess() -> None:
+    def mutate(tree):
+        tree.rules[0].source_path = "$.zzzzzz"
+
+    found = errors(check(mutate))
+    assert ("rules[0]", "source", "'zzzzzz' is not in the input schema") in found
+
+
+def test_the_guess_comes_from_the_object_where_the_name_is_missing() -> None:
+    # `items` exists at the root, but `skuu` is looked up inside an item
+    def mutate(tree):
+        loop = next(r for r in tree.rules if r.kind == "loop")
+        loop.rules[0].transform.expression = "@.skuu"
+
+    found = errors(check(mutate))
+    assert any("did you mean 'sku'?" in m for _, _, m in found)
+
+
+def test_an_undefined_name_offers_the_closest_one() -> None:
+    assert _call_issues("split_firts(root.name, ',')", "manual") == [
+        "unknown function 'split_firts' — did you mean 'split_first'?"
+    ]
+    assert _call_issues("x = root.name\nxx", "manual") == [
+        "'xx' is not defined — did you mean 'x'?"
+    ]
+
+
+def _expression_issues(expression: str, field: int = 1) -> list[str]:
+    def mutate(tree):
+        tree.rules[field].transform.expression = expression
+
+    # with the function list, as the tool and the build check
+    found = errors(check(mutate, all_functions(PROJECT)))
+    return [m for r, _, m in found if r == f"rules[{field}]"]
+
+
+def test_a_syntax_error_says_what_to_write_instead() -> None:
+    assert _expression_issues("$.id == 'a' && $.country") == [
+        "invalid expression: `&&` is not valid: write `and`"
+    ]
+    assert "write `or`" in _expression_issues("$.id == 'a' || $.country")[0]
+    assert "write `not`" in _expression_issues("!$.id")[0]
+    assert "a if cond else b" in _expression_issues("$.id ? 1 : 2")[0]
+    assert "use `==`" in _expression_issues("$.id === 'a'")[0]
+    # an operator inside a text is just text
+    assert "&&" not in " ".join(_expression_issues("concat($.id, '&&', $.country)"))
+
+
+def test_a_syntax_error_says_where_it_stopped() -> None:
+    assert "ends too soon" in _expression_issues("$.id ==")[0]
+    assert "ends too soon" in _expression_issues("upper($.country) +")[0]
+    assert "unexpected `y`" in _expression_issues("x y")[0]
+    assert "closing quote" in _expression_issues("'abc")[0]
+    # the line is named only in a block of several lines
+    assert "(line" not in _expression_issues("$.id ==")[0]
+    assert _expression_issues("a = 1\nb = (")[0].endswith("(line 2)")
+
+
+def test_an_assignment_in_an_expression_points_to_the_comparison() -> None:
+    assert "write `==`" in _expression_issues("$.id = 'a'")[0]
+
+
+def test_an_unknown_function_or_another_languages_name_is_reported() -> None:
+    assert _expression_issues("zzfn($.id)") == [
+        "unknown function 'zzfn' — the guide lists the functions"
+    ]
+    assert "did you mean 'to_string'?" in _expression_issues("to_strin($.country)")[0]
+    assert "write `True`" in _expression_issues("true")[0]
+    assert "None" in _expression_issues("null")[0]
+    # the references and the project's functions are not "undefined"
+    assert _expression_issues("to_string($.country)") == []
+
+
+def test_a_bare_return_on_a_required_field_is_an_error_in_the_grid() -> None:
+    omit = "if $.country == 'x':\n  return\n$.country"
+    assert any("bare `return`" in m for m in _expression_issues(omit, field=0))
+
+    def optional(tree):
+        tree.rules[0].required = False
+        tree.rules[0].transform.expression = omit
+
+    assert not any("bare `return`" in m for _, _, m in errors(check(optional)))

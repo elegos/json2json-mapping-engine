@@ -4,7 +4,7 @@ import type { Book } from "./guideModel";
 /** The state of the interface a step needs; the tour loads it, going forward or back, so a step
  * looks the same whenever it is reached. Anything left out is not touched. */
 export interface TourState {
-  view?: "rules" | "lookups" | "paths" | "golden" | "project";
+  view?: "rules" | "lookups" | "paths" | "validations" | "golden" | "project";
   /** Id of the rule to select (`unit`, `cust.name`): its row is highlighted and the override
    * pane opens for it in Developer mode. */
   select?: string | null;
@@ -12,6 +12,8 @@ export interface TourState {
   showIds?: boolean;
   /** The function explorer panel. */
   explorer?: boolean;
+  /** A column of the grid to bring into view (the grid draws only the columns that fit). */
+  column?: string;
 }
 
 export type Side = "top" | "bottom" | "left" | "right";

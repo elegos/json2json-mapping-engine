@@ -19,6 +19,7 @@ elements, the child's item is `<id>_src`. The scope carries those names.
 
 from __future__ import annotations
 
+import keyword
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -78,6 +79,10 @@ def _split_strings(text: str) -> list[tuple[bool, str]]:
     return parts
 
 
+# a field named like a Python keyword (`$.return.number`, `@.from`) is read as `root["return"]`
+_KEYWORD_FIELD = re.compile(r"(?<=[\w\]\)])\.(" + "|".join(keyword.kwlist) + r")\b(?!\()")
+
+
 def resolve_anchors(
     text: str, scope: AnchorScope, where: str, value: str | None = None
 ) -> Resolved:
@@ -127,7 +132,7 @@ def resolve_anchors(
 
     chunks = []
     for is_str, chunk in _split_strings(text):
-        chunks.append(chunk if is_str else _ANCHOR.sub(sub, chunk))
+        chunks.append(chunk if is_str else _KEYWORD_FIELD.sub(r'["\1"]', _ANCHOR.sub(sub, chunk)))
     out.text = "".join(chunks)
     return out
 

@@ -33,6 +33,7 @@ and its first mappings; the wizard button (🧙‍♂️) in the toolbar brings 
 3. *Check* the mapping to see what is missing or wrong.
 4. Keep golden cases: examples of an input and the output it must give, which protect the mapping when it changes.
 
-> The rest of this book follows these steps. Start with [the grid](page:functional/the-grid).
+> The rest of this book follows these steps. Start with [the grid](page:functional/the-grid). A picture of
+> each step of the quick tour is in [the tour, step by step](page:functional/tour).
 > Developers and anyone curious about what happens behind the scenes will find it in the
 > [Developer book](page:developer/welcome).

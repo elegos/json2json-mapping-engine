@@ -1,0 +1,48 @@
+{
+  "workbook": "StockMovement_to_Ledger_Mapping_v0.3.xlsx",
+  "family": "B",
+  "language": "en",
+  "index_base": {
+    "code_expressions": 0
+  },
+  "array_notation": {
+    "[]": "every element",
+    "[*]": "every element",
+    "[x=='v']": "filter, every match",
+    "[0]": "first element only"
+  },
+  "mandatory_vocabulary": {
+    "Y": "mandatory",
+    "Yes": "mandatory",
+    "N": "optional",
+    "No": "optional"
+  },
+  "date_dialect": {
+    "yyyy-MM-dd'T'HH:mm:ss.SSSXXX": "3 millisecond digits, offset kept, Z for zero offset",
+    "date_only_to_datetime": "append literal T00:00:00Z (no milliseconds)"
+  },
+  "null_rule": "null, empty and missing are equivalent; optional target field without value is omitted",
+  "concatenation": "plus sign is string concatenation; optional trailing part dropped together with its separator",
+  "colour_semantics": {
+    "D9E1F2": "constant",
+    "E2EFDA": "derived",
+    "FFF2CC": "optional",
+    "FFFFFF": "standard"
+  },
+  "lookup_tables": {
+    "uomlist": {
+      "PCS": "EA",
+      "KGM": "KG",
+      "LTR": "L",
+      "_not_found": "pass source value through"
+    }
+  },
+  "version_discrepancy": {
+    "file_name": "0.3",
+    "version_sheet_last": "0.4",
+    "updated_in_version_max": "0.5"
+  },
+  "do_not_map": [
+    "docRef"
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "movement": {
+    "id": "MV-1001",
+    "type": "ISSUE",
+    "postedAt": "2026-06-01T10:23:00+02:00",
+    "warehouse": {
+      "code": "WH3",
+      "zone": "B2"
+    },
+    "item": {
+      "sku": "CHR-OAK-120"
+    },
+    "quantity": {
+      "value": 12,
+      "unit": "PCS"
+    },
+    "lot": {
+      "id": "L77",
+      "expiry": "2027-01-31"
+    },
+    "reasons": [
+      {
+        "code": "DMG",
+        "text": "Broken pallet"
+      },
+      {
+        "code": "EXP",
+        "text": null
+      }
+    ],
+    "user": "operator1",
+    "linkedDocs": [
+      {
+        "kind": "DN",
+        "number": "D-55"
+      }
+    ]
+  }
+}

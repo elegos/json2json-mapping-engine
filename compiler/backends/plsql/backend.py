@@ -23,6 +23,7 @@ from compiler.backends.plsql.package import assemble_packages
 from compiler.function_linker import FunctionImpl, FunctionLinker, Renderer
 from compiler.function_registry import project_functions
 from compiler.scope_resolver import ScopeResolution
+from compiler.validation import Validation
 
 DEFAULT_ERROR_CODE = -20000
 
@@ -175,14 +176,18 @@ class PlsqlBackend(Backend):
         return PlsqlNaming.from_config(self.config)
 
     def compile_module(
-        self, tree: ast.Module, mapping_id: str, scope_resolution: ScopeResolution | None = None
+        self,
+        tree: ast.Module,
+        mapping_id: str,
+        scope_resolution: ScopeResolution | None = None,
+        validation: Validation | None = None,
     ) -> PlsqlUnit:
         generator = PlsqlCodeGenerator(
             function_linker=FunctionLinker(BUILTIN_FUNCTIONS, project_implementations()),
             error_code=int(self.config.get("error_code", DEFAULT_ERROR_CODE)),
             naming=self.naming,
         )
-        return generator.compile_module(tree, mapping_id, scope_resolution)
+        return generator.compile_module(tree, mapping_id, scope_resolution, validation)
 
     def unit_from_json(self, data: dict[str, Any]) -> PlsqlUnit:
         return PlsqlUnit.from_json(data)

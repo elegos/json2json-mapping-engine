@@ -1,0 +1,15 @@
+{
+  "customer": {
+    "code": "C-002",
+    "surname": "Mueller",
+    "firstName": "Anna",
+    "country": "Austria",
+    "revenue": 10000,
+    "emails": [
+      {
+        "type": "P",
+        "address": "anna@example.test"
+      }
+    ]
+  }
+}

@@ -64,3 +64,23 @@ def test_unsupported_multi_type_union_raises():
     }
     with pytest.raises(SchemaGeneratorError):
         generate_input_stub(schema, "Weird")
+
+
+def test_output_root_that_is_one_of_several_shapes_gives_the_union_class():
+    post = {
+        "type": "object",
+        "required": ["op", "name"],
+        "properties": {"op": {"const": "POST"}, "name": {"type": "string"}},
+    }
+    delete = {
+        "type": "object",
+        "required": ["op"],
+        "properties": {"op": {"const": "DELETE"}},
+    }
+    module = generate_output_dataclasses({"oneOf": [post, delete]}, "Msg")
+    assert "class Msg:\n    op: str\n    name: str | None = None" in module
+
+
+def test_output_root_that_is_not_an_object_is_refused():
+    with pytest.raises(SchemaGeneratorError, match="root must be a JSON object"):
+        generate_output_dataclasses({"oneOf": [{"type": "string"}, {"type": "integer"}]}, "Msg")

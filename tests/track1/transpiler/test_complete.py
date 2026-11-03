@@ -64,7 +64,7 @@ def test_a_bare_name_in_an_expression_offers_functions_and_value() -> None:
     assert "lookup" in found and "value" not in found
     assert "value" in labels(CURRENCY, "expression", "val")
     fn = complete(FILE, CURRENCY, "expression", "spl", 3, INP, OUT).items
-    assert [i.label for i in fn] == ["split_first", "split_nth"]
+    assert [i.label for i in fn] == ["split_first", "split_last", "split_list", "split_nth"]
     assert fn[0].insert == "split_first(" and fn[0].detail == "split_first(s, sep)"
     assert "before the first" in fn[0].doc and fn[0].origin == "built-in"
 
@@ -242,3 +242,49 @@ def test_code_dialect_suggests_the_variables_assigned_above() -> None:
     own = "yadda"
     again = complete(file, "rules[0]", "code", own, len(own), None, None)
     assert "yadda" not in [i.insert for i in again.items]
+
+
+def test_a_check_reads_the_input_or_the_output_as_dollar() -> None:
+    first = "validations.input.checks[0]"
+    assert "id" in labels(first, "expect", "$.")
+    assert "OrderId" not in labels(first, "expect", "$.")
+    assert "OrderId" in labels("validations.output.checks[0]", "expect", "$.")
+    assert "id" not in labels("validations.output.checks[0]", "expect", "$.")
+
+
+def test_a_check_offers_functions_but_not_value() -> None:
+    found = labels("validations.input.checks[0]", "expect", "is_dig")
+    assert "is_digits" in found
+    assert "value" not in labels("validations.input.checks[0]", "expect", "")
+
+
+def test_the_variable_of_a_comprehension_lists_the_fields_of_its_element() -> None:
+    assert labels(CURRENCY, "expression", "any(i. for i in $.items)", 6) == ["sku", "qty", "total"]
+    assert labels(CURRENCY, "expression", "count(i for i in $.items if i.q") == ["qty"]
+    # a condition inside the list does not change what an element is
+    assert labels(CURRENCY, "expression", "sum(i.t for i in $.items[qty > 1])", 7) == ["total"]
+    assert "i" in labels(CURRENCY, "expression", "any(i.qty > 1 for i in $.items) and ")
+
+
+def test_a_comprehension_inside_a_selection_reads_the_candidates_fields() -> None:
+    text = "$.parties[any(a.x for a in items) and "
+    # `items` is a field of the candidate: the variable is its element
+    assert "a" in labels(CURRENCY, "expression", text + "a")
+
+
+def test_a_loops_filter_and_order_key_read_its_element() -> None:
+    assert labels(LINES, "expression", "@.") == ["sku", "qty", "total"]
+    assert labels(LINES, "order", "@.") == ["sku", "qty", "total"]
+    assert "value" not in labels(LINES, "order", "va")
+
+
+def test_the_developer_dialect_knows_sorted_and_comprehension_variables() -> None:
+    inside = f"{LINES}.rules[0]"
+    assert "sorted" in labels(inside, "code", "so")
+    args = labels(inside, "code", "sorted(root.items, ")
+    assert {"key=", "by=", "kind=", "reverse=", "nulls="} <= set(args)
+    assert "key=" not in labels(inside, "code", "len(")
+    assert labels(inside, "code", 'sorted(root.items, kind="n') == ["number"]
+    assert labels(inside, "code", 'sorted(root.items, nulls="') == ["first", "last"]
+    text = "[i. for i in root.items]"
+    assert labels(inside, "code", text, 3) == ["sku", "qty", "total"]

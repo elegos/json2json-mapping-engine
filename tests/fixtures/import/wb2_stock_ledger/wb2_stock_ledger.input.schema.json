@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Stock movement (synthetic)",
+  "type": "object",
+  "required": [
+    "movement"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "movement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "type",
+        "postedAt",
+        "warehouse",
+        "item",
+        "quantity"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "enum": [
+            "RECEIPT",
+            "ISSUE",
+            "TRANSFER",
+            "ADJUST"
+          ]
+        },
+        "postedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "warehouse": {
+          "type": "object",
+          "required": [
+            "code"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "zone": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "item": {
+          "type": "object",
+          "required": [
+            "sku"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "sku": {
+              "type": "string",
+              "pattern": "^[^-]+-[^-]+-.+$"
+            }
+          }
+        },
+        "quantity": {
+          "type": "object",
+          "required": [
+            "value",
+            "unit"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "value": {
+              "type": "number"
+            },
+            "unit": {
+              "type": "string"
+            }
+          }
+        },
+        "lot": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "expiry": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "code"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "text": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        },
+        "user": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "linkedDocs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "kind",
+              "number"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "number": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

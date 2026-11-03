@@ -15,21 +15,37 @@ END FILTERED_INDEX;
 CREATE OR REPLACE PACKAGE BODY FILTERED_INDEX AS
     FUNCTION fn_filtered_index_active_rule(p_i IN NUMBER, p_itm IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN JSON_OBJECT_T IS
         v_active_rule__dc JSON_OBJECT_T;
+        v_val_active_rule__v0 NUMBER;
+        v_val_active_rule__v1 VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
         v_active_rule__dc := JSON_OBJECT_T();
-        v_active_rule__dc.put('Pos', p_i);
-        v_active_rule__dc.put('Id', p_itm.get_String('id'));
+        v_val_active_rule__v0 := p_i;
+        IF v_val_active_rule__v0 IS NOT NULL THEN
+            v_active_rule__dc.put('Pos', v_val_active_rule__v0);
+        END IF;
+        v_val_active_rule__v1 := p_itm.get_String('id');
+        IF v_val_active_rule__v1 IS NOT NULL THEN
+            v_active_rule__dc.put('Id', v_val_active_rule__v1);
+        END IF;
         RETURN v_active_rule__dc;
     END fn_filtered_index_active_rule;
 
     FUNCTION fn_filtered_index_big_rule(p_j IN NUMBER, p_itm IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN JSON_OBJECT_T IS
         v_big_rule__dc JSON_OBJECT_T;
+        v_val_big_rule__v0 NUMBER;
+        v_val_big_rule__v1 VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
         v_big_rule__dc := JSON_OBJECT_T();
-        v_big_rule__dc.put('Pos', p_j);
-        v_big_rule__dc.put('Id', p_itm.get_String('id'));
+        v_val_big_rule__v0 := p_j;
+        IF v_val_big_rule__v0 IS NOT NULL THEN
+            v_big_rule__dc.put('Pos', v_val_big_rule__v0);
+        END IF;
+        v_val_big_rule__v1 := p_itm.get_String('id');
+        IF v_val_big_rule__v1 IS NOT NULL THEN
+            v_big_rule__dc.put('Id', v_val_big_rule__v1);
+        END IF;
         RETURN v_big_rule__dc;
     END fn_filtered_index_big_rule;
 
@@ -45,70 +61,93 @@ CREATE OR REPLACE PACKAGE BODY FILTERED_INDEX AS
         v_arr_Bigs JSON_ARRAY_T := JSON_ARRAY_T();
     BEGIN
         DECLARE
-            v_forarr_0 JSON_ARRAY_T := TREAT(v_srcroot.get_Array('items').clone AS JSON_ARRAY_T);
+            v_forarr_0 JSON_ARRAY_T := v_srcroot.get_Array('items');
             v_cnt_0 NUMBER := 1;
             v_cnt_1 NUMBER := 0;
         BEGIN
-            DECLARE
-                v_sortj_0 PLS_INTEGER;
-                v_sorttmp_0 JSON_ELEMENT_T;
-                v_sorttmpkey_0 JSON_ELEMENT_T;
-            BEGIN
-                FOR v_sortk_0 IN 1 .. v_forarr_0.get_size - 1 LOOP
-                    v_sorttmp_0 := v_forarr_0.get(v_sortk_0);
-                    v_sorttmpkey_0 := TREAT(v_sorttmp_0 AS JSON_OBJECT_T).get('price');
-                    v_sortj_0 := v_sortk_0 - 1;
-                    WHILE v_sortj_0 >= 0 AND TREAT(v_forarr_0.get(v_sortj_0) AS JSON_OBJECT_T).get('price').compare_to(v_sorttmpkey_0) > 0 LOOP
-                        v_forarr_0.put(v_sortj_0 + 1, v_forarr_0.get(v_sortj_0), TRUE);
-                        v_sortj_0 := v_sortj_0 - 1;
-                    END LOOP;
-                    v_forarr_0.put(v_sortj_0 + 1, v_sorttmp_0, TRUE);
-                END LOOP;
-            END;
-            FOR v_i_0 IN 0 .. v_forarr_0.get_size - 1 LOOP
+            IF v_forarr_0 IS NOT NULL THEN
                 DECLARE
-                    v_itm JSON_OBJECT_T := TREAT(v_forarr_0.get(v_i_0) AS JSON_OBJECT_T);
+                    TYPE t_key_0_0 IS TABLE OF JSON_ELEMENT_T INDEX BY PLS_INTEGER;
+                    TYPE t_ord_0_0 IS TABLE OF PLS_INTEGER INDEX BY PLS_INTEGER;
+                    v_sortkey_0_0 t_key_0_0;
+                    v_sortord_0_0 t_ord_0_0;
+                    v_sorted_0_0 JSON_ARRAY_T := JSON_ARRAY_T();
+                    v_sorttmp_0_0 PLS_INTEGER;
+                    v_sortj_0_0 PLS_INTEGER;
+                    FUNCTION v_sortnul_0_0(p IN PLS_INTEGER) RETURN BOOLEAN IS
+                    BEGIN RETURN v_sortkey_0_0(p) IS NULL OR v_sortkey_0_0(p).is_Null; END;
+                    FUNCTION v_sortcmp_0_0(a IN PLS_INTEGER, b IN PLS_INTEGER) RETURN PLS_INTEGER IS
+                    BEGIN
+                        IF v_sortnul_0_0(a) THEN RETURN CASE WHEN v_sortnul_0_0(b) THEN 0 ELSE 1 END; END IF;
+                        IF v_sortnul_0_0(b) THEN RETURN -1; END IF;
+                        IF v_sortkey_0_0(a).compare_to(v_sortkey_0_0(b)) < 0 THEN RETURN -1; END IF;
+                        IF v_sortkey_0_0(a).compare_to(v_sortkey_0_0(b)) > 0 THEN RETURN 1; END IF;
+                        RETURN 0;
+                    END;
+                BEGIN
+                    FOR v_sorti_0_0 IN 0 .. v_forarr_0.get_size - 1 LOOP
+                        v_sortkey_0_0(v_sorti_0_0) := TREAT(v_forarr_0.get(v_sorti_0_0) AS JSON_OBJECT_T).get('price');
+                        v_sortord_0_0(v_sorti_0_0) := v_sorti_0_0;
+                    END LOOP;
+                    FOR v_sortk_0_0 IN 1 .. v_forarr_0.get_size - 1 LOOP
+                        v_sorttmp_0_0 := v_sortord_0_0(v_sortk_0_0);
+                        v_sortj_0_0 := v_sortk_0_0 - 1;
+                        WHILE v_sortj_0_0 >= 0 AND v_sortcmp_0_0(v_sortord_0_0(v_sortj_0_0), v_sorttmp_0_0) > 0 LOOP
+                            v_sortord_0_0(v_sortj_0_0 + 1) := v_sortord_0_0(v_sortj_0_0);
+                            v_sortj_0_0 := v_sortj_0_0 - 1;
+                        END LOOP;
+                        v_sortord_0_0(v_sortj_0_0 + 1) := v_sorttmp_0_0;
+                    END LOOP;
+                    FOR v_sorti_0_0 IN 0 .. v_forarr_0.get_size - 1 LOOP
+                        v_sorted_0_0.append(v_forarr_0.get(v_sortord_0_0(v_sorti_0_0)));
+                    END LOOP;
+                    v_forarr_0 := v_sorted_0_0;
+                END;
+                FOR v_i_0 IN 0 .. v_forarr_0.get_size - 1 LOOP
+                    DECLARE
+                        v_itm JSON_OBJECT_T := TREAT(v_forarr_0.get(v_i_0) AS JSON_OBJECT_T);
                     v_i NUMBER;
                     v_j NUMBER;
-                BEGIN
-                    IF (v_itm.get_String('status') = 'A') THEN
-                        v_i := v_cnt_0;
-                        v_cnt_0 := v_cnt_0 + 1;
-                        DECLARE
-                            v_result_active_rule JSON_OBJECT_T;
-                            v_omitted_active_rule BOOLEAN;
-                        BEGIN
-                            v_result_active_rule := fn_filtered_index_active_rule(v_i, v_itm, v_omitted_active_rule);
-                            IF NOT v_omitted_active_rule THEN
-                                v_arr_Actives.append(v_result_active_rule);
-                            END IF;
-                        EXCEPTION
-                            WHEN OTHERS THEN
-                                IF NOT v_errors.EXISTS('active_rule') THEN
-                                    v_errors('active_rule') := SQLERRM;
+                    BEGIN
+                        IF (v_itm.get_String('status') = 'A') THEN
+                            v_i := v_cnt_0;
+                            v_cnt_0 := v_cnt_0 + 1;
+                            DECLARE
+                                v_result_active_rule JSON_OBJECT_T;
+                                v_omitted_active_rule BOOLEAN;
+                            BEGIN
+                                v_result_active_rule := fn_filtered_index_active_rule(v_i, v_itm, v_omitted_active_rule);
+                                IF NOT v_omitted_active_rule THEN
+                                    v_arr_Actives.append(v_result_active_rule);
                                 END IF;
-                        END;
-                    END IF;
-                    IF (v_itm.get_Number('price') > 5) THEN
-                        v_j := v_cnt_1;
-                        v_cnt_1 := v_cnt_1 + 1;
-                        DECLARE
-                            v_result_big_rule JSON_OBJECT_T;
-                            v_omitted_big_rule BOOLEAN;
-                        BEGIN
-                            v_result_big_rule := fn_filtered_index_big_rule(v_j, v_itm, v_omitted_big_rule);
-                            IF NOT v_omitted_big_rule THEN
-                                v_arr_Bigs.append(v_result_big_rule);
-                            END IF;
-                        EXCEPTION
-                            WHEN OTHERS THEN
-                                IF NOT v_errors.EXISTS('big_rule') THEN
-                                    v_errors('big_rule') := SQLERRM;
+                            EXCEPTION
+                                WHEN OTHERS THEN
+                                    IF NOT v_errors.EXISTS('active_rule') THEN
+                                        v_errors('active_rule') := SQLERRM;
+                                    END IF;
+                            END;
+                        END IF;
+                        IF (v_itm.get_Number('price') > 5) THEN
+                            v_j := v_cnt_1;
+                            v_cnt_1 := v_cnt_1 + 1;
+                            DECLARE
+                                v_result_big_rule JSON_OBJECT_T;
+                                v_omitted_big_rule BOOLEAN;
+                            BEGIN
+                                v_result_big_rule := fn_filtered_index_big_rule(v_j, v_itm, v_omitted_big_rule);
+                                IF NOT v_omitted_big_rule THEN
+                                    v_arr_Bigs.append(v_result_big_rule);
                                 END IF;
-                        END;
-                    END IF;
-                END;
-            END LOOP;
+                            EXCEPTION
+                                WHEN OTHERS THEN
+                                    IF NOT v_errors.EXISTS('big_rule') THEN
+                                        v_errors('big_rule') := SQLERRM;
+                                    END IF;
+                            END;
+                        END IF;
+                    END;
+                END LOOP;
+            END IF;
         END;
 
         IF v_errors.COUNT > 0 THEN
@@ -164,70 +203,93 @@ CREATE OR REPLACE PACKAGE BODY FILTERED_INDEX AS
         v_arr_Bigs JSON_ARRAY_T := JSON_ARRAY_T();
     BEGIN
         DECLARE
-            v_forarr_0 JSON_ARRAY_T := TREAT(v_srcroot.get_Array('items').clone AS JSON_ARRAY_T);
+            v_forarr_0 JSON_ARRAY_T := v_srcroot.get_Array('items');
             v_cnt_0 NUMBER := 1;
             v_cnt_1 NUMBER := 0;
         BEGIN
-            DECLARE
-                v_sortj_0 PLS_INTEGER;
-                v_sorttmp_0 JSON_ELEMENT_T;
-                v_sorttmpkey_0 JSON_ELEMENT_T;
-            BEGIN
-                FOR v_sortk_0 IN 1 .. v_forarr_0.get_size - 1 LOOP
-                    v_sorttmp_0 := v_forarr_0.get(v_sortk_0);
-                    v_sorttmpkey_0 := TREAT(v_sorttmp_0 AS JSON_OBJECT_T).get('price');
-                    v_sortj_0 := v_sortk_0 - 1;
-                    WHILE v_sortj_0 >= 0 AND TREAT(v_forarr_0.get(v_sortj_0) AS JSON_OBJECT_T).get('price').compare_to(v_sorttmpkey_0) > 0 LOOP
-                        v_forarr_0.put(v_sortj_0 + 1, v_forarr_0.get(v_sortj_0), TRUE);
-                        v_sortj_0 := v_sortj_0 - 1;
-                    END LOOP;
-                    v_forarr_0.put(v_sortj_0 + 1, v_sorttmp_0, TRUE);
-                END LOOP;
-            END;
-            FOR v_i_0 IN 0 .. v_forarr_0.get_size - 1 LOOP
+            IF v_forarr_0 IS NOT NULL THEN
                 DECLARE
-                    v_itm JSON_OBJECT_T := TREAT(v_forarr_0.get(v_i_0) AS JSON_OBJECT_T);
+                    TYPE t_key_0_0 IS TABLE OF JSON_ELEMENT_T INDEX BY PLS_INTEGER;
+                    TYPE t_ord_0_0 IS TABLE OF PLS_INTEGER INDEX BY PLS_INTEGER;
+                    v_sortkey_0_0 t_key_0_0;
+                    v_sortord_0_0 t_ord_0_0;
+                    v_sorted_0_0 JSON_ARRAY_T := JSON_ARRAY_T();
+                    v_sorttmp_0_0 PLS_INTEGER;
+                    v_sortj_0_0 PLS_INTEGER;
+                    FUNCTION v_sortnul_0_0(p IN PLS_INTEGER) RETURN BOOLEAN IS
+                    BEGIN RETURN v_sortkey_0_0(p) IS NULL OR v_sortkey_0_0(p).is_Null; END;
+                    FUNCTION v_sortcmp_0_0(a IN PLS_INTEGER, b IN PLS_INTEGER) RETURN PLS_INTEGER IS
+                    BEGIN
+                        IF v_sortnul_0_0(a) THEN RETURN CASE WHEN v_sortnul_0_0(b) THEN 0 ELSE 1 END; END IF;
+                        IF v_sortnul_0_0(b) THEN RETURN -1; END IF;
+                        IF v_sortkey_0_0(a).compare_to(v_sortkey_0_0(b)) < 0 THEN RETURN -1; END IF;
+                        IF v_sortkey_0_0(a).compare_to(v_sortkey_0_0(b)) > 0 THEN RETURN 1; END IF;
+                        RETURN 0;
+                    END;
+                BEGIN
+                    FOR v_sorti_0_0 IN 0 .. v_forarr_0.get_size - 1 LOOP
+                        v_sortkey_0_0(v_sorti_0_0) := TREAT(v_forarr_0.get(v_sorti_0_0) AS JSON_OBJECT_T).get('price');
+                        v_sortord_0_0(v_sorti_0_0) := v_sorti_0_0;
+                    END LOOP;
+                    FOR v_sortk_0_0 IN 1 .. v_forarr_0.get_size - 1 LOOP
+                        v_sorttmp_0_0 := v_sortord_0_0(v_sortk_0_0);
+                        v_sortj_0_0 := v_sortk_0_0 - 1;
+                        WHILE v_sortj_0_0 >= 0 AND v_sortcmp_0_0(v_sortord_0_0(v_sortj_0_0), v_sorttmp_0_0) > 0 LOOP
+                            v_sortord_0_0(v_sortj_0_0 + 1) := v_sortord_0_0(v_sortj_0_0);
+                            v_sortj_0_0 := v_sortj_0_0 - 1;
+                        END LOOP;
+                        v_sortord_0_0(v_sortj_0_0 + 1) := v_sorttmp_0_0;
+                    END LOOP;
+                    FOR v_sorti_0_0 IN 0 .. v_forarr_0.get_size - 1 LOOP
+                        v_sorted_0_0.append(v_forarr_0.get(v_sortord_0_0(v_sorti_0_0)));
+                    END LOOP;
+                    v_forarr_0 := v_sorted_0_0;
+                END;
+                FOR v_i_0 IN 0 .. v_forarr_0.get_size - 1 LOOP
+                    DECLARE
+                        v_itm JSON_OBJECT_T := TREAT(v_forarr_0.get(v_i_0) AS JSON_OBJECT_T);
                     v_i NUMBER;
                     v_j NUMBER;
-                BEGIN
-                    IF (v_itm.get_String('status') = 'A') THEN
-                        v_i := v_cnt_0;
-                        v_cnt_0 := v_cnt_0 + 1;
-                        DECLARE
-                            v_result_active_rule JSON_OBJECT_T;
-                            v_omitted_active_rule BOOLEAN;
-                        BEGIN
-                            v_result_active_rule := fn_filtered_index_active_rule(v_i, v_itm, v_omitted_active_rule);
-                            IF NOT v_omitted_active_rule THEN
-                                v_arr_Actives.append(v_result_active_rule);
-                            END IF;
-                        EXCEPTION
-                            WHEN OTHERS THEN
-                                IF NOT v_errors.EXISTS('active_rule') THEN
-                                    v_errors('active_rule') := SQLERRM;
+                    BEGIN
+                        IF (v_itm.get_String('status') = 'A') THEN
+                            v_i := v_cnt_0;
+                            v_cnt_0 := v_cnt_0 + 1;
+                            DECLARE
+                                v_result_active_rule JSON_OBJECT_T;
+                                v_omitted_active_rule BOOLEAN;
+                            BEGIN
+                                v_result_active_rule := fn_filtered_index_active_rule(v_i, v_itm, v_omitted_active_rule);
+                                IF NOT v_omitted_active_rule THEN
+                                    v_arr_Actives.append(v_result_active_rule);
                                 END IF;
-                        END;
-                    END IF;
-                    IF (v_itm.get_Number('price') > 5) THEN
-                        v_j := v_cnt_1;
-                        v_cnt_1 := v_cnt_1 + 1;
-                        DECLARE
-                            v_result_big_rule JSON_OBJECT_T;
-                            v_omitted_big_rule BOOLEAN;
-                        BEGIN
-                            v_result_big_rule := fn_filtered_index_big_rule(v_j, v_itm, v_omitted_big_rule);
-                            IF NOT v_omitted_big_rule THEN
-                                v_arr_Bigs.append(v_result_big_rule);
-                            END IF;
-                        EXCEPTION
-                            WHEN OTHERS THEN
-                                IF NOT v_errors.EXISTS('big_rule') THEN
-                                    v_errors('big_rule') := SQLERRM;
+                            EXCEPTION
+                                WHEN OTHERS THEN
+                                    IF NOT v_errors.EXISTS('active_rule') THEN
+                                        v_errors('active_rule') := SQLERRM;
+                                    END IF;
+                            END;
+                        END IF;
+                        IF (v_itm.get_Number('price') > 5) THEN
+                            v_j := v_cnt_1;
+                            v_cnt_1 := v_cnt_1 + 1;
+                            DECLARE
+                                v_result_big_rule JSON_OBJECT_T;
+                                v_omitted_big_rule BOOLEAN;
+                            BEGIN
+                                v_result_big_rule := fn_filtered_index_big_rule(v_j, v_itm, v_omitted_big_rule);
+                                IF NOT v_omitted_big_rule THEN
+                                    v_arr_Bigs.append(v_result_big_rule);
                                 END IF;
-                        END;
-                    END IF;
-                END;
-            END LOOP;
+                            EXCEPTION
+                                WHEN OTHERS THEN
+                                    IF NOT v_errors.EXISTS('big_rule') THEN
+                                        v_errors('big_rule') := SQLERRM;
+                                    END IF;
+                            END;
+                        END IF;
+                    END;
+                END LOOP;
+            END IF;
         END;
 
         DECLARE

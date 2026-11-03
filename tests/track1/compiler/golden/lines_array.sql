@@ -15,11 +15,19 @@ END LINES_ARRAY;
 CREATE OR REPLACE PACKAGE BODY LINES_ARRAY AS
     FUNCTION fn_lines_array_line_rule(p_itm IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN JSON_OBJECT_T IS
         v_line_rule__dc JSON_OBJECT_T;
+        v_val_line_rule__v0 VARCHAR2(4000 CHAR);
+        v_val_line_rule__v1 NUMBER;
     BEGIN
         p_omitted := FALSE;
         v_line_rule__dc := JSON_OBJECT_T();
-        v_line_rule__dc.put('LineId', p_itm.get_String('id'));
-        v_line_rule__dc.put('LineAmount', p_itm.get_Number('price'));
+        v_val_line_rule__v0 := p_itm.get_String('id');
+        IF v_val_line_rule__v0 IS NOT NULL THEN
+            v_line_rule__dc.put('LineId', v_val_line_rule__v0);
+        END IF;
+        v_val_line_rule__v1 := p_itm.get_Number('price');
+        IF v_val_line_rule__v1 IS NOT NULL THEN
+            v_line_rule__dc.put('LineAmount', v_val_line_rule__v1);
+        END IF;
         RETURN v_line_rule__dc;
     END fn_lines_array_line_rule;
 
@@ -36,26 +44,28 @@ CREATE OR REPLACE PACKAGE BODY LINES_ARRAY AS
         DECLARE
             v_forarr_0 JSON_ARRAY_T := v_srcroot.get_Array('items');
         BEGIN
-            FOR v_i_0 IN 0 .. v_forarr_0.get_size - 1 LOOP
-                DECLARE
-                    v_itm JSON_OBJECT_T := TREAT(v_forarr_0.get(v_i_0) AS JSON_OBJECT_T);
-                BEGIN
+            IF v_forarr_0 IS NOT NULL THEN
+                FOR v_i_0 IN 0 .. v_forarr_0.get_size - 1 LOOP
                     DECLARE
-                        v_result_line_rule JSON_OBJECT_T;
-                        v_omitted_line_rule BOOLEAN;
+                        v_itm JSON_OBJECT_T := TREAT(v_forarr_0.get(v_i_0) AS JSON_OBJECT_T);
                     BEGIN
-                        v_result_line_rule := fn_lines_array_line_rule(v_itm, v_omitted_line_rule);
-                        IF NOT v_omitted_line_rule THEN
-                            v_arr_Lines.append(v_result_line_rule);
-                        END IF;
-                    EXCEPTION
-                        WHEN OTHERS THEN
-                            IF NOT v_errors.EXISTS('line_rule') THEN
-                                v_errors('line_rule') := SQLERRM;
+                        DECLARE
+                            v_result_line_rule JSON_OBJECT_T;
+                            v_omitted_line_rule BOOLEAN;
+                        BEGIN
+                            v_result_line_rule := fn_lines_array_line_rule(v_itm, v_omitted_line_rule);
+                            IF NOT v_omitted_line_rule THEN
+                                v_arr_Lines.append(v_result_line_rule);
                             END IF;
+                        EXCEPTION
+                            WHEN OTHERS THEN
+                                IF NOT v_errors.EXISTS('line_rule') THEN
+                                    v_errors('line_rule') := SQLERRM;
+                                END IF;
+                        END;
                     END;
-                END;
-            END LOOP;
+                END LOOP;
+            END IF;
         END;
 
         IF v_errors.COUNT > 0 THEN
@@ -111,26 +121,28 @@ CREATE OR REPLACE PACKAGE BODY LINES_ARRAY AS
         DECLARE
             v_forarr_0 JSON_ARRAY_T := v_srcroot.get_Array('items');
         BEGIN
-            FOR v_i_0 IN 0 .. v_forarr_0.get_size - 1 LOOP
-                DECLARE
-                    v_itm JSON_OBJECT_T := TREAT(v_forarr_0.get(v_i_0) AS JSON_OBJECT_T);
-                BEGIN
+            IF v_forarr_0 IS NOT NULL THEN
+                FOR v_i_0 IN 0 .. v_forarr_0.get_size - 1 LOOP
                     DECLARE
-                        v_result_line_rule JSON_OBJECT_T;
-                        v_omitted_line_rule BOOLEAN;
+                        v_itm JSON_OBJECT_T := TREAT(v_forarr_0.get(v_i_0) AS JSON_OBJECT_T);
                     BEGIN
-                        v_result_line_rule := fn_lines_array_line_rule(v_itm, v_omitted_line_rule);
-                        IF NOT v_omitted_line_rule THEN
-                            v_arr_Lines.append(v_result_line_rule);
-                        END IF;
-                    EXCEPTION
-                        WHEN OTHERS THEN
-                            IF NOT v_errors.EXISTS('line_rule') THEN
-                                v_errors('line_rule') := SQLERRM;
+                        DECLARE
+                            v_result_line_rule JSON_OBJECT_T;
+                            v_omitted_line_rule BOOLEAN;
+                        BEGIN
+                            v_result_line_rule := fn_lines_array_line_rule(v_itm, v_omitted_line_rule);
+                            IF NOT v_omitted_line_rule THEN
+                                v_arr_Lines.append(v_result_line_rule);
                             END IF;
+                        EXCEPTION
+                            WHEN OTHERS THEN
+                                IF NOT v_errors.EXISTS('line_rule') THEN
+                                    v_errors('line_rule') := SQLERRM;
+                                END IF;
+                        END;
                     END;
-                END;
-            END LOOP;
+                END LOOP;
+            END IF;
         END;
 
         DECLARE

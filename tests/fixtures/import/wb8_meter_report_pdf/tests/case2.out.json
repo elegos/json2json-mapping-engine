@@ -1,0 +1,15 @@
+{
+  "report": {
+    "meter": "MT-0043",
+    "site": "S8 / South depot",
+    "periodStart": "2026-05-02T00:00:00Z",
+    "periodEnd": "2026-05-02T00:00:00Z",
+    "count": 1,
+    "total": 1.005,
+    "average": 1.01,
+    "maxValue": 1.005,
+    "qualityIssues": 0,
+    "firstSample": 1.005,
+    "unit": "kWh"
+  }
+}

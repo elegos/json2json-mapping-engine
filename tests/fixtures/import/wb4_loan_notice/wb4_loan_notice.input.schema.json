@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Loan report (synthetic)",
+  "type": "object",
+  "required": [
+    "loanReport"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "loanReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reportId",
+        "generatedAt",
+        "patron",
+        "loan"
+      ],
+      "properties": {
+        "reportId": {
+          "type": "string"
+        },
+        "generatedAt": {
+          "type": "string",
+          "pattern": "^[A-Z][a-z]{2} [0-9]{1,2}, [0-9]{4}, [0-9]{1,2}:[0-9]{2}:[0-9]{2} (AM|PM)$"
+        },
+        "patron": {
+          "type": "object",
+          "required": [
+            "cardNo"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "cardNo": {
+              "type": "string"
+            },
+            "tier": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "loan": {
+          "type": "object",
+          "required": [
+            "dueDate"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "reference": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "dueDate": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+            },
+            "returnedDate": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "barcode"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "barcode": {
+                "type": "string"
+              },
+              "title": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "status": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        },
+        "fines": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "amount",
+              "currency"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "amount": {
+                "type": "number"
+              },
+              "currency": {
+                "type": "string"
+              },
+              "reasonCode": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        },
+        "processingErrors": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "required": [
+            "code"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "httpCode": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "message": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}

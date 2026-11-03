@@ -59,16 +59,39 @@ mkdir -p "$engine"
 for pkg in cli compiler transpiler runtime; do
   cp -a "$root/$pkg" "$engine/$pkg"
 done
+# the import skill: the desktop tool hands it to the assistant that reads a functional document
+mkdir -p "$engine/skills"
+cp -a "$root/skills/import-functional-spec" "$engine/skills/import-functional-spec"
 find "$engine" -name __pycache__ -type d -prune -exec rm -rf {} +
-(cd "$root" && uv export --no-dev --no-hashes --frozen --no-emit-project -o "$stage/requirements.txt" >/dev/null)
+(cd "$root" && uv export --no-dev --extra import --no-hashes --frozen --no-emit-project -o "$stage/requirements.txt" >/dev/null)
 uv pip install --quiet --target "$engine" --python-platform "$platform" \
   --python-version "${PBS_PYTHON%.*}" --only-binary :all: --no-deps -r "$stage/requirements.txt"
 rm -rf "$engine/bin" "$stage/requirements.txt"
 
 # Byte-code written now, as nothing may be written next to the application later (an installation
 # for all users, an AppImage, a read-only volume). `unchecked-hash`: valid wherever the files go.
-uv run --no-project --python "${PBS_PYTHON%.*}" python -m compileall -q -f \
-  --invalidation-mode unchecked-hash "$engine" >/dev/null
+# An installer on a company machine is slow in proportion to its number of files (each one is
+# scanned), so the dependencies ship as byte-code alone (`-b`: `x.pyc` next to where `x.py` was;
+# the sources, the type stubs, the C headers and the packaging metadata nobody reads are dropped).
+# Our own packages keep their sources (tracebacks quote them).
+py=("${PBS_PYTHON%.*}")
+ours=" cli compiler transpiler runtime skills "
+third=()
+for entry in "$engine"/*; do
+  name="$(basename "$entry")"
+  case "$ours" in *" $name "*) ;; *) third+=("$entry") ;; esac
+done
+uv run --no-project --python "$py" python -m compileall -q -f --invalidation-mode unchecked-hash \
+  "$engine/cli" "$engine/compiler" "$engine/transpiler" "$engine/runtime" >/dev/null
+uv run --no-project --python "$py" python -m compileall -q -f -b --invalidation-mode unchecked-hash \
+  "${third[@]}" >/dev/null
+find "${third[@]}" \( -name '*.py' -o -name '*.pyi' \) -type f -delete
+find "$engine" -name __pycache__ -path "$engine/*" ! -path "$engine/cli/*" ! -path "$engine/compiler/*" \
+  ! -path "$engine/transpiler/*" ! -path "$engine/runtime/*" -type d -prune -exec rm -rf {} +
+rm -rf "$engine"/lxml/includes
+# what `importlib.metadata` reads is METADATA and entry_points.txt
+find "$engine" -path '*.dist-info/*' -type f ! -name METADATA ! -name entry_points.txt -delete
+find "$engine" -path '*.dist-info/*' -type d -empty -delete
 
 # 3. the tutorial project
 cp -a "$root/desktop/fixtures/tour-project" "$stage/tour-project"

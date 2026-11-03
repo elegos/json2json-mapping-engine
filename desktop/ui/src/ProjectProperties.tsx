@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import {
   type ConfigIssue,
   type ConfigOption,
@@ -17,6 +18,8 @@ interface Props {
   saved: ConfigValues;
   issues: ConfigIssue[];
   onChange: (values: ConfigValues) => void;
+  /** Sections that follow the form (what is not in `mapper.toml`). */
+  children?: ReactNode;
 }
 
 interface FieldProps {
@@ -145,7 +148,7 @@ function Group(props: {
 
 /** Form for `mapper.toml`. The engine's sections and the active target's keys are drawn from
  * the descriptors of `schema`; the target's come from its backend. */
-export function ProjectProperties({ schema, values, saved, issues, onChange }: Props) {
+export function ProjectProperties({ schema, values, saved, issues, onChange, children }: Props) {
   const target = String(tableAt(values, ["project"]).target ?? "");
   const options = schema.targets[target];
   const testOptions = schema.target_tests?.[target];
@@ -201,6 +204,7 @@ export function ProjectProperties({ schema, values, saved, issues, onChange }: P
           onChange={onChange}
         />
       )}
+      {children}
     </div>
   );
 }

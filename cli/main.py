@@ -14,6 +14,7 @@ from typing import Annotated, Any
 import typer
 
 from cli import engine_version, shared, synced
+from cli import functions as functions_catalogue
 from cli.build import (
     BuildError,
     assemble,
@@ -124,6 +125,22 @@ def version() -> None:
     typer.echo(ENGINE_VERSION)
 
 
+@app.command(name="license")
+def license_cmd() -> None:
+    """Print the engine's license (GPLv3) and the generated-output exception."""
+    typer.echo(
+        "json2json-mapping-engine  Copyright (C) 2026 Giacomo Furlan\n"
+        "This program comes with ABSOLUTELY NO WARRANTY. This is free software, licensed\n"
+        "under the GNU General Public License v3.0 (GPLv3); see the LICENSE file, or\n"
+        "<https://www.gnu.org/licenses/gpl-3.0.html>, for the full text.\n"
+        "\n"
+        "Generated output exception: code produced by `mapper build` / `mapper compile`\n"
+        "from your mapping rules (PL/SQL, Python, or any other backend target) is not\n"
+        "covered by the GPL and may be used under terms of your choosing — only the engine\n"
+        "itself is GPLv3. The exact terms are at the end of the LICENSE file."
+    )
+
+
 @app.command()
 def stubs() -> None:
     """Generate .pyi/@dataclass artifacts from JSON Schemas, the
@@ -141,6 +158,30 @@ def stubs() -> None:
         f"generated {result['input_stubs']} input stub(s), "
         f"{result['output_dataclasses']} output dataclass module(s)"
     )
+
+
+@app.command(name="functions")
+def functions_cmd(
+    json_output: bool = typer.Option(
+        False, "--json", help='Print {"ok", "functions": [...]} (what the tool\'s explorer reads)'
+    ),
+) -> None:
+    """List the functions a mapping can call: the built-ins and the project's `fn/*.fn`,
+    with signature, return type, origin and doc. Always the current list (nothing to keep
+    in step by hand)."""
+    found = functions_catalogue.function_list(Path.cwd())
+    if json_output:
+        typer.echo(json.dumps({"ok": True, "functions": found}, ensure_ascii=False))
+        return
+    for f in found:
+        ret = f" -> {f['returns']}" if f["returns"] else ""
+        origin = (
+            ""
+            if f["builtin"]
+            else f"  [{f['origin']}{', replaces built-in' if f['replaces_builtin'] else ''}]"
+        )
+        first = " ".join(f["doc"].split())
+        typer.echo(f"{f['signature']}{ret}{origin}" + (f"\n    {first}" if first else ""))
 
 
 _allow_older_engine = False
@@ -608,6 +649,308 @@ def fn_write(file: str = typer.Argument(..., help=".fn.yaml file to write")) -> 
         typer.echo(json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"}))
         raise typer.Exit(code=1) from exc
     typer.echo(json.dumps({"ok": True, "decayed": decayed}))
+
+
+import_app = typer.Typer(
+    no_args_is_help=True,
+    help="Import a functional document (the import-functional-spec skill reads what these commands produce).",
+)
+app.add_typer(import_app, name="import")
+
+
+@import_app.command("extract")
+def import_extract(
+    document: Annotated[Path, typer.Argument(help="xlsx, docx, pdf, txt or md file")],
+    out: Annotated[
+        Path | None, typer.Option("--out", "-o", help="Write the JSON here instead of stdout")
+    ] = None,
+) -> None:
+    """Read a document into the normalized form (blocks, resolved tables, formatting, noise flags)."""
+    from cli.docread import ExtractError, extract
+
+    try:
+        normalized = extract(document)
+    except ExtractError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    text = json.dumps(normalized, ensure_ascii=False, indent=2)
+    if out is None:
+        typer.echo(text)
+        return
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(text + "\n", encoding="utf-8")
+    typer.echo(
+        json.dumps(
+            {
+                "ok": True,
+                "out": str(out),
+                "blocks": len(normalized["blocks"]),
+                "tables": len(normalized.get("tables", [])),
+                "text_layer": normalized.get("text_layer"),
+            }
+        )
+    )
+
+
+def _view(document: Path, build: Any) -> None:
+    """Print a compact view of an extracted `document.json` (see `cli/docread/view.py`)."""
+    from cli.docread.view import ViewError
+
+    try:
+        doc = json.loads(document.read_text(encoding="utf-8"))
+        typer.echo(build(doc))
+    except (OSError, ValueError, KeyError) as exc:
+        typer.echo(f"cannot read {document} as a normalized document: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    except ViewError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+
+_DOC = Annotated[Path, typer.Argument(help="The document.json written by `import extract`")]
+
+
+@import_app.command("outline")
+def import_outline(document: _DOC) -> None:
+    """Sizes, warnings, tables with their header rows, headings: where to read next."""
+    from cli.docread import view
+
+    _view(document, view.outline)
+
+
+@import_app.command("rows")
+def import_rows(
+    document: _DOC,
+    table: Annotated[str, typer.Argument(help="Table id (t1...) from `import outline`")],
+    start: Annotated[int, typer.Option("--from", help="First row index (r<n>)")] = 0,
+    end: Annotated[int | None, typer.Option("--to", help="Last row index, included")] = None,
+    all_format: Annotated[bool, typer.Option("--all-format", help="Also bold / italic")] = False,
+) -> None:
+    """Rows of a table, one line each (60 by default): `r<n> <first cell> | cell | cell`.
+    `^` is a merged cell repeated from the one before; {fill=..,strike} is formatting that may mean something."""
+    from cli.docread import view
+
+    _view(document, lambda d: view.rows(d, table, start, end, all_format))
+
+
+@import_app.command("blocks")
+def import_blocks(
+    document: _DOC,
+    start: Annotated[int, typer.Option("--from", help="First block (#<n>)")] = 0,
+    end: Annotated[int | None, typer.Option("--to", help="Last block, included")] = None,
+    kind: Annotated[str | None, typer.Option("--kind", help="heading, paragraph, code...")] = None,
+    all_format: Annotated[bool, typer.Option("--all-format", help="Also bold / italic")] = False,
+) -> None:
+    """Blocks in reading order, one line each (60 by default)."""
+    from cli.docread import view
+
+    _view(document, lambda d: view.blocks(d, start, end, kind, all_format))
+
+
+@import_app.command("find")
+def import_find(
+    document: _DOC,
+    text: Annotated[str, typer.Argument(help="Text to look for, case-insensitive")],
+    limit: Annotated[int, typer.Option(help="Matches to show")] = 40,
+) -> None:
+    """Rows and blocks that contain the text, with where they are."""
+    from cli.docread import view
+
+    _view(document, lambda d: view.find(d, text, limit))
+
+
+def _import_command(action: str, mapping: str, **kwargs: Any) -> None:
+    """Run one of the plan commands from the project directory and print its result as JSON."""
+    from cli import import_plan
+
+    try:
+        result = getattr(import_plan, action)(Path.cwd(), mapping, **kwargs)
+    except (import_plan.PlanError, FnYamlError, OSError) as exc:
+        typer.echo(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False))
+        raise typer.Exit(code=1) from exc
+    typer.echo(json.dumps(result, ensure_ascii=False))
+    if not result.get("ok", True):
+        raise typer.Exit(code=1)
+
+
+@import_app.command("providers")
+def import_providers() -> None:
+    """The assistants (Claude Code, Codex) found on the PATH, as JSON."""
+    from cli import import_run
+
+    typer.echo(json.dumps({"providers": import_run.providers()}))
+
+
+@import_app.command("run")
+def import_run_command(
+    document: Annotated[Path, typer.Argument(help="The functional document")],
+    provider: Annotated[str, typer.Option(help="claude or codex")] = "claude",
+    mode: Annotated[
+        str, typer.Option(help="import, resume, rerun_all, rerun_partial, revalue_version")
+    ] = "import",
+    mapping: Annotated[str | None, typer.Option(help="Mapping id (default: ask)")] = None,
+    profile: Annotated[str | None, typer.Option(help="Profile name (default: ask)")] = None,
+    rule_id: Annotated[
+        list[str] | None, typer.Option("--rule-id", help="For rerun_partial")
+    ] = None,
+    input_schema: Annotated[
+        Path | None, typer.Option(help="The input JSON Schema (default: look for it, else ask)")
+    ] = None,
+    output_schema: Annotated[
+        Path | None, typer.Option(help="The output JSON Schema (default: look for it, else ask)")
+    ] = None,
+    allow: Annotated[
+        list[str] | None,
+        typer.Option(help="A permission rule to allow (Claude Code), e.g. 'Bash(python -I *)'"),
+    ] = None,
+    concurrency: Annotated[
+        int,
+        typer.Option(help="Runs at once for a long document (batches)", envvar="J2JME_IMPORT_RUNS"),
+    ] = 2,
+    batch_size: Annotated[
+        int,
+        typer.Option(help="Units per batch of a long document", envvar="J2JME_IMPORT_BATCH_SIZE"),
+    ] = 30,
+    watch_stdin: Annotated[
+        bool, typer.Option(help="Cancel when stdin closes (the desktop tool)")
+    ] = False,
+) -> None:
+    """Run the import skill with an installed assistant, from the project directory.
+
+    Prints one JSON line per event; the last has `event: done` and the status of the protocol."""
+    import sys
+
+    from cli import import_run
+
+    result = import_run.run_streaming(
+        Path.cwd(),
+        document,
+        out=sys.stdout,
+        watch_stdin=watch_stdin,
+        provider=provider,
+        mode=mode,
+        mapping=mapping,
+        profile=profile,
+        rule_ids=rule_id or [],
+        input_schema=input_schema,
+        output_schema=output_schema,
+        allow=allow or [],
+        concurrency=concurrency,
+        size=batch_size,
+    )
+    if result["status"] in ("failed", "cancelled"):
+        raise typer.Exit(code=1)
+
+
+def _batch_command(action: str, *args: Any, **kwargs: Any) -> None:
+    """One of the batch commands (`cli/import_batch.py`) from the project directory, as JSON."""
+    from cli import import_batch, import_plan
+
+    try:
+        result = getattr(import_batch, action)(Path.cwd(), *args, **kwargs)
+    except (import_plan.PlanError, FnYamlError, OSError) as exc:
+        typer.echo(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False))
+        raise typer.Exit(code=1) from exc
+    typer.echo(json.dumps(result, ensure_ascii=False))
+
+
+_MAPPING = Annotated[str, typer.Argument(help="Mapping id (import/<mapping>/)")]
+
+
+@import_app.command("queue")
+def import_queue(
+    mapping: _MAPPING,
+    size: Annotated[int, typer.Option(help="Units per batch")] = 30,
+) -> None:
+    """Units of the survey (import/<mapping>/units.json): write the mechanical rules, cut the rest into batches."""
+    _batch_command("queue", mapping, size)
+
+
+@import_app.command("add")
+def import_add(
+    mapping: _MAPPING,
+    batch: Annotated[
+        Path, typer.Argument(help="JSON file: rules, validations, lookups, discrepancies, tests")
+    ],
+    batch_id: Annotated[
+        str | None, typer.Option("--batch", help="The batch of queue.json it answers")
+    ] = None,
+) -> None:
+    """Check a batch of rules and merge it into the plan (evidence and hashes are filled in)."""
+    _batch_command("add", mapping, batch, batch_id)
+
+
+@import_app.command("ask")
+def import_ask(
+    mapping: _MAPPING,
+    text: Annotated[str, typer.Argument(help="The question")],
+    topic: Annotated[str, typer.Option(help="e.g. index_base, root_and_filter")] = "other",
+    scope: Annotated[str, typer.Option(help="profile, mapping or rule")] = "mapping",
+    option: Annotated[list[str] | None, typer.Option(help="An answer to offer (repeat)")] = None,
+    proposal: Annotated[str | None, typer.Option(help="The default")] = None,
+    rule: Annotated[
+        list[str] | None, typer.Option(help="A rule id that depends on it (repeat)")
+    ] = None,
+) -> None:
+    """Ask the user now; a question already asked about the same thing is returned instead."""
+    _batch_command(
+        "ask",
+        mapping,
+        text,
+        topic=topic,
+        scope=scope,
+        options=option,
+        proposal=proposal,
+        rule_ids=rule,
+    )
+
+
+@import_app.command("answers")
+def import_answers(
+    mapping: _MAPPING,
+    rule: Annotated[str | None, typer.Option(help="Only the answers that touch this rule")] = None,
+) -> None:
+    """The answers given so far, with the rules each touches, and the ids still open."""
+    _batch_command("answers", mapping, rule)
+
+
+@import_app.command("batch")
+def import_batch_info(
+    mapping: _MAPPING, batch: Annotated[str, typer.Argument(help="Batch id of queue.json")]
+) -> None:
+    """The units of a batch with the text of their rows, and the rules to read again."""
+    _batch_command("batch_info", mapping, batch)
+
+
+@import_app.command("gaps")
+def import_gaps(mapping: _MAPPING) -> None:
+    """What the survey expects the engine to lack, and the function gaps the plan has."""
+    _batch_command("gaps", mapping)
+
+
+@import_app.command("assemble")
+def import_assemble(
+    mapping: Annotated[str, typer.Argument(help="Mapping id (import/<mapping>/)")],
+) -> None:
+    """Build the working .fn.yaml from the plan's rules, check it, and record each rule's check."""
+    _import_command("assemble", mapping)
+
+
+@import_app.command("test")
+def import_test(
+    mapping: Annotated[str, typer.Argument(help="Mapping id (import/<mapping>/)")],
+) -> None:
+    """Run the plan's cases (Python backend) against the working copy and record the results."""
+    _import_command("run_cases", mapping)
+
+
+@import_app.command("apply")
+def import_apply(
+    mapping: Annotated[str, typer.Argument(help="Mapping id (import/<mapping>/)")],
+    force: Annotated[bool, typer.Option("--force", help="Replace an existing .fn.yaml")] = False,
+) -> None:
+    """Write the checked working copy to mappings/functional/ and mark its rules applied."""
+    _import_command("apply", mapping, force=force)
 
 
 artifacts_app = typer.Typer(

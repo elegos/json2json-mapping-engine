@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://j2jme.local/import/normalized-document.schema.json",
+  "title": "Normalized document",
+  "description": "What every extractor (xlsx, docx, pdf, text...) hands to the skill, so that nothing downstream depends on the format. Blocks are in reading order; tables are resolved (merged cells filled, continuation rows marked); formatting that may carry meaning is kept; running headers/footers are kept but marked `noise`.",
+  "type": "object",
+  "required": ["norm_version", "file", "sha256", "format", "blocks"],
+  "additionalProperties": false,
+  "properties": {
+    "norm_version": { "const": 1 },
+    "file": { "type": "string" },
+    "sha256": { "type": "string" },
+    "format": { "type": "string" },
+    "metadata": { "type": "object", "description": "Title, author, dates and any document property; informational (and a place where a version may be declared).", "additionalProperties": true },
+    "text_layer": { "enum": ["full", "partial", "none"], "description": "`none` = an image-only document: there is nothing to read without OCR." },
+    "blocks": { "type": "array", "items": { "$ref": "#/$defs/block" } },
+    "tables": { "type": "array", "items": { "$ref": "#/$defs/table" } },
+    "warnings": { "type": "array", "items": { "type": "string" }, "description": "Things the extractor could not do (formula cells shown as values, an unreadable object...)." }
+  },
+  "$defs": {
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sheet": { "type": "string" },
+        "cells": { "type": "string" },
+        "page": { "type": "integer", "minimum": 1 },
+        "section": { "type": "string" },
+        "paragraph": { "type": "integer", "minimum": 0 },
+        "line": { "type": "integer", "minimum": 0 },
+        "lines": { "type": "integer", "minimum": 2, "description": "Number of source lines joined in this block (a long listing)." }
+      }
+    },
+    "format": {
+      "type": "object",
+      "description": "Only what the document sets explicitly. Never interpreted here.",
+      "additionalProperties": false,
+      "properties": {
+        "fill": { "type": "string", "description": "Hex colour." },
+        "font_color": { "type": "string" },
+        "bold": { "type": "boolean" },
+        "italic": { "type": "boolean" },
+        "strike": { "type": "boolean" },
+        "highlight": { "type": "string" },
+        "monospace": { "type": "boolean" }
+      }
+    },
+    "block": {
+      "type": "object",
+      "required": ["id", "kind", "text"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "kind": { "enum": ["title", "heading", "paragraph", "list_item", "code", "table_ref", "note", "header_footer", "sheet_title", "band"] },
+        "level": { "type": "integer", "minimum": 1, "description": "Heading level, or list nesting." },
+        "text": { "type": "string" },
+        "location": { "$ref": "#/$defs/location" },
+        "format": { "$ref": "#/$defs/format" },
+        "table": { "type": "string", "description": "Id of the table (kind table_ref)." },
+        "noise": { "type": "boolean", "description": "Running header/footer, page number, repeated banner: kept, not a rule." }
+      }
+    },
+    "table": {
+      "type": "object",
+      "required": ["id", "rows"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "location": { "$ref": "#/$defs/location" },
+        "header_rows": { "type": "array", "items": { "type": "integer", "minimum": 0 }, "description": "Indices (in `rows`) of rows the extractor believes are column headers; may be several (repeated headers) or none." },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["cells"],
+            "additionalProperties": false,
+            "properties": {
+              "cells": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["text"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "text": { "type": "string" },
+                    "location": { "$ref": "#/$defs/location" },
+                    "format": { "$ref": "#/$defs/format" },
+                    "merged_from": { "type": "string", "description": "Range this cell is part of; the text is repeated on every row/column it covers." },
+                    "continuation": { "type": "boolean", "description": "True when the cell is a filled copy of a merged range, not text written in this row." }
+                  }
+                }
+              },
+              "band": { "type": "boolean", "description": "A row merged over the whole table (a section title)." }
+            }
+          }
+        }
+      }
+    }
+  }
+}

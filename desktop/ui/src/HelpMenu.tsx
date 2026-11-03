@@ -5,10 +5,11 @@ interface Props {
   onGuide: () => void;
   onExplorer: () => void;
   onTour: (book: Book) => void;
+  onLicense: () => void;
 }
 
 /** The "?" at the right of the toolbar: the guide and, later, the quick tutorials. */
-export function HelpMenu({ onGuide, onExplorer, onTour }: Props) {
+export function HelpMenu({ onGuide, onExplorer, onTour, onLicense }: Props) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -57,6 +58,14 @@ export function HelpMenu({ onGuide, onExplorer, onTour }: Props) {
             }}
           >
             Developer tour
+          </li>
+          <li
+            onClick={() => {
+              setOpen(false);
+              onLicense();
+            }}
+          >
+            License
           </li>
         </ul>
       )}

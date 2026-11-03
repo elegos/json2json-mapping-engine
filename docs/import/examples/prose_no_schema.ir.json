@@ -1,0 +1,31 @@
+{
+  "ir_version": 1,
+  "mapping": { "id": "shipment_orders" },
+  "document": { "file": "functional_spec.docx", "sha256": "0000", "format": "docx",
+    "version": { "resolved": "1.0", "origin": "assumed_default" } },
+  "schemas": { "input": { "origin": "none" }, "output": { "origin": "none" } },
+  "rules": [
+    {
+      "id": "id",
+      "evidence": { "locations": [ { "section": "3.2 Order", "paragraph": 4 } ],
+        "text": "identifier: identifier of the order derived from the shipment's list of orders", "sha256": "0000" },
+      "target": { "path": "$.id", "in_schema": null },
+      "sources": [ { "path": "$.orders", "as_written": "the shipment's list of orders", "in_schema": null } ],
+      "intent": "unknown",
+      "interpretation": "Probably the id of an order taken from the shipment's order list; which order (first? each?) and which field of it is not stated.",
+      "assumptions": [
+        { "topic": "which_element", "assumed": "first order of the list", "basis": "guess", "question_id": "q1" },
+        { "topic": "source_path", "assumed": "$.orders[0].id (names invented from the wording)", "basis": "guess" }
+      ],
+      "proposal": { "fn_rule": { "kind": "field", "field": "id", "source": { "path": "$.orders[0].id" },
+        "description": "GUESS from: \"identifier of the order derived from the shipment's list of orders\". No schema: source path and element choice invented, to confirm." } },
+      "confidence": { "level": "guess", "reasons": [ "no JSON Schema", "vague wording" ], "flags": [ "no_schema", "ambiguous", "multi_reading" ] },
+      "review": { "state": "pending" }
+    }
+  ],
+  "questions": [
+    { "id": "q1", "topic": "which_element", "scope": "rule", "text": "The order list of the shipment: take the first order, or generate one output per order?",
+      "options": [ "first", "one per order" ], "rule_ids": [ "id" ], "status": "open" }
+  ],
+  "discrepancies": [ { "kind": "other", "severity": "info", "detail": "No schema on either side: paths are unverified; attach or confirm an inferred schema." } ]
+}

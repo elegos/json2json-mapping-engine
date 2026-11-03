@@ -1,0 +1,26 @@
+{
+  "workbook": "MeterReport_mapping_v0.9.pdf",
+  "family": "pseudo-code-pdf",
+  "language": "en",
+  "index_base": {
+    "all": 0,
+    "declared_in": "intro paragraph"
+  },
+  "assignment_operators": [
+    ":=",
+    "="
+  ],
+  "filter_syntax": [
+    "[cond]",
+    "where cond"
+  ],
+  "comment_marker": "--",
+  "null_rule": "absent, null or empty string are the same (footnote 1); not-sent fields are omitted",
+  "rounding": "half up",
+  "noise_to_strip": [
+    "running header",
+    "footer",
+    "page numbers"
+  ],
+  "footnotes": "qualify the preceding block; may appear on a later page"
+}

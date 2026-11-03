@@ -23,9 +23,10 @@ from dataclasses import dataclass
 
 from transpiler.anchors import _split_strings
 from transpiler.model import FnYamlError, FunctionalFile, LoopRule, ObjectRule, Rule
+from transpiler.orderby import OrderKey, format_order_by, parse_order_by, split_selection_order
 
 _KEYWORDS = frozenset(
-    {"and", "or", "not", "in", "is", "if", "else", "True", "False", "None", "Null"}
+    {"and", "or", "not", "in", "is", "if", "else", "for", "True", "False", "None", "Null"}
 )
 _SINGLE_EQUALS = re.compile(r"(?<![=!<>])=(?!=)")
 _BARE_NAME = re.compile(r"(?<![\w.@$])([A-Za-z_]\w*)(?!\w)(?!\s*\()")
@@ -143,15 +144,46 @@ def replace_selections(text: str, replacement: Callable[[Selection], str]) -> st
 def normalize_condition(condition: str) -> str:
     """The condition in explicit form: `=` becomes `==` and a bare name `x` becomes `@.x`."""
 
+    pieces = _split_strings(condition)
+    # the variable of a comprehension (`any(i.ref == @2.ref for i in items)`) is its own, not a field
+    bound = {
+        m.group(1)
+        for is_str, text in pieces
+        if not is_str
+        for m in re.finditer(r"\bfor\s+([A-Za-z_]\w*)\s+in\b", text)
+    }
+
     def chunk(text: str) -> str:
         text = _SINGLE_EQUALS.sub("==", text)
 
         def name(m: re.Match[str]) -> str:
-            return m.group(0) if m.group(1) in _KEYWORDS else f"@.{m.group(1)}"
+            word = m.group(1)
+            return m.group(0) if word in _KEYWORDS or word in bound else f"@.{word}"
 
         return _BARE_NAME.sub(name, text)
 
-    return "".join(s if is_str else chunk(s) for is_str, s in _split_strings(condition))
+    return "".join(s if is_str else chunk(s) for is_str, s in pieces)
+
+
+def selection_parts(condition: str) -> tuple[str, list[OrderKey]]:
+    """What a selection's text between the brackets says, in explicit form: the condition (empty
+    when there is only an order) and the keys of its `order by` (the bare names of both are fields of
+    the candidate). Raises FnYamlError for an `order by` that cannot be read."""
+    cond, order = split_selection_order(condition)
+    try:
+        keys = parse_order_by(order) if order is not None else []
+    except ValueError as exc:
+        raise FnYamlError(f"order by: {exc}") from exc
+    return (
+        normalize_condition(cond) if cond else "",
+        [OrderKey(normalize_condition(k.expr), k.desc, k.nulls_first) for k in keys],
+    )
+
+
+def selection_text(cond: str, keys: list[OrderKey]) -> str:
+    """The explicit form of a selection's brackets, written back as one text."""
+    order = f"order by {format_order_by(keys)}" if keys else ""
+    return f"{cond} {order}".strip()
 
 
 def qualify_selector(source: str, in_loop: bool) -> str:
@@ -163,7 +195,7 @@ def qualify_selector(source: str, in_loop: bool) -> str:
     if split is None:
         return source.strip()
     path, condition = split
-    return f"{qualify_source(path, in_loop)}[{normalize_condition(condition)}]"
+    return f"{qualify_source(path, in_loop)}[{selection_text(*selection_parts(condition))}]"
 
 
 def lower_selectors(file: FunctionalFile) -> FunctionalFile:
@@ -182,11 +214,13 @@ def lower_selectors(file: FunctionalFile) -> FunctionalFile:
                 if split is None:
                     raise FnYamlError(f"'{rule.output}': the source of an object needs a condition")
                 path, condition = split
+                cond, keys = selection_parts(condition)
                 rule = LoopRule(
                     id=rule.id,
                     source=f"{path}[*]",
                     output=rule.output,
-                    filter=condition,
+                    filter=cond or None,
+                    order_by=format_order_by(keys) or None,
                     description=rule.description,
                     rules=rule.rules,
                     first=True,

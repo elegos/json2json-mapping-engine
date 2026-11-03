@@ -764,8 +764,49 @@ Sliced; each slice is usable on its own:
         folder** in the desktop tool: *Publish folder…* (developer mode) keeps a folder per project
         in the app's config folder (`publish-dirs.json`, `publish_dirs.rs`), and Publish passes it as
         `--to`, so it beats `[publish] dir`.
-- [ ] **M6.4 — LLM assist.** Validation suggestions, expression builder (Ollama / API).
-- [ ] **M6.5 — Schemas per mapping.** Each mapping owns its input and output JSON Schema, chosen
+- [ ] **M6.4 — LLM assist.** Split in two (decided): the LLM is kept for the **expression builder**
+      (here) and for the **import of an external project** (M7), and nowhere else. Validation
+      suggestions are **not** LLM work: the check already names the cell and what is wrong, and
+      what is left to say (the closest name) is computed, deterministically, with no network,
+      cost or privacy question.
+      - [x] **M6.4a — "Did you mean" in the check** (`transpiler/check.py`, `transpiler/exprtypes.py`:
+        `did_you_mean`, `_Schemas.names` / `near`). A name the schema does not have (Target, Source,
+        a `$.` / `@.` reference, a loop source, a `paths:` alias) and a name an override uses but
+        nothing defines get ` — did you mean 'x'?`: the closest property of the object where it
+        was looked up (not of the whole schema), or the closest variable / function in scope;
+        case aside, cutoff 0.6 (`difflib`), nothing said when nothing is close. Tests in
+        `tests/track1/transpiler/test_check.py`.
+      - [x] **M6.4a-bis — friendlier messages** (no LLM). Done, in the check:
+        - *Syntax* (`transpiler/expr.py::explain_syntax_error`, used by `parse_block`, so the
+          grid and the build say the same): what a user of another language types is named with
+          its replacement (`&&` → `and`, `||` → `or`, `!` → `not`, `===` / `!==` → `==` / `!=`,
+          `cond ? a : b` → `a if cond else b`, `;`; string literals are not read as operators);
+          "invalid syntax" says where it stopped ("it ends too soon: a value is missing after the
+          last operator", "unexpected `y`"); an unclosed text says the quote is missing; `(line N)`
+          only in a block of several lines; `$.id = 'a'` points to `==`.
+        - *Names* (`ExprTyper.names`): an unknown function in an expression was **silent in the
+          grid** and failed only in the build; now `unknown function 'x'`, with the closest
+          function or "the guide lists the functions". `true` / `false` / `null` / `nil` say what
+          to write. Only with the project's function list (always the case in the tool, the CLI
+          and the build); without it a name cannot be judged.
+        - *Nullability*: the words of the type checker (`non-nullable`, `annotated … returns
+          nothing`) reached the user only at build time, with a line of the generated file, while
+          the check said OK. Now the grid flags a bare `return` on a required field ("a bare
+          `return` leaves the field out, but the field is required: untick Required, or return a
+          value"). Tests in `tests/track1/transpiler/test_check.py`.
+        - *Not done*: the build still prints the type checker's own text for what the check does
+          not foresee (it names the rule's id, and a line of the generated file). If the
+          functionals meet such messages, translate them at the build boundary; measure first.
+      - [ ] **M6.4b — Expression builder** (Ollama / API). The Description (free text) becomes a
+        candidate for the Expression. The prompt carries the input / output schema of the mapping,
+        the functions available (built-ins and the project's `fn/`), the anchor syntax and a few of
+        the project's rules as examples. **Acceptance is mechanical:** the candidate goes through the
+        check (and the type check); it is then run on the golden sample and the result is shown next
+        to the Description ("with this input you get X"), because the functional reads results, not
+        expressions. Never applied by itself: the user accepts or discards. Backends: Ollama
+        (local, the default for enterprise) or an API; the data leaving the network with an API is
+        stated in the settings.
+- [x] **M6.5 — Schemas per mapping.** Each mapping owns its input and output JSON Schema, chosen
       in the tool; changing one forces the Targets and Sources to be validated again (the check
       re-runs on the whole mapping and the grid flags what no longer fits: ARCHITECTURE.md,
       §Schema change management, no silent drift).
@@ -968,8 +1009,7 @@ Sliced; each slice is usable on its own:
         waits. At the end it offers to
         open the Project properties, saying that they are behind the *Project properties…* button.
         Done, and walked through by `ui/shots/wizard-check.mjs`.
-      - Still open: the tutorial project is found next to the executable or in the checkout, but
-        nothing copies it into a package yet (`bundle.active` is false); the guide pages are short and want a read by someone who uses the tool.
+      - Still open: the guide pages are short and want a read by someone who uses the tool.
 
 - [x] **M6.9 — Project functions in the tool.** Creating and editing the project's `fn/*.fn`
       without an external editor: the tool is self-contained.
@@ -1068,11 +1108,32 @@ Prerequisites on the dev machine: `webkit2gtk-4.1` dev packages, `tauri-cli`.
 
 ---
 
-## ⬜ M7 — Migration & interoperability tooling
+## 🟨 M7 — Migration & interoperability tooling
 
-Not started (Excel/PDF import, reverse-import from `.map.py`,
-bootstrap→driven archival). Lowest priority per the original plan — nothing
-else in the system depends on it.
+Import of functional documents (design: `docs/import/IR.md`, `docs/import/profile.md`).
+Reverse-import from `.map.py` and bootstrap→driven archival are not started (lowest priority;
+nothing else depends on them).
+
+- [x] **The skill and the plan.** `skills/import-functional-spec/` (procedure, run protocol, the
+      schemas of the plan, the profile and the normalized document), calibrated on the fixtures in
+      `tests/fixtures/import/` (WB1–WB10: spreadsheet, Word, PDF, scan, prose, pseudo-code,
+      several mappings in one document, no schema).
+- [x] **Command line.** `mapper import extract | assemble | test | apply`: normalized document,
+      working `.fn.yaml` from the plan with its check, the plan's cases run on Python, write to the
+      project. Validations, groups (`oneOf` shapes), aggregates and empty lookups are part of what
+      the plan can say.
+- [x] **Run of an assistant.** `mapper import providers | run` (`cli/import_run.py`): Claude Code or
+      Codex, non-interactive, writes limited to `import/`, progress as JSON lines, cancellable,
+      plan validated, hashes and history written by the code.
+- [x] **Desktop wizard.** *Import a document…* from the start wizard: full-screen, five steps
+      (document, run, questions, review, apply); ops `import_*` of `mapper serve`; `import_run_start`
+      and `import_cancel` in the Tauri shell; headless check `shots/import-check.mjs`.
+      **Not tried against the real assistants yet** (the flags of Claude Code and the Codex command
+      line need a manual run).
+- [ ] Edit a rule inside the wizard; plan cases as golden cases; a second look at a new document
+      version (`revalue_version`) with the diff of the rules.
+- [ ] Excel/PDF *export* of the plan for the functional's review; reverse-import from `.map.py`;
+      bootstrap→driven archival.
 
 ---
 
@@ -1081,15 +1142,16 @@ else in the system depends on it.
 `build/compiled/*.sql` stay tracked in the repository (§Build folder: they are the deployable
 artifacts and show up in review). The release will carry them too, together with the rest of
 what is shipped: the desktop tool's installers, the engine, and these compiled packages, so
-that someone who only installs does not need the project. Still to design: what a release
+that someone who only installs does not need the project. Designed and done: what a release
 contains and its layout, how it is built and published from CI (both pipelines, forgejo and
-github), versioning, and the bundled Python runtime the tool already needs (see M6.1). The
+github: `release.yml`), versioning, and the bundled Python runtime (see M6.1). The
 CI diff against the tracked artifacts is decided (M6.3b: fail on a difference when they are
-committed, with the engine version of `mapper.toml`; nothing when they are git-ignored). It needs a
-**portable Linux CLI** (the engine and its Python, no desktop) as a release artifact. Also here,
+committed, with the engine version of `mapper.toml`; nothing when they are git-ignored). The
+**portable Linux CLI** (the engine and its Python, no desktop) is a release artifact
+(`j2jme-cli-linux-x86_64.tar.gz`, done). Also here,
 after M7: check that the GitHub pipeline behaves like the forgejo one (not checked so far).
 
-Decided for the bundled Python (not built yet): the engine and the tool's worker need Python
+Decided for the bundled Python (built: python-build-standalone, `packaging/stage.sh`): the engine and the tool's worker need Python
 >= 3.14 (a project still targets any version in `[target.python]`), and only what the tool uses
 to transpile, compile and run the editor is shipped: `oracledb` (with `cryptography`, native) is in
 the `dev` dependency group, since only `mapper test --integration` connects to Oracle, as are the
@@ -1118,8 +1180,8 @@ for a bundled interpreter after the engine's `.venv`.
       `tests/track1/release`; a `1.2.3-beta1` version builds the Linux and Windows packages). Verified: the
       AppImage and the two Windows packages are built here, the AppImage starts under Xvfb and its
       Python runs the engine; the dmg tooling (signing, volume) runs on a stand-in `.app`.
-      **Not verified**: the Windows installer and portable zip on Windows, the macOS cross-build
-      (no SDK was at hand), the dmg on a Mac, `J2JME_PKG_COPY=1` (CI on dind) and `release.yml`.
+      **Verified later**: the Windows installer and portable zip on Windows, and the macOS cross-build.
+      **Not verified**: the dmg on a Mac, `J2JME_PKG_COPY=1` (CI on dind) and `release.yml`.
 
 ---
 
@@ -1150,6 +1212,78 @@ string is not decoded by `to_string`. Left out for the moment, decided: `decode(
 match); `lookup` and `if_else` cover the rest. The limits of `to_number` (a plain decimal, up to 20 digits
 before the dot and 18 after; no exponent, separators or decimal comma) are in its description, which the
 explorer and the guide show.
+
+### ✅ Built-ins without patterns (library 1.1.0)
+
+`upper`, `lower`, `trim`, `length`, `substring`, `left`, `right`, `pad_left`, `pad_right`, `contains`,
+`starts_with`, `ends_with`, `abs`, `floor`, `ceil`, `format_date`: reference implementations in
+`compiler/builtins.py`, PL/SQL in `compiler/backends/plsql/builtins.py` (inline; `format_date` in the
+functions package), golden mapping `builtins_more` (the Python backend runs it offline; run on a real
+Oracle with `mapper test --integration`, which found that `format_date` did not reject a format
+such as `MON`: an empty text is NULL in Oracle, so the length test never fired). Rule: no pattern where a function does the job. Left out on purpose:
+`initcap` and month names in `format_date` (language-dependent).
+
+### ✅ Aggregates over a condition or a computed value
+
+`count`, `sum`, `max`, `min`, `avg` take a comprehension: `sum(abs(x.qty) for x in $.items if x.ok)`.
+Chosen over a family of `*_where` functions (one mechanism, the language's own conditions) and over a
+`filter` returning a list (on PL/SQL it would build an intermediate array: a second pass and an
+allocation). One loop on each backend, the condition first so that the value of a skipped element is
+never computed, one read of the element object per iteration. The check types the element from the
+list's schema; the validator already let a generator expression through. A rule's PL/SQL aggregate
+may now sit inside a larger expression: `_AggregateHoister` computes each into a local first (it
+had to be the direct value of the rule). Golden mapping `aggregate_by`, run on Oracle and offline.
+Not done: aggregating the lines already written to the output (`totalQty` is the same expression over
+the input list instead); several aggregates over one list are as many loops (could be fused if
+measured to matter).
+
+## ✅ Alternative output shapes: groups
+
+No `oneOf` in a mapping (decided): an `object` with `output: $` and a `guard` writes into the root,
+and the author guards each shape (WB3: POST and DELETE). The import asks which shape each part of
+the document is and the order of the guards. When validations exist, "no shape matches" is a
+rejection. Done: model, check (a field only some shapes require is not required), transpiler (flow
+`if`), both backends (golden `groups`, with a filtered loop inside a group: the lists a group
+writes exist only when its guard holds; `compiler/out_arrays.py`).
+
+## ✅ Validation of the input and the output (done)
+
+A mapping has a **Validation** section with two sides, input (before any rule) and output (after the
+last). Each side has a **JSON Schema** check (off by default: the host may validate upstream or
+downstream) and **extra checks** written in the expression language on `$` (`id`, `expect`, `code`,
+`message`, `action` = `reject` | `warn`). Reference: `docs/ARCHITECTURE.md`, §Validations of the input and
+the output.
+
+**Done.**
+- `.fn.yaml`: the `validations:` section (`transpiler/model.py`, written back by `serialize.py`,
+  checked by `check.py` against the input or the output schema, transpiled to a `__validation__`
+  directive plus one `check_<side>_<id>(root) -> bool` function each).
+- Compiler: `compiler/validation.py` reads the directive and `Backend.compile_module` gets the
+  `Validation`; the JSON Schema text of the mapping is embedded (canonical form, hash in the
+  generated code). PL/SQL: `p_report OUT CLOB` on `_safe`, `DBMS_JSON_SCHEMA.IS_VALID` (23ai), the
+  reserved error with `{rejected, checks}` on the raising twin. Python: a third result, `MappingRejected`,
+  `jsonschema`.
+- Semantics fixed so that the backends agree: only a **true** condition passes (a comparison with a
+  missing value is not true), a check that raises fails (unless the schema check already failed), the
+  report lists every failed check, a rejected message runs no rule and has no output.
+- Built-in `is_digits(s)`.
+- Golden mapping `validation` (7 cases: rejected by a check, by the schema, by both, by the output;
+  a warning; a missing value) with `<case>.expected_rejected.json` / `.expected_warnings.json`.
+- Import: the IR's `validations` / `schema_validation`, the plan's cases `expected_rejected` /
+  `expected_warnings`, `mapper import assemble | test` build and run them; the skill proposes a
+  rejection statement as a validation (WB7 REQ-16) instead of a function gap.
+- The desktop's golden ops (`golden_run`, `golden_record`, `golden_read` / `golden_write`) carry the
+  report and the two new case files.
+
+**Desktop.** The *Validations (I: n, O: m)* tab (`Validations.tsx`: per side the schema check and a table of
+checks, edited like the Paths tab); the golden case editor has the *Expected rejected* / *Expected warnings*
+files, the list shows them, and a run shows the failed checks and compares their codes with the expected
+ones. Guide page *Input and output checks*.
+
+**Note.** The schema check is best effort and not the same on every backend: Oracle's validator
+does not look at `format` (a `date-time` string is checked to be a string, not a date); the extra
+checks are the way to be exact. Older Oracle databases lack `DBMS_JSON_SCHEMA`: a mapping that asks
+for the schema check does not compile there.
 
 ## ✅ Python backend (done)
 

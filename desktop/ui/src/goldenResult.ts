@@ -32,8 +32,23 @@ export function whyFailed(r: GoldenResult): string[] {
       `rule errors were [${reported.join(", ")}], expected [${[...r.expected_errors].sort().join(", ")}]`,
     );
   }
+  for (const [what, got, expected] of [
+    ["rejected", codes(r, "reject"), r.expected_rejected],
+    ["warned", codes(r, "warn"), r.expected_warnings],
+  ] as const) {
+    if (r.report === null && expected === null) continue;
+    const want = [...(expected ?? [])].sort();
+    if (JSON.stringify(got) !== JSON.stringify(want)) {
+      reasons.push(`checks ${what}: [${got.join(", ")}], expected [${want.join(", ")}]`);
+    }
+  }
   if (r.message && !reasons.length) reasons.push(r.message);
   return reasons;
+}
+
+/** The codes of the failed checks of a run with an action, sorted. */
+export function codes(r: GoldenResult, action: "reject" | "warn"): string[] {
+  return (r.report ?? []).filter((i) => i.action === action).map((i) => i.code).sort();
 }
 
 /** The project functions without Python code that stopped some rule of the case. */

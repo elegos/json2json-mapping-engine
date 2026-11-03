@@ -1,0 +1,33 @@
+{
+  "originCode": "RNT001",
+  "billingId": "RC-20260409-0041",
+  "currencyCode": "EUR",
+  "ruleDate": "2026-04-09",
+  "bypassRun": "N",
+  "bypassFlag": "Y",
+  "createdDate": "20260410",
+  "billingNote": "Deliver early",
+  "hasDeposit": true,
+  "customer": {
+    "code": "NORD",
+    "type": "RES",
+    "seq": "2024",
+    "levyCountry": "SE",
+    "levyRegion": "AB"
+  },
+  "lineItems": [
+    {
+      "seqNo": 1,
+      "assetCode": "4408-ABC-X1",
+      "chargeNet": 21.4,
+      "isDeposit": false,
+      "unitLabel": "per day"
+    },
+    {
+      "seqNo": 2,
+      "assetCode": "99-AA-1",
+      "chargeNet": 100,
+      "isDeposit": true
+    }
+  ]
+}

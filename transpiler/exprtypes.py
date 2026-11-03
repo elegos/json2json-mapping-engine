@@ -17,11 +17,13 @@ from __future__ import annotations
 
 import ast
 import builtins
+import difflib
 import textwrap
 from collections.abc import Callable, Collection, Mapping
 from typing import Any
 
 from compiler.function_registry import FunctionInfo, builtin_functions
+from compiler.portable_regex import portable_regex_error
 
 Ty = frozenset[str] | None
 
@@ -90,6 +92,27 @@ def compatible(actual: Ty, want: Ty) -> bool:
     return actual is None or want is None or bool(actual & want)
 
 
+# names from other languages, with what to write here
+_FOREIGN_NAMES = {
+    "true": "write `True`",
+    "false": "write `False`",
+    "null": "write `None` for an empty value (`return Null` emits an explicit null)",
+    "nil": "write `None` for an empty value (`return Null` emits an explicit null)",
+    "NULL": "write `None` for an empty value (`return Null` emits an explicit null)",
+    "none": "write `None` for an empty value (`return Null` emits an explicit null)",
+}
+
+
+def did_you_mean(name: str, candidates: Collection[str]) -> str:
+    """` — did you mean 'x'?` for the candidate closest to `name` (case aside), else ``."""
+    pool = {c.lower(): c for c in candidates if isinstance(c, str) and c != name}
+    near = difflib.get_close_matches(name.lower(), list(pool), n=1, cutoff=0.6)
+    return f" — did you mean '{pool[near[0]]}'?" if near else ""
+
+
+_AGGREGATES = {"sum", "avg", "max", "min", "count", "join", "any", "all"}
+
+
 class ExprTyper:
     """`env` maps the names the anchors resolve to (`root`, `_L1`, …) to schema nodes;
     `schemas` offers `types(node)`, `prop(node, name)` and `values(node)` on such nodes."""
@@ -107,6 +130,7 @@ class ExprTyper:
             {n for n, f in functions.items() if f.special} if functions is not None else HANDLED
         )
         self.registry = functions if functions is not None else _BUILTINS
+        self.complete = functions is not None  # else the project's own functions are not known
         self.schemas = schemas
         self.env = env
         self.report = report
@@ -141,6 +165,18 @@ class ExprTyper:
                 ):
                     self.infer(expr)
 
+    def names(self, text: str) -> None:
+        """The names a functional expression (or block) reads that nothing defines: the
+        variables it assigns, the functions and the references the check resolved are known.
+        Without the project's function list a name cannot be judged."""
+        if not self.complete:
+            return
+        try:
+            tree = ast.parse(textwrap.dedent(text).strip("\n"))
+        except SyntaxError:
+            return  # reported by the form check
+        self._undefined(tree, set())
+
     def _undefined(self, tree: ast.AST, extra: set[str]) -> None:
         """Names read in the block that nothing defines. A variable counts as defined anywhere
         in the block (use before assignment is not looked for); Python's own builtins are not
@@ -153,6 +189,14 @@ class ExprTyper:
                 known.add(n.arg)
             elif isinstance(n, ast.FunctionDef | ast.ClassDef):
                 known.add(n.name)
+        called = {
+            n.func.id
+            for n in ast.walk(tree)
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+        }
+        # what a name may be: the scope, the block's variables and the functions (not the
+        # internal `_L1` / `_LK_x` names, nor Python's builtins)
+        offered = [k for k in known if not k.startswith("_") and k not in dir(builtins)]
         reported: set[str] = set()
         for n in ast.walk(tree):
             if (
@@ -162,7 +206,13 @@ class ExprTyper:
                 and n.id not in reported
             ):
                 reported.add(n.id)
-                self.report(f"'{n.id}' is not defined")
+                if n.id in called:
+                    guess = did_you_mean(n.id, offered) or " — the guide lists the functions"
+                    self.report(f"unknown function '{n.id}'{guess}")
+                elif n.id in _FOREIGN_NAMES:
+                    self.report(f"'{n.id}' is not defined: {_FOREIGN_NAMES[n.id]}")
+                else:
+                    self.report(f"'{n.id}' is not defined{did_you_mean(n.id, offered)}")
 
     def _arity(self, node: ast.Call, name: str) -> None:
         """A call of a registered function must fit its parameters."""
@@ -198,6 +248,14 @@ class ExprTyper:
                 return None
             found = self.schemas.prop(base, node.attr)
             return found if isinstance(found, dict) else None
+        if (  # a field named like a keyword: root["return"]
+            isinstance(node, ast.Subscript)
+            and isinstance(node.slice, ast.Constant)
+            and isinstance(node.slice.value, str)
+        ):
+            base = self._node(node.value)
+            found = self.schemas.prop(base, node.slice.value) if base is not None else None
+            return found if isinstance(found, dict) else None
         return None
 
     def _of_node(self, node: Any) -> Ty:
@@ -218,11 +276,11 @@ class ExprTyper:
             return STRING if isinstance(v, str) else None
         if isinstance(node, ast.JoinedStr):
             return STRING
-        if isinstance(node, ast.Name | ast.Attribute):
+        if isinstance(node, ast.Name | ast.Attribute | ast.Subscript):
             found = self._node(node)
             if found is not None:
                 return self._of_node(found)
-            if isinstance(node, ast.Attribute):
+            if isinstance(node, ast.Attribute | ast.Subscript):
                 self.infer(node.value)
             return None
         if isinstance(node, ast.BinOp):
@@ -324,6 +382,30 @@ class ExprTyper:
             for arg in args:
                 self.infer(arg)
             return STRING
+        if name == "matches" and len(args) == 2:
+            pattern = args[1]
+            if not (isinstance(pattern, ast.Constant) and isinstance(pattern.value, str)):
+                self.report("matches(text, pattern): the pattern must be a literal text")
+            elif (problem := portable_regex_error(pattern.value)) is not None:
+                self.report(f"matches(text, {pattern.value!r}): {problem}")
+        if (
+            name in ("any", "all")
+            and name in self.special
+            and not (args and isinstance(args[0], ast.GeneratorExp))
+        ):
+            self.report(f"{name}() takes a comprehension: {name}(condition for x in list)")
+            return BOOLEAN
+        if (
+            name in _AGGREGATES
+            and name in self.special
+            and args
+            and isinstance(args[0], ast.GeneratorExp)
+            and len(args) <= (2 if name == "join" else 1)
+        ):
+            return self._aggregate(node)
+        if name == "abs" and name in self.special and len(args) == 1:
+            ty = self._arg("abs", 0, args[0], NUMERIC)
+            return INTEGER if ty == INTEGER else NUMBER
         if name == "count" and name in self.special:
             for arg in args:
                 self.infer(arg)
@@ -336,6 +418,83 @@ class ExprTyper:
         for arg in args:
             self.infer(arg)
         return None
+
+    def _aggregate(self, call: ast.Call) -> Ty:
+        """`sum(value for x in list if condition)` (also `count`, `max`, `min`, `avg`): `x` is an
+        element of the list, so the fields it reads are checked against the list's schema."""
+        assert isinstance(call.func, ast.Name)
+        name = call.func.id
+        comp = call.args[0]
+        assert isinstance(comp, ast.GeneratorExp)
+        if call.keywords:
+            self.report(f"{name}() over a comprehension takes nothing else")
+        if len(comp.generators) != 1 or comp.generators[0].is_async:
+            self.report(f"{name}() takes one `for`, with `if` conditions after it")
+            return None
+        gen = comp.generators[0]
+        if not isinstance(gen.target, ast.Name):
+            self.report(f"the variable of the `for` in {name}() must be a single name")
+            return None
+        self.infer(gen.iter)
+        array = self._node(gen.iter)
+        element = self.schemas.items(array) if array is not None else None
+        var = gen.target.id
+        earlier = self.env.get(var)
+        self.env[var] = element
+        try:
+            self._element_fields(comp, var, element)
+            for cond in gen.ifs:
+                self.infer(cond)
+            value = self.infer(comp.elt)
+        finally:
+            if earlier is None:
+                self.env.pop(var, None)
+            else:
+                self.env[var] = earlier
+        if name == "count":
+            return INTEGER
+        if name in ("any", "all"):
+            return BOOLEAN
+        if name == "join":
+            if len(call.args) > 1:
+                self._arg("join", 1, call.args[1], STRING)
+            if not compatible(value, STRING):
+                self.report(
+                    f"join() needs texts, but the value is {describe(value)}: use to_string()"
+                )
+            return STRING
+        if name in ("sum", "avg") and not compatible(value, NUMERIC):
+            self.report(f"{name}() needs numbers, but the value is {describe(value)}")
+            return NUMBER
+        if name == "sum":
+            return INTEGER if value == INTEGER else NUMBER
+        return NUMBER if name == "avg" else value
+
+    def _element_fields(self, comp: ast.GeneratorExp, var: str, element: Any) -> None:
+        """A field of the element that its schema does not have."""
+        if not isinstance(element, dict):
+            return
+        reported: set[tuple[str, str]] = set()
+        for n in ast.walk(comp):
+            if not isinstance(n, ast.Attribute):
+                continue
+            chain: list[str] = []
+            base: ast.expr = n
+            while isinstance(base, ast.Attribute):
+                chain.append(base.attr)
+                base = base.value
+            if not (isinstance(base, ast.Name) and base.id == var):
+                continue
+            node: Any = element
+            for attr in reversed(chain):
+                found = self.schemas.prop(node, attr)
+                if found is None:
+                    if (var, attr) not in reported:
+                        reported.add((var, attr))
+                        near = did_you_mean(attr, self.schemas.names(node))
+                        self.report(f"'{attr}' is not in the input schema{near}")
+                    break
+                node = found
 
     def _lookup(self, args: list[ast.expr], want: Ty) -> Ty:
         if len(args) not in (2, 3):

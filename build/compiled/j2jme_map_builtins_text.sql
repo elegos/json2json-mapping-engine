@@ -14,201 +14,300 @@ END J2JME_MAP_BUILTINS_TEXT;
 
 CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAP_BUILTINS_TEXT AS
     FUNCTION fn_builtins_text_replaced(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_replaced__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN REPLACE(p_root.get_String('s'), '-', '+');
+        v_replaced__ret := REPLACE(p_root.get_String('s'), '-', '+');
+        IF v_replaced__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_replaced__ret;
     END fn_builtins_text_replaced;
 
     FUNCTION fn_builtins_text_removed(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_removed__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN REPLACE(p_root.get_String('s'), '-');
+        v_removed__ret := REPLACE(p_root.get_String('s'), '-');
+        IF v_removed__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_removed__ret;
     END fn_builtins_text_removed;
 
     FUNCTION fn_builtins_text_prefix(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_prefix__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN MAPPING_OWNER.J2JME_FUNCTIONS.remove_prefix(p_root.get_String('code'), 'ID-');
+        v_prefix__ret := MAPPING_OWNER.J2JME_FUNCTIONS.remove_prefix(p_root.get_String('code'), 'ID-');
+        IF v_prefix__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_prefix__ret;
     END fn_builtins_text_prefix;
 
     FUNCTION fn_builtins_text_prefix_absent(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_prefix_absent__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN MAPPING_OWNER.J2JME_FUNCTIONS.remove_prefix(p_root.get_String('s'), 'ID-');
+        v_prefix_absent__ret := MAPPING_OWNER.J2JME_FUNCTIONS.remove_prefix(p_root.get_String('s'), 'ID-');
+        IF v_prefix_absent__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_prefix_absent__ret;
     END fn_builtins_text_prefix_absent;
 
     FUNCTION fn_builtins_text_digits(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_digits__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN REGEXP_REPLACE(p_root.get_String('phone'), '[^0-9]', '');
+        v_digits__ret := REGEXP_REPLACE(p_root.get_String('phone'), '[^0-9]', '');
+        IF v_digits__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_digits__ret;
     END fn_builtins_text_digits;
 
     FUNCTION fn_builtins_text_swapped(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_swapped__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN REGEXP_REPLACE(p_root.get_String('ref'), '([a-z]+)-([0-9]+)/([0-9]+)', '\3-\2');
+        v_swapped__ret := REGEXP_REPLACE(p_root.get_String('ref'), '([a-z]+)-([0-9]+)/([0-9]+)', '\3-\2');
+        IF v_swapped__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_swapped__ret;
     END fn_builtins_text_swapped;
 
     FUNCTION fn_builtins_text_group(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_group__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN REGEXP_SUBSTR(p_root.get_String('ref'), '([a-z]+)-([0-9]+)', 1, 1, NULL, 2);
+        v_group__ret := REGEXP_SUBSTR(p_root.get_String('ref'), '([a-z]+)-([0-9]+)', 1, 1, NULL, 2);
+        IF v_group__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_group__ret;
     END fn_builtins_text_group;
 
     FUNCTION fn_builtins_text_whole(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_whole__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN REGEXP_SUBSTR(p_root.get_String('ref'), '[0-9]+', 1, 1, NULL, 0);
+        v_whole__ret := REGEXP_SUBSTR(p_root.get_String('ref'), '[0-9]+', 1, 1, NULL, 0);
+        IF v_whole__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_whole__ret;
     END fn_builtins_text_whole;
 
     FUNCTION fn_builtins_text_no_group(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_no_group__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN COALESCE(REGEXP_SUBSTR(p_root.get_String('s'), '[0-9]+', 1, 1, NULL, 0), 'none');
+        v_no_group__ret := COALESCE(REGEXP_SUBSTR(p_root.get_String('s'), '[0-9]+', 1, 1, NULL, 0), 'none');
+        IF v_no_group__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_no_group__ret;
     END fn_builtins_text_no_group;
 
     FUNCTION fn_builtins_text_fixed(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_fixed__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN MAPPING_OWNER.J2JME_FUNCTIONS.format_decimal(p_root.get_Number('n'), 2);
+        v_fixed__ret := MAPPING_OWNER.J2JME_FUNCTIONS.format_decimal(p_root.get_Number('n'), 2);
+        IF v_fixed__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_fixed__ret;
     END fn_builtins_text_fixed;
 
     FUNCTION fn_builtins_text_fixed_rounded(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_fixed_rounded__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN MAPPING_OWNER.J2JME_FUNCTIONS.format_decimal(p_root.get_Number('big'), 2);
+        v_fixed_rounded__ret := MAPPING_OWNER.J2JME_FUNCTIONS.format_decimal(p_root.get_Number('big'), 2);
+        IF v_fixed_rounded__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_fixed_rounded__ret;
     END fn_builtins_text_fixed_rounded;
 
     FUNCTION fn_builtins_text_fixed_whole(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_fixed_whole__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN MAPPING_OWNER.J2JME_FUNCTIONS.format_decimal(p_root.get_Number('whole'), 0);
+        v_fixed_whole__ret := MAPPING_OWNER.J2JME_FUNCTIONS.format_decimal(p_root.get_Number('whole'), 0);
+        IF v_fixed_whole__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_fixed_whole__ret;
     END fn_builtins_text_fixed_whole;
 
     FUNCTION fn_builtins_text_fixed_negative(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_fixed_negative__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN MAPPING_OWNER.J2JME_FUNCTIONS.format_decimal(p_root.get_Number('neg'), 1);
+        v_fixed_negative__ret := MAPPING_OWNER.J2JME_FUNCTIONS.format_decimal(p_root.get_Number('neg'), 1);
+        IF v_fixed_negative__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_fixed_negative__ret;
     END fn_builtins_text_fixed_negative;
 
     FUNCTION fn_builtins_text_rounded(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN NUMBER IS
+        v_rounded__ret NUMBER;
     BEGIN
         p_omitted := FALSE;
-        RETURN ROUND(p_root.get_Number('n'));
+        v_rounded__ret := ROUND(p_root.get_Number('n'));
+        IF v_rounded__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_rounded__ret;
     END fn_builtins_text_rounded;
 
     FUNCTION fn_builtins_text_number_from_text(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN NUMBER IS
+        v_number_from_text__ret NUMBER;
     BEGIN
         p_omitted := FALSE;
-        RETURN MAPPING_OWNER.J2JME_FUNCTIONS.to_number(p_root.get('num_text'));
+        v_number_from_text__ret := MAPPING_OWNER.J2JME_FUNCTIONS.to_number(p_root.get('num_text'));
+        IF v_number_from_text__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_number_from_text__ret;
     END fn_builtins_text_number_from_text;
 
     FUNCTION fn_builtins_text_decimal_from_text(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN NUMBER IS
+        v_decimal_from_text__ret NUMBER;
     BEGIN
         p_omitted := FALSE;
-        RETURN MAPPING_OWNER.J2JME_FUNCTIONS.to_number(p_root.get('dec_text'));
+        v_decimal_from_text__ret := MAPPING_OWNER.J2JME_FUNCTIONS.to_number(p_root.get('dec_text'));
+        IF v_decimal_from_text__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_decimal_from_text__ret;
     END fn_builtins_text_decimal_from_text;
 
     FUNCTION fn_builtins_text_number_from_number(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN NUMBER IS
+        v_number_from_number__ret NUMBER;
     BEGIN
         p_omitted := FALSE;
-        RETURN MAPPING_OWNER.J2JME_FUNCTIONS.to_number(p_root.get('n'));
+        v_number_from_number__ret := MAPPING_OWNER.J2JME_FUNCTIONS.to_number(p_root.get('n'));
+        IF v_number_from_number__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_number_from_number__ret;
     END fn_builtins_text_number_from_number;
 
     FUNCTION fn_builtins_text_number_from_expr(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN NUMBER IS
+        v_number_from_expr__ret NUMBER;
     BEGIN
         p_omitted := FALSE;
-        RETURN TO_NUMBER(TRIM(MAPPING_OWNER.J2JME_FUNCTIONS.split_nth(p_root.get_String('pair'), ',', 2)), '99999999999999999999D999999999999999999', 'NLS_NUMERIC_CHARACTERS=''.,''');
+        v_number_from_expr__ret := TO_NUMBER(TRIM(MAPPING_OWNER.J2JME_FUNCTIONS.split_nth(p_root.get_String('pair'), ',', 2)), '99999999999999999999D999999999999999999', 'NLS_NUMERIC_CHARACTERS=''.,''');
+        IF v_number_from_expr__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_number_from_expr__ret;
     END fn_builtins_text_number_from_expr;
 
     FUNCTION fn_builtins_text_text_from_number(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_text_from_number__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN MAPPING_OWNER.J2JME_FUNCTIONS.to_string(p_root.get('n'));
+        v_text_from_number__ret := MAPPING_OWNER.J2JME_FUNCTIONS.to_string(p_root.get('n'));
+        IF v_text_from_number__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_text_from_number__ret;
     END fn_builtins_text_text_from_number;
 
     FUNCTION fn_builtins_text_text_from_whole(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_text_from_whole__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN MAPPING_OWNER.J2JME_FUNCTIONS.to_string(p_root.get('whole'));
+        v_text_from_whole__ret := MAPPING_OWNER.J2JME_FUNCTIONS.to_string(p_root.get('whole'));
+        IF v_text_from_whole__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_text_from_whole__ret;
     END fn_builtins_text_text_from_whole;
 
     FUNCTION fn_builtins_text_text_from_small(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_text_from_small__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN MAPPING_OWNER.J2JME_FUNCTIONS.to_string(p_root.get('small'));
+        v_text_from_small__ret := MAPPING_OWNER.J2JME_FUNCTIONS.to_string(p_root.get('small'));
+        IF v_text_from_small__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_text_from_small__ret;
     END fn_builtins_text_text_from_small;
 
     FUNCTION fn_builtins_text_text_from_text(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_text_from_text__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN MAPPING_OWNER.J2JME_FUNCTIONS.to_string(p_root.get('s'));
+        v_text_from_text__ret := MAPPING_OWNER.J2JME_FUNCTIONS.to_string(p_root.get('s'));
+        IF v_text_from_text__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_text_from_text__ret;
     END fn_builtins_text_text_from_text;
 
     FUNCTION fn_builtins_text_text_from_bool(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_text_from_bool__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN MAPPING_OWNER.J2JME_FUNCTIONS.to_string(p_root.get('flag'));
+        v_text_from_bool__ret := MAPPING_OWNER.J2JME_FUNCTIONS.to_string(p_root.get('flag'));
+        IF v_text_from_bool__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_text_from_bool__ret;
     END fn_builtins_text_text_from_bool;
 
     FUNCTION fn_builtins_text_text_from_list(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_text_from_list__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN MAPPING_OWNER.J2JME_FUNCTIONS.to_string(p_root.get('list'));
+        v_text_from_list__ret := MAPPING_OWNER.J2JME_FUNCTIONS.to_string(p_root.get('list'));
+        IF v_text_from_list__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_text_from_list__ret;
     END fn_builtins_text_text_from_list;
 
     FUNCTION fn_builtins_text_text_from_expr(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_text_from_expr__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN RTRIM(TO_CHAR(ROUND(p_root.get_Number('n'), 0), 'FM99999999999999999999990.99999999999999999999', 'NLS_NUMERIC_CHARACTERS=''.,'''), '.');
+        v_text_from_expr__ret := RTRIM(TO_CHAR(ROUND(p_root.get_Number('n'), 0), 'FM99999999999999999999990.99999999999999999999', 'NLS_NUMERIC_CHARACTERS=''.,'''), '.');
+        IF v_text_from_expr__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_text_from_expr__ret;
     END fn_builtins_text_text_from_expr;
 
     FUNCTION fn_builtins_text_text_from_concat(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_text_from_concat__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN ('a' || 'b');
+        v_text_from_concat__ret := ('a' || 'b');
+        IF v_text_from_concat__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_text_from_concat__ret;
     END fn_builtins_text_text_from_concat;
 
     FUNCTION fn_builtins_text_utc(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_utc__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN MAPPING_OWNER.J2JME_FUNCTIONS.to_utc(p_root.get_String('ts'));
+        v_utc__ret := MAPPING_OWNER.J2JME_FUNCTIONS.to_utc(p_root.get_String('ts'));
+        IF v_utc__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_utc__ret;
     END fn_builtins_text_utc;
 
     FUNCTION fn_builtins_text_utc_fraction(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_utc_fraction__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN MAPPING_OWNER.J2JME_FUNCTIONS.to_utc(p_root.get_String('ts_frac'));
+        v_utc_fraction__ret := MAPPING_OWNER.J2JME_FUNCTIONS.to_utc(p_root.get_String('ts_frac'));
+        IF v_utc_fraction__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_utc_fraction__ret;
     END fn_builtins_text_utc_fraction;
 
     FUNCTION fn_builtins_text_utc_from_z(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_utc_from_z__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN MAPPING_OWNER.J2JME_FUNCTIONS.to_utc(p_root.get_String('ts_z'));
+        v_utc_from_z__ret := MAPPING_OWNER.J2JME_FUNCTIONS.to_utc(p_root.get_String('ts_z'));
+        IF v_utc_from_z__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_utc_from_z__ret;
     END fn_builtins_text_utc_from_z;
 
     FUNCTION fn_builtins_text_utc_naive(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_utc_naive__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN MAPPING_OWNER.J2JME_FUNCTIONS.to_utc(p_root.get_String('ts_naive'));
+        v_utc_naive__ret := MAPPING_OWNER.J2JME_FUNCTIONS.to_utc(p_root.get_String('ts_naive'));
+        IF v_utc_naive__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_utc_naive__ret;
     END fn_builtins_text_utc_naive;
 
     FUNCTION fn_builtins_text_rfc(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_rfc__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN MAPPING_OWNER.J2JME_FUNCTIONS.rfc3339_normalize(p_root.get_String('ts'));
+        v_rfc__ret := MAPPING_OWNER.J2JME_FUNCTIONS.rfc3339_normalize(p_root.get_String('ts'));
+        IF v_rfc__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_rfc__ret;
     END fn_builtins_text_rfc;
 
     FUNCTION fn_builtins_text_rfc_naive(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_rfc_naive__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN MAPPING_OWNER.J2JME_FUNCTIONS.rfc3339_normalize(p_root.get_String('ts_naive'));
+        v_rfc_naive__ret := MAPPING_OWNER.J2JME_FUNCTIONS.rfc3339_normalize(p_root.get_String('ts_naive'));
+        IF v_rfc_naive__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_rfc_naive__ret;
     END fn_builtins_text_rfc_naive;
 
     FUNCTION fn_builtins_text_rfc_zero(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_rfc_zero__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN MAPPING_OWNER.J2JME_FUNCTIONS.rfc3339_normalize(p_root.get_String('ts_zero'));
+        v_rfc_zero__ret := MAPPING_OWNER.J2JME_FUNCTIONS.rfc3339_normalize(p_root.get_String('ts_zero'));
+        IF v_rfc_zero__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_rfc_zero__ret;
     END fn_builtins_text_rfc_zero;
 
     PROCEDURE map_builtins_text (

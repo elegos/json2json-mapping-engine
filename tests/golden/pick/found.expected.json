@@ -1,1 +1,1 @@
-{"Total": 12.5, "Currency": "EUR", "Missing": null, "Lines": [{"Sku": "A", "Price": 1.5}, {"Sku": "B", "Price": 2}, {"Sku": "Z", "Price": null}]}
+{"Total": 12.5, "Currency": "EUR", "Lines": [{"Sku": "A", "Price": 1.5}, {"Sku": "B", "Price": 2}, {"Sku": "Z"}]}

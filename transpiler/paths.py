@@ -63,7 +63,7 @@ def _expand_rules(rules: list[Rule], paths: PathsSection) -> None:
         elif isinstance(rule, LoopRule):
             rule.source = expand_text(rule.source, paths) or ""
             rule.filter = expand_text(rule.filter, paths)
-            rule.sort_key = expand_text(rule.sort_key, paths)
+            rule.order_by = expand_text(rule.order_by, paths)
             _expand_rules(rule.rules, paths)
 
 

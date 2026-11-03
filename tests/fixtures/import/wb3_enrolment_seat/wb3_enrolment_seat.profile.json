@@ -1,0 +1,34 @@
+{
+  "workbook": "Enrolment_TimetableSeat_API_Mapping.xlsx",
+  "family": "C",
+  "language": "en",
+  "index_base": {
+    "code_expressions": 0
+  },
+  "array_notation": {
+    "[]": "every element",
+    "[*]": "every element",
+    "no_brackets": "every element",
+    "[0]": "first element only",
+    "[cond]": "filter"
+  },
+  "mandatory_vocabulary": {
+    "M": "mandatory",
+    "O": "optional",
+    "C": "conditional: mapped only if source exists, never rejects (undefined in workbook)"
+  },
+  "date_dialect": {
+    "yyyy-MM-dd'T'HH:mm:ss.SSSXXX": "3 millisecond digits, offset kept, Z for zero offset",
+    "yyyy-MM-dd": "date as written in source, no tz conversion"
+  },
+  "null_rule": "null, empty and missing are equivalent; optional target field without value is omitted",
+  "operator_precedence": "AND binds tighter than OR",
+  "composite_id_rules": {
+    "student.id": "part1, part2, last part (split on '-')"
+  },
+  "strikethrough": "struck rows are removed from the interface and are not mapped",
+  "removed_rows": [
+    "seatClass",
+    "printBadge"
+  ]
+}

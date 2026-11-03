@@ -1,0 +1,11 @@
+{
+  "readings": {
+    "meterId": "mt-0045",
+    "unit": "m3",
+    "site": {
+      "code": "S9",
+      "name": "Annex"
+    },
+    "samples": []
+  }
+}

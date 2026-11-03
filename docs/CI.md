@@ -33,7 +33,7 @@ and the release files described here.
 `mapper check` knows which way a project works: if git ignores `build/compiled` it only builds (the
 mappings must compile) and never complains about missing files; otherwise it compares.
 
-To switch, `mapper artifacts ignore` (or *Generated files…* in the desktop tool) adds
+To switch, `mapper artifacts ignore` (or *Project properties › Generated files* in the desktop tool) adds
 `build/compiled/` to the project's `.gitignore` and removes the files from the repository's index,
 **staged, not committed** (the files stay on your disk): commit `.gitignore` and the removal together,
 and give CI the build and deploy job of the second column. `mapper artifacts track` goes back, and
@@ -305,7 +305,7 @@ dir = "../acme-deploy/sql"
 `mapper publish` first runs `mapper check`: with the artifacts committed they must match the
 sources, so what is published is what is in git, and a stale `build/compiled` stops it (`--no-check`
 publishes anyway; with the artifacts git-ignored there is nothing to compare). The desktop tool keeps
-its own folder per project and per user (*Publish folder…*), which it passes as `--to`.
+its own folder per project and per user (*Project properties › Publish folder*), which it passes as `--to`.
 
 A check or build that fails publishes nothing and leaves the last published set as it was. The folder is
 **never emptied or replaced**: it may hold other people's files. Each file is written whole and read

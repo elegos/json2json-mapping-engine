@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Order",
+  "type": "object",
+  "required": [
+    "order"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "order": {
+      "type": "object",
+      "required": [
+        "orderNo",
+        "orderDate",
+        "customerId",
+        "customerName",
+        "currency",
+        "items",
+        "totalNet",
+        "paymentDue",
+        "incoterm",
+        "status"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "orderNo": {
+          "type": "string"
+        },
+        "orderDate": {
+          "type": "string"
+        },
+        "customerId": {
+          "type": "string"
+        },
+        "customerName": {
+          "type": "string"
+        },
+        "vat": {
+          "type": "string"
+        },
+        "currency": {
+          "type": "string"
+        },
+        "leadSku": {
+          "type": "string"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "pos",
+              "sku",
+              "qty",
+              "netPrice",
+              "lineTotal"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "pos": {
+                "type": "integer"
+              },
+              "sku": {
+                "type": "string"
+              },
+              "qty": {
+                "type": "integer"
+              },
+              "netPrice": {
+                "type": "number"
+              },
+              "lineTotal": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        "totalNet": {
+          "type": "number"
+        },
+        "paymentDue": {
+          "type": "string"
+        },
+        "incoterm": {
+          "type": "string"
+        },
+        "status": {
+          "const": "NEW"
+        }
+      }
+    }
+  }
+}

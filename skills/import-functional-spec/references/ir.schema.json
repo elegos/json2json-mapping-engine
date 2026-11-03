@@ -1,0 +1,1140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://j2jme.local/import/ir.schema.json",
+  "title": "Import plan (IR)",
+  "description": "What the import reads from one functional document for ONE mapping, before anything is written to the project. Reviewable, re-runnable and diffable; `.fn.yaml` is generated from it. Nothing in it is specific to a document style: conventions live in the profile, doubts live in `questions`.",
+  "type": "object",
+  "required": [
+    "ir_version",
+    "mapping",
+    "document",
+    "schemas",
+    "rules",
+    "questions",
+    "discrepancies"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "ir_version": {
+      "const": 1
+    },
+    "mapping": {
+      "type": "object",
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Project mapping id (`.fn.yaml` name)."
+        },
+        "name": {
+          "type": "string"
+        },
+        "unit_in_document": {
+          "$ref": "#/$defs/location",
+          "description": "Where this mapping lives when the document holds several (sheet, section, chapter)."
+        }
+      }
+    },
+    "document": {
+      "type": "object",
+      "required": [
+        "file",
+        "sha256",
+        "version"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "mappings_found": {
+          "type": "array",
+          "description": "Every mapping the document holds (the one imported and the others), so a re-run or a second import does not start from scratch.",
+          "items": {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "location": {
+                "$ref": "#/$defs/location"
+              },
+              "rules": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "imported": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "format": {
+          "type": "string",
+          "description": "xlsx, docx, pdf, md, txt, ... Informational: the pipeline downstream does not branch on it."
+        },
+        "version": {
+          "type": "object",
+          "required": [
+            "resolved",
+            "origin"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "resolved": {
+              "type": "string",
+              "description": "The version this plan was made from."
+            },
+            "origin": {
+              "enum": [
+                "file_name",
+                "version_sheet",
+                "column",
+                "header",
+                "metadata",
+                "user",
+                "assumed_default"
+              ],
+              "description": "`assumed_default` = nothing declared, 1.0 taken."
+            },
+            "candidates": {
+              "type": "array",
+              "description": "Every version signal found; more than one distinct value means the user was asked which prevails.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "origin",
+                  "value"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "origin": {
+                    "enum": [
+                      "file_name",
+                      "version_sheet",
+                      "column",
+                      "header",
+                      "metadata"
+                    ]
+                  },
+                  "value": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "language": {
+          "type": "string"
+        }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "description": "The conventions this plan was read with. Profiles are project files, applied to one or more mappings; the plan records which and its hash so a changed profile marks the plan stale.",
+      "required": [
+        "name",
+        "sha256"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "origin": {
+          "enum": [
+            "reused",
+            "new",
+            "reused_with_changes"
+          ]
+        },
+        "reused_from_mappings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "schemas": {
+      "type": "object",
+      "required": [
+        "input",
+        "output"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "input": {
+          "$ref": "#/$defs/schemaRef"
+        },
+        "output": {
+          "$ref": "#/$defs/schemaRef"
+        }
+      }
+    },
+    "lookups": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "status"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "in_document",
+              "provided",
+              "partial",
+              "missing"
+            ],
+            "description": "`missing`: only the name is known; the plan keeps an empty table and a flag, never invented entries."
+          },
+          "entries": {
+            "type": "object"
+          },
+          "not_found": {
+            "description": "What the document says to do for an unknown key; absent when it does not say."
+          },
+          "location": {
+            "$ref": "#/$defs/location"
+          }
+        }
+      }
+    },
+    "validations": {
+      "type": "array",
+      "description": "Checks of the message or the result that the document asks for (a rejection rule, a mandatory format). Never a rule of `rules`.",
+      "items": {
+        "$ref": "#/$defs/validation"
+      }
+    },
+    "schema_validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Whether the mapping also validates the message / the result against its JSON Schema. Off unless the document or the user says so (the host may do it upstream or downstream).",
+      "properties": {
+        "input": {
+          "type": "boolean"
+        },
+        "output": {
+          "type": "boolean"
+        }
+      }
+    },
+    "rules": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/rule"
+      }
+    },
+    "questions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/question"
+      }
+    },
+    "discrepancies": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/discrepancy"
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "description": "Every unit of the document that could hold a rule is accounted for; nothing is dropped silently.",
+      "additionalProperties": false,
+      "properties": {
+        "units_total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "imported": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "imported_with_doubt": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "not_imported": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "location",
+              "reason"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "location": {
+                "$ref": "#/$defs/location"
+              },
+              "reason": {
+                "enum": [
+                  "header_or_title",
+                  "not_a_rule",
+                  "removed_in_document",
+                  "outside_selected_mapping",
+                  "unreadable",
+                  "needs_user_input",
+                  "footnote_or_definition_used_by_a_rule",
+                  "other"
+                ]
+              },
+              "detail": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "tests": {
+      "type": "array",
+      "description": "Cases found in the document (sample values, payload sheets, worked examples). Never silently trusted: `trust` says how far.",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "origin",
+          "trust"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "origin": {
+            "$ref": "#/$defs/location"
+          },
+          "trust": {
+            "enum": [
+              "paired_in_document",
+              "inferred_pairing",
+              "single_value"
+            ],
+            "description": "Samples in different places are not pairs; `inferred_pairing` is a guess to confirm."
+          },
+          "input": {
+            "description": "A complete source message (it validates against the input schema)."
+          },
+          "expected": {
+            "description": "The output for `input`: complete, or only a part of it with `partial: true`."
+          },
+          "rule_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "result": {
+            "enum": [
+              "not_run",
+              "pass",
+              "fail",
+              "error"
+            ]
+          },
+          "detail": {
+            "type": "string"
+          },
+          "partial": {
+            "type": "boolean",
+            "description": "`expected` lists only some fields of the output (the document shows a part of it): the case passes when the actual output holds all of them. Without it `expected` is the complete output."
+          },
+          "expected_rejected": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Instead of `expected`: the message is rejected, by exactly these check codes."
+          },
+          "expected_warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The codes of the `warn` checks the case must report (all of them; absent: not looked at)."
+          }
+        }
+      }
+    },
+    "history": {
+      "type": "array",
+      "description": "One entry per run of this plan (first import, reruns, re-evaluation for a new document version).",
+      "items": {
+        "type": "object",
+        "required": [
+          "at",
+          "kind"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "kind": {
+            "enum": [
+              "import",
+              "rerun_all",
+              "rerun_partial",
+              "revalue_for_version"
+            ]
+          },
+          "document_version": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string",
+            "description": "LLM provider/model used, if any."
+          },
+          "rule_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Rules touched by a partial run."
+          },
+          "summary": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "location": {
+      "type": "object",
+      "description": "Where something is in the document. Fill what the format offers; all fields optional.",
+      "additionalProperties": false,
+      "properties": {
+        "sheet": {
+          "type": "string"
+        },
+        "cells": {
+          "type": "string",
+          "description": "A1-style range, merged ranges as they are in the file."
+        },
+        "page": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "section": {
+          "type": "string",
+          "description": "Heading path, band title or chapter."
+        },
+        "paragraph": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "table": {
+          "type": "string",
+          "description": "Id of the table (normalized document), for a table in a Word, PDF or text document."
+        },
+        "row": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Row of that table, from 0."
+        }
+      }
+    },
+    "schemaRef": {
+      "type": "object",
+      "required": [
+        "origin"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "origin": {
+          "enum": [
+            "provided",
+            "found_in_document",
+            "inferred",
+            "none"
+          ],
+          "description": "`inferred`: derived from the document's paths and samples, shown to the user as a proposal. `none`: no schema at all; every target/source path is then unverified and confidence is capped."
+        },
+        "path": {
+          "type": "string",
+          "description": "File in the project's `schemas/` once accepted."
+        },
+        "confirmed": {
+          "type": "boolean"
+        }
+      }
+    },
+    "pathRef": {
+      "type": "object",
+      "required": [
+        "path"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Normalised (`$.`/`@.` style of `.fn.yaml`)."
+        },
+        "as_written": {
+          "type": "string",
+          "description": "Exactly how the document spells it."
+        },
+        "in_schema": {
+          "enum": [
+            true,
+            false,
+            null
+          ],
+          "description": "null = no schema to check against."
+        },
+        "closest_in_schema": {
+          "type": "string",
+          "description": "Did-you-mean when `in_schema` is false."
+        }
+      }
+    },
+    "rule": {
+      "type": "object",
+      "required": [
+        "id",
+        "evidence",
+        "target",
+        "intent",
+        "interpretation",
+        "confidence",
+        "review"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable across reruns: `<target path without $.>@<first location>`, e.g. `report.site@p1l7` (page 1 line 7), `Map_Returns!A6`; kept on re-evaluation even if the row moves."
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        },
+        "target": {
+          "$ref": "#/$defs/pathRef"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/pathRef"
+          }
+        },
+        "intent": {
+          "enum": [
+            "copy",
+            "constant",
+            "expression",
+            "conditional",
+            "lookup",
+            "loop",
+            "object",
+            "structure",
+            "generated",
+            "aggregate",
+            "not_mapped",
+            "unknown"
+          ],
+          "description": "What the rule says it does, coarse on purpose; the detail is in `interpretation`."
+        },
+        "interpretation": {
+          "type": "string",
+          "description": "The rule in unambiguous natural language, as a `.truth.md` row would state it. Goes into the rule's `description` together with the assumptions."
+        },
+        "assumptions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "topic",
+              "assumed",
+              "basis"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "topic": {
+                "type": "string",
+                "description": "e.g. index_base, condition_scope, null_vs_empty, delimiter_side, date_target_format."
+              },
+              "assumed": {
+                "type": "string"
+              },
+              "basis": {
+                "enum": [
+                  "profile",
+                  "document_evidence",
+                  "user_answer",
+                  "provisional_in_document",
+                  "guess"
+                ]
+              },
+              "question_id": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "proposal": {
+          "type": "object",
+          "description": "The `.fn.yaml` rule (fragment) generated from the interpretation. Absent while the rule waits for an answer or hits a function gap.",
+          "additionalProperties": false,
+          "properties": {
+            "fn_rule": {
+              "type": "object",
+              "description": "A rule as in the functional file schema (`kind`, `field`, `source`, `transform.expression`, `description`...)."
+            },
+            "parent_rule": {
+              "type": "string",
+              "description": "`id` of the fn rule (an `object` or `loop`) this one is written inside; absent at the top. The nesting of the file is built from it by `mapper import assemble`."
+            },
+            "functions_used": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "functions_missing": {
+              "type": "array",
+              "description": "Operations the interpretation needs that the catalogue does not offer. Never faked with an invented function.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "needed"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "needed": {
+                    "type": "string"
+                  },
+                  "suggestion": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "check": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "ran": {
+                  "type": "boolean"
+                },
+                "ok": {
+                  "type": "boolean"
+                },
+                "errors": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "retries": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        },
+        "confidence": {
+          "type": "object",
+          "required": [
+            "level"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "level": {
+              "enum": [
+                "high",
+                "medium",
+                "low",
+                "guess"
+              ],
+              "description": "`guess` = wild guess (no schema to check against, or text too vague): the proposal is only a starting point and the description says so."
+            },
+            "reasons": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "flags": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "ambiguous",
+                  "open_question_in_document",
+                  "unanswered_user_question",
+                  "contradiction",
+                  "missing_lookup",
+                  "unknown_field",
+                  "function_gap",
+                  "schema_mismatch",
+                  "no_schema",
+                  "removed_in_document",
+                  "conflicting_markers",
+                  "unconfirmed_convention",
+                  "multi_reading",
+                  "unparsed_expression"
+                ]
+              }
+            }
+          }
+        },
+        "back_translation": {
+          "type": "string",
+          "description": "What the generated rule does, restated in plain words from the proposal alone; compared with `interpretation` to catch drift."
+        },
+        "revision": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "introduced_in": {
+              "type": "string"
+            },
+            "last_changed_in": {
+              "type": "string"
+            },
+            "vs_previous": {
+              "enum": [
+                "new",
+                "unchanged",
+                "changed",
+                "removed_from_document"
+              ]
+            },
+            "previous_sha256": {
+              "type": "string"
+            }
+          }
+        },
+        "review": {
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "pending",
+                "accepted",
+                "edited",
+                "rejected",
+                "applied"
+              ],
+              "description": "`applied` = written to the project."
+            },
+            "edited_by_user": {
+              "type": "boolean",
+              "description": "A rerun asks before overwriting a rule edited by hand."
+            },
+            "note": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "question": {
+      "type": "object",
+      "required": [
+        "id",
+        "topic",
+        "text",
+        "scope"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "topic": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "scope": {
+          "enum": [
+            "profile",
+            "mapping",
+            "rule"
+          ],
+          "description": "Where the answer is stored: in the profile (convention), in this plan, or on one rule."
+        },
+        "proposal": {
+          "type": "string",
+          "description": "The default offered with the question."
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "text"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "text": {
+                "type": "string"
+              },
+              "location": {
+                "$ref": "#/$defs/location"
+              }
+            }
+          }
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "rule_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Rules whose reading depends on the answer."
+        },
+        "answer": {
+          "type": "string"
+        },
+        "answered_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "status": {
+          "enum": [
+            "open",
+            "answered",
+            "skipped_assumed_proposal"
+          ],
+          "default": "open"
+        }
+      }
+    },
+    "discrepancy": {
+      "type": "object",
+      "required": [
+        "kind",
+        "severity",
+        "detail"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "field_not_in_schema",
+            "schema_field_not_mapped",
+            "type_mismatch",
+            "cardinality_mismatch",
+            "enum_mismatch",
+            "mandatory_conflict",
+            "removed_but_rule_present",
+            "sample_contradicts_rule",
+            "version_conflict",
+            "duplicate_target",
+            "target_mapped_twice_differently",
+            "lookup_missing",
+            "rule_conflicts_with_general_rule",
+            "other"
+          ]
+        },
+        "severity": {
+          "enum": [
+            "error",
+            "warning",
+            "info"
+          ]
+        },
+        "detail": {
+          "type": "string"
+        },
+        "rule_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "locations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/location"
+          }
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "required": [
+        "locations",
+        "text",
+        "sha256"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "locations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/location"
+          },
+          "description": "More than one when a merged range or a multi-row expression continues the rule."
+        },
+        "text": {
+          "type": "string",
+          "description": "Verbatim, with cells joined as the document shows them. The source of truth for re-evaluation."
+        },
+        "sha256": {
+          "type": "string",
+          "description": "SHA-256 (hex) of the UTF-8 text `<evidence text>` followed, for each inherited context item in order, by a newline and its text; a different hash on a new document version marks the rule as changed."
+        },
+        "inherited_context": {
+          "type": "array",
+          "description": "Conditions/loops/roots the rule inherits from a band title, a header note or a document-wide statement.",
+          "items": {
+            "type": "object",
+            "required": [
+              "kind",
+              "text"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "section_condition",
+                  "loop",
+                  "root_path",
+                  "filter",
+                  "global_note",
+                  "other"
+                ]
+              },
+              "text": {
+                "type": "string"
+              },
+              "location": {
+                "$ref": "#/$defs/location"
+              }
+            }
+          }
+        },
+        "condition_scope": {
+          "enum": [
+            "row",
+            "section",
+            "message",
+            "unclear"
+          ],
+          "description": "Where a condition in the text applies."
+        },
+        "review_thread": {
+          "type": "array",
+          "description": "Question/answer exchanges found in the cell or next to it, oldest first.",
+          "items": {
+            "type": "object",
+            "required": [
+              "text"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "author": {
+                "type": "string"
+              },
+              "date": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "question",
+                  "answer",
+                  "remark"
+                ]
+              }
+            }
+          }
+        },
+        "markers": {
+          "type": "array",
+          "description": "Formatting that may carry meaning (fill, strike-through, font colour...) and what the profile says it means.",
+          "items": {
+            "type": "object",
+            "required": [
+              "marker"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "marker": {
+                "type": "string"
+              },
+              "meaning": {
+                "type": "string"
+              },
+              "meaning_origin": {
+                "enum": [
+                  "legend",
+                  "profile",
+                  "user",
+                  "guess",
+                  "unknown"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "description": "A check the document asks of the message (or of the result), as in the functional file's `validations:` section: not a rule, it never writes a field. `reject` stops the mapping (no output) with its code, `warn` only reports.",
+      "required": [
+        "id",
+        "side",
+        "expect",
+        "code",
+        "action",
+        "evidence",
+        "interpretation",
+        "review"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "The check's id in the `.fn.yaml` (letters, digits, `_`), unique over the plan's rules and checks."
+        },
+        "side": {
+          "enum": [
+            "input",
+            "output"
+          ],
+          "description": "`input`: the message before any rule runs; `output`: the result after the last."
+        },
+        "expect": {
+          "type": "string",
+          "description": "The condition that must hold, in the expression language, `$` being the checked document. A missing field must not fail it unless the document says the field is required (use `not $.x or ...`)."
+        },
+        "code": {
+          "type": "string",
+          "description": "Stable code of the failure (the document's requirement id when it has one, e.g. `REQ-16`, else `UPPER_SNAKE`)."
+        },
+        "message": {
+          "type": "string"
+        },
+        "action": {
+          "enum": [
+            "reject",
+            "warn"
+          ]
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        },
+        "interpretation": {
+          "type": "string"
+        },
+        "confidence": {
+          "type": "object",
+          "required": [
+            "level"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "level": {
+              "enum": [
+                "high",
+                "medium",
+                "low",
+                "guess"
+              ],
+              "description": "`guess` = wild guess (no schema to check against, or text too vague): the proposal is only a starting point and the description says so."
+            },
+            "reasons": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "flags": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "ambiguous",
+                  "open_question_in_document",
+                  "unanswered_user_question",
+                  "contradiction",
+                  "missing_lookup",
+                  "unknown_field",
+                  "function_gap",
+                  "schema_mismatch",
+                  "no_schema",
+                  "removed_in_document",
+                  "conflicting_markers",
+                  "unconfirmed_convention",
+                  "multi_reading",
+                  "unparsed_expression"
+                ]
+              }
+            }
+          }
+        },
+        "review": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "state": {
+              "enum": [
+                "pending",
+                "accepted",
+                "rejected",
+                "applied",
+                "needs_input"
+              ]
+            }
+          }
+        },
+        "check": {
+          "type": "object",
+          "description": "Written by `mapper import assemble`: whether the working copy accepts the check.",
+          "additionalProperties": true
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "type": "object",
+  "required": [
+    "id",
+    "amount"
+  ],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "amount": {
+      "type": "number"
+    },
+    "vatId": {
+      "type": "string"
+    },
+    "currency": {
+      "type": "string",
+      "enum": [
+        "EUR",
+        "USD"
+      ]
+    }
+  }
+}

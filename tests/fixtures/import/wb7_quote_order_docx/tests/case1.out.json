@@ -1,0 +1,38 @@
+{
+  "order": {
+    "orderNo": "ORD-Q-2026-017",
+    "orderDate": "2026-03-15",
+    "customerId": "C-88",
+    "customerName": "Alder Tools Ltd",
+    "vat": "12345678901",
+    "currency": "EUR",
+    "leadSku": "AX-1",
+    "items": [
+      {
+        "pos": 1,
+        "sku": "AX-1",
+        "qty": 3,
+        "netPrice": 9.0,
+        "lineTotal": 27.0
+      },
+      {
+        "pos": 2,
+        "sku": "BX-2",
+        "qty": 1,
+        "netPrice": 99.99,
+        "lineTotal": 99.99
+      },
+      {
+        "pos": 3,
+        "sku": "CX-3",
+        "qty": 12,
+        "netPrice": 0.32,
+        "lineTotal": 3.84
+      }
+    ],
+    "totalNet": 130.83,
+    "paymentDue": "2026-04-29",
+    "incoterm": "DAP",
+    "status": "NEW"
+  }
+}

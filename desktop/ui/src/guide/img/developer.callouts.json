@@ -9,17 +9,17 @@
  },
  {
   "n": 2,
-  "x": 89.4,
+  "x": 92.1,
   "y": 13.3,
-  "w": 6.8,
+  "w": 6.2,
   "h": 5.3,
   "text": "Validation: not validated, to review, or validated. The coloured edge of a row says the same."
  },
  {
   "n": 3,
-  "x": 51.1,
+  "x": 81.8,
   "y": 0.9,
-  "w": 46.3,
+  "w": 15.7,
   "h": 3,
   "text": "Save, Transpile, Build and Check."
  },

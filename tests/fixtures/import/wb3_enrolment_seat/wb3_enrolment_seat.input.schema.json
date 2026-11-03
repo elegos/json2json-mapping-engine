@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Enrolment message (synthetic)",
+  "type": "object",
+  "required": [
+    "operation",
+    "enrolment"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "operation": {
+      "enum": [
+        "POST",
+        "DELETE"
+      ]
+    },
+    "enrolment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enrolmentId",
+        "messageId",
+        "createdAt",
+        "student",
+        "status"
+      ],
+      "properties": {
+        "enrolmentId": {
+          "type": "string"
+        },
+        "messageId": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "mode": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "FULL",
+            "PART",
+            null
+          ]
+        },
+        "status": {
+          "enum": [
+            "ACTIVE",
+            "WAITLIST",
+            "DROPPED"
+          ]
+        },
+        "withdrawnAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "student": {
+          "type": "object",
+          "required": [
+            "id"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[^-]+-[^-]+-.+$"
+            }
+          }
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sessions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "sessionNo",
+              "kind",
+              "start"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "sessionNo": {
+                "type": "integer"
+              },
+              "kind": {
+                "enum": [
+                  "LEC",
+                  "LAB"
+                ]
+              },
+              "room": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "required": [
+                  "id"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  }
+                }
+              },
+              "start": {
+                "type": "string"
+              },
+              "end": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "readings": {
+    "meterId": "mt-0044",
+    "site": {
+      "code": "S9",
+      "name": "Annex"
+    },
+    "samples": [
+      {
+        "ts": "2026-05-03T00:00:00Z",
+        "value": 3.0,
+        "quality": "BAD"
+      }
+    ]
+  }
+}

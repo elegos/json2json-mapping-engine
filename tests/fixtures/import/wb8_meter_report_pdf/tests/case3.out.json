@@ -1,0 +1,13 @@
+{
+  "report": {
+    "meter": "MT-0044",
+    "site": "S9 / Annex",
+    "periodStart": "2026-05-03T00:00:00Z",
+    "periodEnd": "2026-05-03T00:00:00Z",
+    "count": 0,
+    "total": 0.0,
+    "qualityIssues": 1,
+    "firstSample": 3.0,
+    "unit": "kWh"
+  }
+}

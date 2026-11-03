@@ -1,0 +1,29 @@
+{
+  "senderId": "LDG-MV-1001",
+  "queueId": "LQ.STOCK",
+  "priority": 0,
+  "keepOrder": true,
+  "haltOnFailure": false,
+  "body": {
+    "domain": "W",
+    "entryLevel": "ITEM",
+    "entryCode": "W.ISSUE-DMG",
+    "postingDate": {
+      "value": "2026-06-01T10:23:00.000+02:00"
+    },
+    "locationRef": "WH3-B2",
+    "itemFamily": "CHR",
+    "itemVariant": "OAK",
+    "itemSize": "120",
+    "quantity": {
+      "value": -12,
+      "unit": "EA"
+    },
+    "lotId": "L77",
+    "lotExpiry": {
+      "value": "2027-01-31T00:00:00Z"
+    },
+    "reasonText": "DMG|Broken pallet,EXP",
+    "userName": "operator1"
+  }
+}

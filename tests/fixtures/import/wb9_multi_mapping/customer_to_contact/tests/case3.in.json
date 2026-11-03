@@ -1,0 +1,11 @@
+{
+  "customer": {
+    "code": "C-003",
+    "surname": "White",
+    "firstName": "Luke",
+    "country": "france",
+    "birthDate": "",
+    "vatNumber": "",
+    "emails": []
+  }
+}

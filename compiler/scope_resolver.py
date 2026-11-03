@@ -10,7 +10,7 @@ from __future__ import annotations
 import ast
 from dataclasses import dataclass, field
 
-from compiler.loop_iter import LoopIterError, parse_for_iter, parse_for_target
+from compiler.loop_iter import LoopIterError, SortSpec, parse_for_iter, parse_for_target
 
 
 @dataclass
@@ -32,8 +32,7 @@ class Scope:
     parent: Scope | None
     depth: int = field(default=0)
     index_var: str | None = None
-    sort_key: str | None = None
-    sort_reverse: bool = False
+    sorts: tuple[SortSpec, ...] = ()
     enumerate_start: int | None = None
 
     def resolve_name(self, name: str) -> Scope | None:
@@ -83,8 +82,7 @@ class _Resolver(ast.NodeVisitor):
             parent=self._current(),
             depth=self._current().depth + 1,
             index_var=index_var,
-            sort_key=iter_spec.sort_key,
-            sort_reverse=iter_spec.sort_reverse,
+            sorts=iter_spec.sorts,
             enumerate_start=iter_spec.enumerate_start,
         )
         self.for_scopes[id(node)] = scope

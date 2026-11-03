@@ -1,0 +1,33 @@
+{
+  "workbook": "LoanReport_to_Notice_Mapping.xlsx",
+  "family": "D+I",
+  "language": "en",
+  "index_base": {
+    "code_expressions": 0,
+    "prose": 1,
+    "note": "'Fines[0]' and '1st fine' denote the same element"
+  },
+  "array_notation": {
+    "[]": "every element",
+    "[0]": "first element only"
+  },
+  "mandatory_vocabulary": {
+    "_": "no mandatory column; presence is driven by section titles"
+  },
+  "date_dialect": {
+    "source GeneratedAt": "MMM d, yyyy, h:mm:ss a, assumed UTC",
+    "reportTime": "yyyy-MM-ddTHH:mm:ssZ",
+    "printStamp": "dd-MM-yyyy HH:mm:ss.00 (fraction fixed to 00)"
+  },
+  "null_rule": "null, empty and missing are equivalent; notes omitted if empty; no null in output",
+  "section_semantics": "condition in title applies to all rows of the section; one note per section (per element for loops)",
+  "lookup_tables": {
+    "Patron Tier": {
+      "STD": 1,
+      "GOLD": 2,
+      "_not_found": "omit tierLevel"
+    }
+  },
+  "seq_in_loops": "constant, not incremented",
+  "report_date": "date part of generatedAt"
+}

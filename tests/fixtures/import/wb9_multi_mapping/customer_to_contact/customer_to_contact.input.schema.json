@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "customer",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "customer"
+  ],
+  "properties": {
+    "customer": {
+      "type": "object",
+      "required": [
+        "code",
+        "surname",
+        "firstName",
+        "country"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "surname": {
+          "type": "string"
+        },
+        "firstName": {
+          "type": "string"
+        },
+        "birthDate": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "country": {
+          "type": "string"
+        },
+        "vatNumber": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "revenue": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "emails": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "type",
+              "address"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "enum": [
+                  "W",
+                  "P"
+                ]
+              },
+              "address": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

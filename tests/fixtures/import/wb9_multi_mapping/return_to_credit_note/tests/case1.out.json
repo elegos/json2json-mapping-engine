@@ -1,0 +1,27 @@
+{
+  "creditNote": {
+    "noteNo": "CN-5001",
+    "date": "2026-03-02",
+    "lines": [
+      {
+        "row": 1,
+        "sku": "AA-1",
+        "qty": 2,
+        "reasonText": "Damaged"
+      },
+      {
+        "row": 2,
+        "sku": "BB-2",
+        "qty": 3,
+        "reasonText": "Other"
+      },
+      {
+        "row": 3,
+        "sku": "CC-3",
+        "qty": 1,
+        "reasonText": "Other"
+      }
+    ],
+    "totalQty": 6
+  }
+}

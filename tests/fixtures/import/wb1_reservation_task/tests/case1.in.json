@@ -1,0 +1,45 @@
+{
+  "msgId": "MSG-20260315-000123",
+  "sentAt": "20260315101500",
+  "reservation": {
+    "status": "CHANGED",
+    "hotelCode": "HX01",
+    "cleaningLevel": "R",
+    "ref": {
+      "channel": "WEB",
+      "number": "88231"
+    },
+    "stay": {
+      "arrival": "2026-03-20T14:00:00+01:00",
+      "departure": "2026-03-22T11:00:00+01:00"
+    },
+    "guest": {
+      "givenName": "Ana",
+      "familyName": "Roe"
+    },
+    "rooms": [
+      {
+        "number": "214",
+        "type": "DLX"
+      },
+      {
+        "number": "215",
+        "type": "STD"
+      }
+    ],
+    "notes": [
+      {
+        "type": "HK",
+        "text": "Extra towels"
+      },
+      {
+        "type": "INFO",
+        "text": "Late arrival"
+      },
+      {
+        "type": "HK",
+        "text": "Baby cot"
+      }
+    ]
+  }
+}

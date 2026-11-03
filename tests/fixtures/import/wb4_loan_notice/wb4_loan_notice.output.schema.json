@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Reminder notice request (synthetic)",
+  "type": "object",
+  "required": [
+    "messageId",
+    "queueId",
+    "priority",
+    "keepOrder",
+    "body"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "messageId": {
+      "type": "string"
+    },
+    "queueId": {
+      "const": "NOTICE_QUEUE"
+    },
+    "priority": {
+      "const": 0
+    },
+    "keepOrder": {
+      "const": true
+    },
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "channel",
+        "reportTime",
+        "printStamp",
+        "patronCard"
+      ],
+      "properties": {
+        "channel": {
+          "const": "MAIL"
+        },
+        "reportTime": {
+          "type": "string"
+        },
+        "printStamp": {
+          "type": "string"
+        },
+        "patronCard": {
+          "type": "string"
+        },
+        "tierLevel": {
+          "type": "integer"
+        },
+        "currency": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "object",
+          "required": [
+            "items"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "items": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "required": [
+                  "seq",
+                  "qual",
+                  "text"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "seq": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 5
+                  },
+                  "qual": {
+                    "enum": [
+                      "LOAN REF",
+                      "OVERDUE",
+                      "FINE",
+                      "ITEM",
+                      "ERROR"
+                    ]
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -35,9 +35,11 @@ the positions (`index2, index1, index`) that its subtree actually references.
 from __future__ import annotations
 
 import ast
+import contextlib
+import json
 import re
 import textwrap
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from pathlib import Path
@@ -46,7 +48,9 @@ from typing import Any
 from compiler.loop_fusion import fuse_loops
 from compiler.schema_generator import SchemaTypes
 from transpiler.anchors import AnchorScope, LoopRef, resolve_anchors, uses_value
+from transpiler.check import _Schemas
 from transpiler.expr import COMMENT_MARK, Block, comment_stmt, parse_block
+from transpiler.exprtypes import ExprTyper
 from transpiler.ids import assign_ids, ident_of, walk
 from transpiler.model import (
     CONFLICT_KEY,
@@ -58,16 +62,19 @@ from transpiler.model import (
     LoopRule,
     ObjectRule,
     Rule,
+    is_group,
     load_functional_file,
     prune_unfinished,
 )
+from transpiler.orderby import OrderKey, parse_order_by
 from transpiler.paths import expand_paths
 from transpiler.selector import (
     Selection,
     find_selections,
     lower_selectors,
-    normalize_condition,
     replace_selections,
+    selection_parts,
+    selection_text,
 )
 
 
@@ -86,7 +93,8 @@ def _pascal(name: str) -> str:
 
 
 _OUT_PATH = re.compile(r"^[$@]\.(?P<name>[A-Za-z_]\w*)(?:\[\*?\])?$")
-_ATTR_CHAIN = re.compile(r"^[A-Za-z_]\w*(\.[A-Za-z_]\w*(\[\d+\])*)*$")
+_SPLIT_LIST = re.compile(r"^split_list\(.*\)$", re.DOTALL)
+_ATTR_CHAIN = re.compile(r'^[A-Za-z_]\w*((\.[A-Za-z_]\w*|\["[A-Za-z_]\w*"\])(\[\d+\])*)*$')
 _INDEX_NAME = re.compile(r"^index(\d*)$")
 
 
@@ -234,20 +242,56 @@ class _Composite:
     needs: set[int]  # index offsets (in the composite's own frame) its function takes
 
 
+def _order_kind(text: str) -> str | None:
+    """How the values of an order key compare: `number` or `str`, from what the expression
+    produces (the result of a function, an operator, a literal); None when that is not known."""
+    try:
+        node = ast.parse(text.strip(), mode="eval").body
+    except SyntaxError:
+        return None
+    if isinstance(node, ast.BinOp) and (
+        not isinstance(node.op, ast.Add)
+        or any(
+            isinstance(n, ast.Constant) and isinstance(n.value, int | float)
+            for n in (node.left, node.right)
+        )
+    ):
+        return "number"  # arithmetic: a sum of a text and a number is not one
+    found = ExprTyper(None, {}, lambda message: None).infer(node)
+    if found and found <= {"number", "integer"}:
+        return "number"
+    if found and found <= {"string"}:
+        return "str"
+    return None
+
+
 class _Builder:
-    def __init__(self, file: FunctionalFile, options: TranspileOptions, schema: SchemaTypes | None):
+    def __init__(
+        self,
+        file: FunctionalFile,
+        options: TranspileOptions,
+        schema: SchemaTypes | None,
+        output_schema: dict[str, Any] | None = None,
+    ):
         self.file = file
         self.opt = options
         self.warnings: list[str] = []
         self.schema = schema
+        # the output JSON Schema, to know what it requires (a list is left out when empty unless it does)
+        self.out_schema = _Schemas(output_schema) if output_schema is not None else None
+        self._out: list[Any] = [output_schema if output_schema is not None else None]
+        self._top_lists: set[tuple[int, str]] = set()  # (rules of a level, list) already written
+        self._level: list[Any] = file.rules  # the rules written straight into the output root here
         self.lookups: dict[str, dict] = {}
         self.classes: list[ast.stmt] = []
+        self.class_fields: dict[str, list[tuple[str, str]]] = {}  # name -> (field, annotation)s
         self.functions: list[ast.stmt] = []
         self.flow: list[ast.stmt] = []
         self._class_names: set[str] = set()
         # the functions picking the first element of a list by a condition, once each
         self._pickers: dict[tuple[str, str, _Frame], tuple[str, set[int]]] = {}
         self._picker_names: set[str] = set()
+        self.validation_directive: str | None = None  # `__validation__`, when the file validates
         self.proposals: dict[str, str] = {}  # fq id -> auto code, of every field rule
         self.proposal_errors: dict[str, str] = {}
 
@@ -267,6 +311,32 @@ class _Builder:
 
     def _scope(self, frame: _Frame) -> AnchorScope:
         return AnchorScope(loops=frame.loop_refs(), lookups=self.lookups)
+
+    @contextlib.contextmanager
+    def _inside(self, out_field: str, is_list: bool) -> Iterator[None]:
+        """The output schema node of what is being built, while its rules are written: the
+        container `out_field` of the current one, or the element of the list it is."""
+        node: Any = None
+        if self.out_schema is not None:
+            here = self._out[-1]
+            node = self.out_schema.prop(here, out_field) if here is not None else None
+            if is_list and node is not None:
+                node = self.out_schema.items(node)
+        self._out.append(node)
+        try:
+            yield
+        finally:
+            self._out.pop()
+
+    def _omits_when_empty(self, rule: LoopRule, out_field: str) -> bool:
+        """Whether the list of a loop is left out when no element passed: as the rule says, else
+        when the output schema does not require it (with no schema, it is written empty)."""
+        if rule.when_empty is not None:
+            return rule.when_empty == "omit"
+        here = self._out[-1]
+        if self.out_schema is None or not isinstance(here, dict):
+            return False
+        return out_field not in self.out_schema.required(here)
 
     def _post_steps(
         self, rule: FieldRule, where: str
@@ -356,8 +426,8 @@ class _Builder:
         condition holds (an empty object when none does, so that reading it gives nothing):
         its name and the positions it takes. One per list and condition; the condition reads
         the candidate as `@` and the loops around the rule as `@2`..."""
-        condition = normalize_condition(sel.condition)
-        key = (sel.path, condition, frame)
+        condition, order = selection_parts(sel.condition)
+        key = (sel.path, selection_text(condition, order), frame)
         if key in self._pickers:
             return self._pickers[key]
         if find_selections(condition):
@@ -374,13 +444,14 @@ class _Builder:
         scope = AnchorScope(
             loops=(*frame.loop_refs(), LoopRef(None, item, index)), lookups=self.lookups
         )
-        resolved = resolve_anchors(condition, scope, f"{where} condition")
+        resolved = resolve_anchors(condition or "True", scope, f"{where} condition")
         if resolved.uses_index:
             raise FnYamlError(f"{where}: a condition cannot reference @index")
+        ordered = self._order_iterable(list_text, order, None, scope, f"{where} selection")
         found = f"{ident}_found"
         body = self._stmts(
             f"{found} = []\n"
-            f"for {item} in {list_text}:\n"
+            f"for {item} in {ordered}:\n"
             f"    if not ({resolved.text}):\n"
             f"        continue\n"
             f"    {found}.append({item})\n"
@@ -403,7 +474,7 @@ class _Builder:
         often it is read."""
 
         def variable(sel: Selection) -> str:
-            condition = normalize_condition(sel.condition)
+            condition = selection_text(*selection_parts(sel.condition))
             key = (sel.path, condition)
             if key not in picks.lines:
                 base = re.sub(r"\W+", "_", sel.path.rsplit(".", 1)[-1]).strip("_") or "root"
@@ -524,6 +595,8 @@ class _Builder:
 
     def _element_type(self, source_text: str, frame: _Frame) -> str | None:
         """Element type of the array at `root.a.b` / `src.items` (a resolved path)."""
+        if _SPLIT_LIST.match(source_text):
+            return "str"  # the parts of a text
         names: dict[str, str | None] = {"root": self.schema.root_type if self.schema else None}
         for off in range(frame.depth):
             names[frame.item_name(off)] = frame.types[frame.depth - 1 - off]
@@ -543,6 +616,7 @@ class _Builder:
 
     def _make_class(self, base: str, fields: list[tuple[str, str]]) -> str:
         name = self._unique_class(base)
+        self.class_fields[name] = list(fields)
         body = "\n".join(f"    {n}: {a}" for n, a in fields)
         self.classes += self._stmts(f"@dataclass\nclass {name}:\n{body}")
         return name
@@ -568,20 +642,129 @@ class _Builder:
 
         for rule in self.file.rules:
             assert rule.id is not None
-            if isinstance(rule, LookupRule):
-                continue
-            if isinstance(rule, FieldRule):
-                self._top_field(rule)
-            elif isinstance(rule, ObjectRule):
-                self._top_object(rule)
-            elif rule.first:
-                self._top_first(rule)
-            else:
-                self._top_loop(rule)
+            self._top(rule, rule.id)
+        self._checks()
 
-    def _top_field(self, rule: FieldRule) -> None:
-        assert rule.id is not None
-        fq, ident = rule.id, ident_of(rule.id)
+    def _checks(self) -> None:
+        """The extra validations: each `expect` becomes a function of the document that must be
+        true (`$` is the input for the input side and the output for the output side), and the
+        directive that lists them for the compiler (compiler/validation.py)."""
+        directive: dict[str, Any] = {}
+        for side in ("input", "output"):
+            spec = self.file.validations.side(side)
+            checks: list[dict[str, str]] = []
+            for check in spec.checks:
+                ident = f"check_{side}_{check.id}"
+                where = f"validation '{check.id}'"
+                frame = _Frame()
+                picks = _Picks()
+                text = self._extract(check.expect, frame, where, picks)
+                block = parse_block(
+                    picks.prefix(resolve_anchors(text, self._scope(frame), where).text),
+                    ident,
+                    where,
+                )
+                fn = ast.parse(f"def {ident}(root: Any) -> bool:\n    pass").body[0]
+                assert isinstance(fn, ast.FunctionDef)
+                fn.body = block.stmts
+                self.functions.append(fn)
+                checks.append(
+                    {
+                        "fn": ident,
+                        "code": check.code,
+                        "message": check.message,
+                        "action": check.action,
+                    }
+                )
+            if spec.schema or checks:
+                directive[side] = {"schema": spec.schema, "checks": checks}
+        if directive:
+            self.validation_directive = json.dumps(directive, separators=(",", ":"))
+
+    def _top(self, rule: Rule, fq: str) -> None:
+        """One rule written straight into the output root (`fq` is its qualified id)."""
+        if isinstance(rule, LookupRule):
+            return
+        if isinstance(rule, FieldRule):
+            self._top_field(rule, fq)
+        elif isinstance(rule, ObjectRule) and is_group(rule):
+            self._top_group(rule, fq)
+        elif isinstance(rule, ObjectRule):
+            self._top_object(rule, fq)
+        elif rule.first:
+            self._top_first(rule, fq)
+        elif self._top_omitting(rule):
+            self._top_list(rule, fq)
+        else:
+            self._top_loop(rule, fq)
+
+    def _top_omitting(self, rule: LoopRule) -> bool:
+        """Whether a top-level loop writes a list that is left out when empty."""
+        out_field = _output_field(rule.output, f"rule '{rule.id}'")
+        return self._omits_when_empty(rule, out_field)
+
+    def _top_list(self, rule: LoopRule, fq: str) -> None:
+        """A top-level list that is left out when empty: one function builds it (the loops that
+        write it, in the order of the rules) and returns it, or nothing when no element passed."""
+        out_field = _output_field(rule.output, f"rule '{fq}'")
+        if (id(self._level), out_field) in self._top_lists:
+            return  # the loops of this list were all written with the first
+        self._top_lists.add((id(self._level), out_field))
+        stmts: list[ast.stmt] = []
+        into: tuple[str, str] | None = None
+        list_var = ""
+        for other in self._level:
+            if (
+                isinstance(other, LoopRule)
+                and not other.first
+                and _output_field(other.output, "") == out_field
+            ):
+                assert other.id is not None
+                with self._inside(out_field, True):
+                    more, list_var, sub = self._nested_loop(
+                        other, other.id, _Frame(), f"rule '{other.id}'", into=into
+                    )
+                stmts += more
+                into = into or (list_var, sub.cls)
+        assert into is not None
+        body = [*stmts, *self._stmts(f"if {list_var}:\n    return {list_var}\nreturn")]
+        ident = f"{ident_of(fq)}_all"
+        fn = ast.parse(f"def {ident}(root: Any) -> list[{into[1]}] | None:\n    pass").body[0]
+        assert isinstance(fn, ast.FunctionDef)
+        fn.body = body
+        ast.fix_missing_locations(fn)
+        self.functions.append(fn)
+        self.flow += self._stmts(f"out.{out_field} = {ident}(root)")
+
+    def _top_group(self, rule: ObjectRule, fq: str) -> None:
+        """`output: $`: a group of rules that write into the root, all of them or none (its
+        `guard`). The mapping has no notion of alternative shapes: whoever writes it guards the
+        rules of each shape, and the rules of the other shapes are not run."""
+        start = len(self.flow)
+        outer, self._level = self._level, rule.rules
+        for child in rule.rules:
+            assert child.id is not None
+            self._top(child, f"{fq}.{child.id}")
+        self._level = outer
+        body = self.flow[start:] or self._stmts("pass")
+        del self.flow[start:]
+        if not rule.guard:
+            self.flow += body
+            return
+        where = f"rule '{fq}' guard"
+        picks = _Picks()
+        text = self._extract(rule.guard, _Frame(), where, picks)
+        g = parse_block(
+            picks.prefix(resolve_anchors(text, self._scope(_Frame()), where).text),
+            f"{ident_of(fq)}_guard",
+            where,
+        )
+        if not g.is_simple or g.pre:
+            raise FnYamlError(f"{where}: must be a single boolean expression")
+        self.flow.append(ast.If(test=g.value, body=body, orelse=[]))
+
+    def _top_field(self, rule: FieldRule, fq: str) -> None:
+        ident = ident_of(fq)
         block = self._field_block(rule, fq, self._scope(_Frame()), _Frame())
         ret = _annotation(rule.type, not rule.required, block.returns_null)
         fn = ast.parse(f"def {ident}({self._params(_Frame(), set())}) -> {ret}:\n    pass").body[0]
@@ -590,17 +773,17 @@ class _Builder:
         self.functions.append(fn)
         self.flow += self._stmts(f"out.{rule.field} = {ident}(root)")
 
-    def _top_object(self, rule: ObjectRule) -> None:
-        assert rule.id is not None
-        out_field = _output_field(rule.output, f"rule '{rule.id}'")
-        comp = self._composite(rule, rule.id, _Frame(), _pascal(out_field), rule.guard)
+    def _top_object(self, rule: ObjectRule, fq: str) -> None:
+        out_field = _output_field(rule.output, f"rule '{fq}'")
+        with self._inside(out_field, False):
+            comp = self._composite(rule, fq, _Frame(), _pascal(out_field), rule.guard)
         self.flow += self._stmts(f"out.{out_field} = {comp.ident}(root)")
 
-    def _top_first(self, rule: LoopRule) -> None:
-        assert rule.id is not None
-        where = f"rule '{rule.id}'"
+    def _top_first(self, rule: LoopRule, fq: str) -> None:
+        where = f"rule '{fq}'"
         out_field = _output_field(rule.output, where)
-        wrapper = self._first_match(rule, rule.id, _Frame(), where)
+        with self._inside(out_field, False):
+            wrapper = self._first_match(rule, fq, _Frame(), where)
         self.flow += self._stmts(f"out.{out_field} = {wrapper.ident}(root)")
 
     def _first_match(self, rule: LoopRule, fq: str, frame: _Frame, where: str) -> _Composite:
@@ -623,14 +806,13 @@ class _Builder:
         self.functions.append(fn)
         return _Composite(ident, sub.cls, needs)
 
-    def _top_loop(self, rule: LoopRule) -> None:
-        assert rule.id is not None
-        fq = rule.id
+    def _top_loop(self, rule: LoopRule, fq: str) -> None:
         where = f"rule '{fq}'"
         out_field = _output_field(rule.output, where)
         source = self._source_text(rule, self._scope(_Frame()), where)
         frame = _Frame().child(rule.label, self._element_type(source, _Frame()), rule.source)
-        comp = self._composite(rule, fq, frame, _pascal(out_field) + "Item", None)
+        with self._inside(out_field, True):
+            comp = self._composite(rule, fq, frame, _pascal(out_field) + "Item", None)
         uses_index = 0 in comp.needs
         scope = self._scope(frame)
         iterable, filter_text = self._iterable(rule, source, "src", scope, uses_index, where)
@@ -648,9 +830,52 @@ class _Builder:
     def _source_text(self, rule: LoopRule, scope: AnchorScope, where: str) -> str:
         path = re.sub(r"\[\*?\]$", "", rule.source.strip())
         text = resolve_anchors(path, scope, f"{where} source").text
+        if _SPLIT_LIST.match(text):  # the parts of a text: a list of texts
+            return text
         if not _ATTR_CHAIN.match(text):
             raise FnYamlError(f"{where}: unsupported source path {rule.source!r}")
         return text
+
+    def _ordered(self, iterable: str, rule: LoopRule, scope: AnchorScope, where: str) -> str:
+        """`iterable` ordered by the loop's `order_by`."""
+        return self._order_iterable(
+            iterable, parse_order_by(rule.order_by or ""), rule.label, scope, where
+        )
+
+    def _order_iterable(
+        self,
+        iterable: str,
+        keys: list[OrderKey],
+        label: str | None,
+        scope: AnchorScope,
+        where: str,
+    ) -> str:
+        """`iterable` inside the `sorted(...)` calls of `keys`: one per key, the last key innermost
+        (the sort is stable, so the first decides and the next breaks its ties)."""
+        field_of = re.escape(label or "")
+        for key in reversed(keys):
+            options = (", reverse=True" if key.desc else "") + (
+                ", nulls='first'" if key.nulls_first else ""
+            )
+            field = re.match(rf"^@(?:{field_of})?\.(\w+)$", key.expr.strip())
+            if field:
+                iterable = f"sorted({iterable}, key={field.group(1)!r}{options})"
+                continue
+            if find_selections(key.expr):
+                raise FnYamlError(
+                    f"{where}: an order key cannot hold a selection (a path with a condition in it)"
+                )
+            resolved = resolve_anchors(key.expr, scope, f"{where} order by")
+            if resolved.uses_index:
+                raise FnYamlError(f"{where}: an order key cannot reference @index")
+            kind = _order_kind(resolved.text)
+            if kind is None:
+                raise FnYamlError(
+                    f"{where}: the type of the order key '{key.expr}' is not known: make it a number "
+                    "with to_number(...) or a text with to_string(...), or order by a field of the element"
+                )
+            iterable = f"sorted({iterable}, by={resolved.text}, kind={kind!r}{options})"
+        return iterable
 
     def _iterable(
         self,
@@ -665,13 +890,8 @@ class _Builder:
         `scope` names the loop's own element/index as they appear where the
         `for` is written."""
         iterable = source
-        if rule.sort_key:
-            label = re.escape(rule.label or "")
-            m = re.match(rf"^@(?:{label})?\.(\w+)$", rule.sort_key.strip())
-            if not m:
-                raise FnYamlError(f"{where}: sort key must be a field of the item ('@.field')")
-            rev = ", reverse=True" if rule.sort_reverse else ""
-            iterable = f'sorted({iterable}, key="{m.group(1)}"{rev})'
+        if rule.order_by:
+            iterable = self._ordered(iterable, rule, scope, where)
         filter_text = None
         if rule.filter:
             if find_selections(rule.filter):
@@ -697,7 +917,13 @@ class _Builder:
     # -- composites (object / loop element) --------------------------------
 
     def _composite(
-        self, node: ObjectRule | LoopRule, fq: str, frame: _Frame, cls_base: str, guard: str | None
+        self,
+        node: ObjectRule | LoopRule,
+        fq: str,
+        frame: _Frame,
+        cls_base: str,
+        guard: str | None,
+        reuse: str | None = None,
     ) -> _Composite:
         """Emit the dataclass + function for one object/loop element, children
         first. `frame` is the element's own frame (a loop's includes itself)."""
@@ -707,6 +933,8 @@ class _Builder:
         kwargs: list[ast.keyword] = []
         fields: list[tuple[str, str]] = []
         seen: set[str] = set()
+        # output list -> (its variable, its element class): loops may add to one, in order
+        lists: dict[str, tuple[str, str]] = {}
 
         def add(name: str, annotation: str, value: ast.expr, where: str) -> None:
             if name in seen:
@@ -737,7 +965,8 @@ class _Builder:
                 )
             elif isinstance(child, ObjectRule):
                 out_field = _output_field(child.output, where)
-                sub = self._composite(child, cfq, frame, _pascal(out_field), child.guard)
+                with self._inside(out_field, False):
+                    sub = self._composite(child, cfq, frame, _pascal(out_field), child.guard)
                 call = ast.Call(
                     func=ast.Name(id=sub.ident, ctx=ast.Load()),
                     args=self._call_args(frame, None, sub.needs),
@@ -746,7 +975,8 @@ class _Builder:
                 add(out_field, sub.cls + (" | None" if child.guard else ""), call, where)
             elif child.first:
                 out_field = _output_field(child.output, where)
-                wrapper = self._first_match(child, cfq, frame, where)
+                with self._inside(out_field, False):
+                    wrapper = self._first_match(child, cfq, frame, where)
                 call = ast.Call(
                     func=ast.Name(id=wrapper.ident, ctx=ast.Load()),
                     args=self._call_args(frame, None, wrapper.needs),
@@ -755,14 +985,34 @@ class _Builder:
                 add(out_field, f"{wrapper.cls} | None", call, where)
             else:
                 out_field = _output_field(child.output, where)
-                stmts, list_var, sub = self._nested_loop(child, cfq, frame, where)
+                omit = self._omits_when_empty(child, out_field)
+                with self._inside(out_field, True):
+                    stmts, list_var, sub = self._nested_loop(
+                        child, cfq, frame, where, into=lists.get(out_field)
+                    )
                 pre += stmts
-                add(out_field, f"list[{sub.cls}]", ast.Name(id=list_var, ctx=ast.Load()), where)
+                if out_field not in lists:
+                    lists[out_field] = (list_var, sub.cls)
+                    value: ast.expr = ast.Name(id=list_var, ctx=ast.Load())
+                    annotation = f"list[{sub.cls}]"
+                    if omit:  # nothing to list: the field is left out
+                        value = ast.IfExp(
+                            test=ast.Name(id=list_var, ctx=ast.Load()),
+                            body=ast.Name(id=list_var, ctx=ast.Load()),
+                            orelse=ast.Constant(value=None),
+                        )
+                        annotation += " | None"
+                    add(out_field, annotation, value, where)
 
         if not fields:
             raise FnYamlError(f"rule '{fq}': a {node.kind} rule needs at least one member")
 
-        cls = self._make_class(cls_base, fields)
+        # a loop adding to a list another loop started has that loop's element class when the
+        # elements have the same fields (the compiler compares the list's class)
+        if reuse and self.class_fields.get(reuse) == fields:
+            cls = reuse
+        else:
+            cls = self._make_class(cls_base, fields)
         build: list[ast.stmt] = [
             *pre,
             ast.Return(value=ast.Call(func=ast.Name(cls, ast.Load()), args=[], keywords=kwargs)),
@@ -814,15 +1064,26 @@ class _Builder:
         return [ast.Name(id=a, ctx=ast.Load()) for a in args]
 
     def _nested_loop(
-        self, rule: LoopRule, fq: str, frame: _Frame, where: str
+        self,
+        rule: LoopRule,
+        fq: str,
+        frame: _Frame,
+        where: str,
+        into: tuple[str, str] | None = None,
     ) -> tuple[list[ast.stmt], str, _Composite]:
-        """`<id>_list = []` + a `for` filling it, inside the parent's function."""
+        """`<id>_list = []` + a `for` filling it, inside the parent's function; with `into`, the
+        `for` adds to a list an earlier loop of the same container started."""
         cid = ident_of(fq)
         source = self._source_text(rule, self._scope(frame), where)
         child_frame = frame.child(rule.label, self._element_type(source, frame), rule.source)
         out_field = _output_field(rule.output, where)
         sub = self._composite(
-            rule, fq, child_frame, _pascal(out_field) + ("" if rule.first else "Item"), None
+            rule,
+            fq,
+            child_frame,
+            _pascal(out_field) + ("" if rule.first else "Item"),
+            None,
+            reuse=into[1] if into else None,
         )
 
         item, index = f"{cid}_src", f"{cid}_index"
@@ -831,7 +1092,7 @@ class _Builder:
             loops=(*frame.loop_refs(), LoopRef(rule.label, item, index)), lookups=self.lookups
         )
         iterable, filter_text = self._iterable(rule, source, item, loop_scope, uses_index, where)
-        list_var = f"{cid}_list"
+        list_var = into[0] if into else f"{cid}_list"
         call = ast.Call(
             func=ast.Name(id=sub.ident, ctx=ast.Load()),
             args=self._call_args(frame, (item, index), sub.needs),
@@ -853,7 +1114,7 @@ class _Builder:
         ]
         if filter_text and not uses_index:
             loop.body.insert(0, self._stmts(f"if not ({filter_text}):\n    continue")[0])
-        stmts = [*self._stmts(f"{list_var} = []"), loop]
+        stmts: list[ast.stmt] = [loop] if into else [*self._stmts(f"{list_var} = []"), loop]
         return stmts, list_var, sub
 
 
@@ -862,6 +1123,7 @@ def build_stage(
     options: TranspileOptions,
     input_schema: SchemaTypes | None = None,
     warnings: list[str] | None = None,
+    output_schema: dict[str, Any] | None = None,
 ) -> str:
     """Stage `build`: rule tree -> `.map.py` text, before loop fusion (anchors,
     expressions, `choices` steps and their comments are all applied here).
@@ -875,11 +1137,12 @@ def build_stage(
             f"mapping '{file.id}' is empty: no rule has a Source or an Expression yet"
         )
     # aliases / root override applied, selecting objects lowered to first-element loops
-    b = _Builder(lower_selectors(expand_paths(file)), options, input_schema)
+    b = _Builder(lower_selectors(expand_paths(file)), options, input_schema, output_schema)
     b.build()
     if warnings is not None:
         warnings.extend(b.warnings)
-    header = ast.parse(f"from __mapping__ import *\n\n__id__ = {file.id!r}").body
+    directive = f"\n__validation__ = {b.validation_directive!r}" if b.validation_directive else ""
+    header = ast.parse(f"from __mapping__ import *\n\n__id__ = {file.id!r}{directive}").body
     module = ast.Module(body=[*header, *b.classes, *b.functions, *b.flow], type_ignores=[])
     ast.fix_missing_locations(module)
     return _render(module) + "\n"
@@ -935,7 +1198,9 @@ def emit_stage(text: str, options: TranspileOptions, source_name: str = "<fn.yam
 def _is_fixed(stmt: ast.stmt) -> bool:
     """Header, dataclasses and rule functions — everything before the mapping body."""
     if isinstance(stmt, ast.Assign):
-        return any(isinstance(t, ast.Name) and t.id == "__id__" for t in stmt.targets)
+        return any(
+            isinstance(t, ast.Name) and t.id in ("__id__", "__validation__") for t in stmt.targets
+        )
     return isinstance(stmt, ast.ImportFrom | ast.ClassDef | ast.FunctionDef)
 
 
@@ -952,9 +1217,10 @@ def transpile_file_model(
     input_schema: SchemaTypes | None = None,
     source_name: str = "<fn.yaml>",
     warnings: list[str] | None = None,
+    output_schema: dict[str, Any] | None = None,
 ) -> str:
     options = options or TranspileOptions()
-    built = build_stage(file, options, input_schema, warnings)
+    built = build_stage(file, options, input_schema, warnings, output_schema)
     return emit_stage(fuse_stage(built, options), options, source_name)
 
 
@@ -963,9 +1229,10 @@ def transpile_file(
     options: TranspileOptions | None = None,
     input_schema: SchemaTypes | None = None,
     warnings: list[str] | None = None,
+    output_schema: dict[str, Any] | None = None,
 ) -> str:
     return transpile_file_model(
-        load_functional_file(path), options, input_schema, path.name, warnings
+        load_functional_file(path), options, input_schema, path.name, warnings, output_schema
     )
 
 

@@ -13,11 +13,11 @@
   "y": 4.9,
   "w": 83.9,
   "h": 3.7,
-  "text": "The views of a mapping: rules, lookups, paths and golden cases."
+  "text": "The views of a mapping: rules, lookups, paths, validations and golden cases."
  },
  {
   "n": 3,
-  "x": 17.9,
+  "x": 20.4,
   "y": 13.3,
   "w": 13.9,
   "h": 66,
@@ -29,7 +29,7 @@
  },
  {
   "n": 4,
-  "x": 48.5,
+  "x": 52.1,
   "y": 13.3,
   "w": 13.9,
   "h": 66,
@@ -41,7 +41,7 @@
  },
  {
   "n": 5,
-  "x": 62.4,
+  "x": 66,
   "y": 13.3,
   "w": 18.1,
   "h": 66,
@@ -69,9 +69,9 @@
  },
  {
   "n": 8,
-  "x": 78.4,
+  "x": 77.7,
   "y": 0.9,
-  "w": 18.2,
+  "w": 19,
   "h": 3,
   "text": "Save writes the file; Check reports what is missing or wrong."
  }

@@ -16,6 +16,5 @@
   "OrderId": "A1",
   "Currency": "USD",
   "Warehouse": "IT",
-  "MapVersion": 27,
-  "Channel": null
+  "MapVersion": 27
 }

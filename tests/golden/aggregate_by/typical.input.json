@@ -1,0 +1,4 @@
+{"samples": [{"value": 5, "quality": "OK"}, {"value": 30, "quality": "BAD"}, {"value": 12.5, "quality": "OK"},
+ {"value": 40, "quality": "OK"}, {"value": 2, "quality": "BAD"}],
+ "readings": [{"quantity": -4, "quality": "OK"}, {"quantity": 10, "quality": "BAD"}, {"quantity": 6, "quality": "OK"},
+ {"quantity": -2, "quality": "OK"}]}

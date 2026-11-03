@@ -12,7 +12,7 @@ taste of it, since the list grows with the tool.
 
 Some examples: `coalesce` (first value that is not null), `round`, `concat`, `if_else`,
 `split_first` / `split_nth`, `lookup` (recode with a table), `parse_date`; and the aggregations
-`max`, `min`, `sum`, `avg`, `count`.
+`max`, `min`, `sum`, `avg`, `count`, `any`, `all`; `matches` and `split_list` for texts.
 
 In the explorer, search by name or by what a function does, read its signature and description,
 and press **Insert** to put a call in the Source or Expression cell you are editing, or in the
@@ -32,6 +32,19 @@ mapping: Python's `re`, or Oracle's `REGEXP_*`. The tool does not translate it. 
 and non-capturing groups, for example, exist in Python and not in Oracle. When a project may change
 backend, keep to the common part (classes, groups, anchors, alternation, the usual quantifiers).
 This is the documented exception to "the same input gives the same output on every backend".
+
+`matches(text, pattern)` is true when the **whole** text fits the pattern. Unlike the `regexp_*`
+functions its pattern is a literal in a portable subset (characters, `.`, classes, groups, `|`,
+`* + ? {n,m}`; no anchors, no `\d \w \s \b`, no `(?...)`), checked when the mapping is compiled,
+so it means the same on every backend: Python's `re.fullmatch`, and on PL/SQL `REGEXP_LIKE` with the
+pattern anchored.
+
+## Loops that need a library function
+
+`split_list(text, separator)`, a loop's source over the parts of a text, is written for PL/SQL as a
+function of the functions package (an empty part is a null element). `order by` on a loop is
+generated, on PL/SQL, as a stable insertion sort of positions into a new array: the document's own
+array is never reordered under the other loops that read it.
 
 ## What a project function says for each backend
 
@@ -55,11 +68,14 @@ the function is suggested while they type.
 
 ## Aggregations
 
-`max`, `min`, `sum`, `avg` and `count` reduce a list to one value, e.g. `max($.myList.numAttr)`.
-They can appear only as the direct value of a rule, not nested in a larger expression.
+`max`, `min`, `sum`, `avg`, `count`, `any` and `all` reduce a list to one value, e.g.
+`max($.myList.numAttr)`, `any(i.qty > 10 for i in $.items)`. They can be part of a larger expression
+and one can be inside another, to any depth, also in the condition of a selection
+(`$.packages[any(i.ref == @2.ref for i in items)]`).
 
-On PL/SQL, `count` is an expression (`list.get_size`), while `max`, `min`, `sum` and `avg` are
-**generated as a loop** with an accumulator: there is no template to copy. To change one, define a
+On PL/SQL, `count` over a whole list is an expression (`list.get_size`), while the others, and any
+aggregate with a condition, are **generated as a loop** with an accumulator, placed before the
+statement that uses its value (a nested one, inside the loop of the outer one): there is no template to copy. To change one, define a
 function of the same name in `fn/` with an `@override(plsql="...")` that is an *expression* of the
 parameters, `{items}` (the list, as a `JSON_ARRAY_T`) and `{field}` (the field name, as text), for
 example `@override(plsql="MY_PKG.mean({items}, {field})")`, where `MY_PKG.mean` is a PL/SQL function

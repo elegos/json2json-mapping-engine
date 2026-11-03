@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Reservation message (synthetic)",
+  "type": "object",
+  "required": [
+    "msgId",
+    "sentAt",
+    "reservation"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "msgId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sentAt": {
+      "type": "string",
+      "pattern": "^[0-9]{14}$",
+      "description": "yyyyMMddHHmmss, UTC"
+    },
+    "reservation": {
+      "type": "object",
+      "required": [
+        "status",
+        "ref",
+        "stay"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "NEW",
+            "CHANGED",
+            "CANCELLED"
+          ]
+        },
+        "hotelCode": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cleaningLevel": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ref": {
+          "type": "object",
+          "required": [
+            "channel",
+            "number"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "channel": {
+              "type": "string"
+            },
+            "number": {
+              "type": "string"
+            }
+          }
+        },
+        "stay": {
+          "type": "object",
+          "required": [
+            "arrival"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "arrival": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "departure": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "guest": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "givenName": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "familyName": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "rooms": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "number": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "type": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "type"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "text": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

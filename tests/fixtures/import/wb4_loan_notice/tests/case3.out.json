@@ -1,0 +1,27 @@
+{
+  "messageId": "LN|R-20260327-03",
+  "queueId": "NOTICE_QUEUE",
+  "priority": 0,
+  "keepOrder": true,
+  "body": {
+    "channel": "MAIL",
+    "reportTime": "2026-03-27T09:00:01Z",
+    "printStamp": "27-03-2026 09:00:01.00",
+    "patronCard": "C0003",
+    "tierLevel": 1,
+    "notes": {
+      "items": [
+        {
+          "seq": 1,
+          "qual": "LOAN REF",
+          "text": "LN-9"
+        },
+        {
+          "seq": 5,
+          "qual": "ERROR",
+          "text": "E42"
+        }
+      ]
+    }
+  }
+}

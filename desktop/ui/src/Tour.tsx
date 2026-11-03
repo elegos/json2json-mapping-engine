@@ -31,9 +31,45 @@ async function find(selector: string, signal: { stale: boolean }): Promise<Eleme
   return null;
 }
 
+/**
+ * Waits for `elements` to stop moving: the CSS transitions running in them end, and their
+ * boxes are the same for a few frames (a webview may not have started a transition yet).
+ */
+async function settled(elements: Element[]): Promise<void> {
+  const frame = () => new Promise((r) => requestAnimationFrame(() => r(null)));
+  await frame();
+  const running = elements.flatMap((el) => el.getAnimations?.({ subtree: true }) ?? []);
+  await Promise.all(running.map((a) => a.finished.catch(() => undefined)));
+  let last = "";
+  for (let same = 0, i = 0; same < 3 && i < 60; i++) {
+    await frame();
+    const now = JSON.stringify(elements.map((el) => el.getBoundingClientRect()));
+    same = now === last ? same + 1 : 0;
+    last = now;
+  }
+}
+
+/** The part of `el` that is on screen: cut by every ancestor that clips (a grid row can be wider than its viewport). */
 const rectOf = (el: Element): Rect => {
   const r = el.getBoundingClientRect();
-  return { left: r.left, top: r.top, width: r.width, height: r.height };
+  let left = r.left;
+  let top = r.top;
+  let right = r.right;
+  let bottom = r.bottom;
+  for (let up = el.parentElement; up; up = up.parentElement) {
+    const { overflowX, overflowY } = getComputedStyle(up);
+    if (overflowX === "visible" && overflowY === "visible") continue;
+    const box = up.getBoundingClientRect();
+    if (overflowX !== "visible") {
+      left = Math.max(left, box.left);
+      right = Math.min(right, box.right);
+    }
+    if (overflowY !== "visible") {
+      top = Math.max(top, box.top);
+      bottom = Math.min(bottom, box.bottom);
+    }
+  }
+  return { left, top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
 };
 
 /**
@@ -60,6 +96,9 @@ export function Tour({ tour, index, onIndex, onClose, apply }: Props) {
       const found = (await Promise.all(wanted.map((sel) => find(sel, signal)))).filter(
         (el): el is Element => el !== null,
       );
+      // a panel sliding in is still moving: scrolling to it or measuring it now would frame a
+      // place it is about to leave (and scroll the clipped body sideways, for good)
+      await settled(found);
       if (signal.stale) return;
       elements.current = found;
       found[0]?.scrollIntoView({ block: "nearest", inline: "nearest" });

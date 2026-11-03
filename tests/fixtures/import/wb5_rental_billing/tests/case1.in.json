@@ -1,0 +1,57 @@
+{
+  "rental": {
+    "contractId": "RC-20260409-0041",
+    "category": "LONG",
+    "currency": {
+      "code": "EUR"
+    },
+    "createdAt": "2026-04-09T23:30:00-05:00",
+    "attributes": {
+      "items": [
+        {
+          "qualifier": "BILLING DATA",
+          "value": "T1|X|2026-04-09T12:06:33+02:00|N|Y|Z"
+        },
+        {
+          "qualifier": "NOTE",
+          "value": "Deliver early"
+        },
+        {
+          "qualifier": "NOTE",
+          "value": "Call first"
+        },
+        {
+          "qualifier": "DEPOSIT",
+          "value": "1"
+        }
+      ]
+    },
+    "lines": {
+      "items": [
+        {
+          "lineNo": 1,
+          "equipmentCode": "E.4408-ABC-X1",
+          "amount": {
+            "value": 21.4
+          },
+          "kind": "RENT",
+          "unit": "DAY"
+        },
+        {
+          "lineNo": 2,
+          "equipmentCode": "E.99-AA-1",
+          "amount": {
+            "value": 100
+          },
+          "kind": "DEP",
+          "unit": "MONTH"
+        }
+      ]
+    },
+    "customer": {
+      "partyRef": "C.NORD-RES-2024-0042",
+      "country": "SE",
+      "state": "AB"
+    }
+  }
+}

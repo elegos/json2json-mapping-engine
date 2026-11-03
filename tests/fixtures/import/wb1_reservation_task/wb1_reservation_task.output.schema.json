@@ -1,0 +1,154 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Housekeeping task event (synthetic)",
+  "type": "object",
+  "required": [
+    "senderMessageId",
+    "queueId",
+    "priority",
+    "keepOrder",
+    "batch"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "senderMessageId": {
+      "type": "string"
+    },
+    "queueId": {
+      "const": "Q.HOUSEKEEPING"
+    },
+    "priority": {
+      "const": 0
+    },
+    "keepOrder": {
+      "const": true
+    },
+    "batch": {
+      "type": "object",
+      "required": [
+        "entries"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "entries": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "content"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "content": {
+                "type": "object",
+                "required": [
+                  "domain",
+                  "level",
+                  "statusCode",
+                  "occurredAt",
+                  "extra1",
+                  "extra10",
+                  "extra20",
+                  "extraDate1"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "domain": {
+                    "const": "D"
+                  },
+                  "level": {
+                    "const": "ROOM"
+                  },
+                  "statusCode": {
+                    "type": "string"
+                  },
+                  "occurredAt": {
+                    "type": "object",
+                    "required": [
+                      "value"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "value": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "locationId": {
+                    "type": "string"
+                  },
+                  "contactName": {
+                    "type": "string"
+                  },
+                  "extra1": {
+                    "type": "string"
+                  },
+                  "extra3": {
+                    "type": "string"
+                  },
+                  "extra5": {
+                    "const": "CXL"
+                  },
+                  "extra10": {
+                    "const": "RSV_EVENT"
+                  },
+                  "extra20": {
+                    "type": "string"
+                  },
+                  "extraDate1": {
+                    "type": "object",
+                    "required": [
+                      "value"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "value": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "memos": {
+                    "type": "object",
+                    "required": [
+                      "items"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "items": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {
+                          "type": "object",
+                          "required": [
+                            "memoNo",
+                            "memoKind",
+                            "memoText"
+                          ],
+                          "additionalProperties": false,
+                          "properties": {
+                            "memoNo": {
+                              "type": "integer",
+                              "minimum": 1
+                            },
+                            "memoKind": {
+                              "const": "R.HK NOTE"
+                            },
+                            "memoText": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

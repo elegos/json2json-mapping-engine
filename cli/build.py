@@ -100,6 +100,18 @@ def resolve_schema_for(mapping_stem: str, kind: Kind, refs: SchemasSection) -> S
     return resolve_schema_types(schema, _pascal_case(mapping_stem))
 
 
+def raw_output_schema(mapping_stem: str, refs: SchemasSection) -> dict | None:
+    """The output JSON Schema as written (the transpiler reads what it requires), or None."""
+    path = schema_file(mapping_stem, "output", refs)
+    if not path.is_file():
+        return None
+    try:
+        schema = json.loads(path.read_text())
+    except ValueError:
+        return None
+    return schema if isinstance(schema, dict) else None
+
+
 def _refuse_unfinished(path: Path) -> None:
     """A rule with nothing defined is left out of the build, but not when the output schema
     requires what it would produce: that stops the build."""
@@ -199,10 +211,13 @@ def transpile_functional(
     stem = source_stem(path)
     options = transpile_options(config)
     schema = resolve_schema_for(stem, "input", schema_refs(path))
+    output_schema = raw_output_schema(stem, schema_refs(path))
     _refuse_unfinished(path)
     try:
         if stage is None and not dump_stages:
-            text = transpile_file(path, options, input_schema=schema, warnings=warnings)
+            text = transpile_file(
+                path, options, input_schema=schema, warnings=warnings, output_schema=output_schema
+            )
             last = len(STAGES)
         else:
             last = stage or len(STAGES)
@@ -215,6 +230,7 @@ def transpile_functional(
                 cached=cached,
                 warnings=warnings,
                 log=log,
+                output_schema=output_schema,
             )
     except FnYamlError as exc:
         raise BuildError(f"{path}: {exc}") from exc
@@ -246,6 +262,11 @@ def _compile_fresh(
     refs = schema_refs(path)
     input_schema = resolve_schema_for(stem, "input", refs)
     output_schema = resolve_schema_for(stem, "output", refs)
+    schema_texts = {
+        kind: schema_file(stem, kind, refs).read_text()
+        for kind in ("input", "output")
+        if schema_file(stem, kind, refs).is_file()
+    }
     unit = compile_unit(
         source,
         default_mapping_id=stem,
@@ -254,6 +275,7 @@ def _compile_fresh(
         output_schema=output_schema,
         loop_fusion=config.optimizer.loop_fusion,
         parallel_conflict=config.optimizer.parallel_conflict,
+        schema_texts=schema_texts,
     )
     warnings.extend(backend.unit_warnings(unit))
     return unit

@@ -10,11 +10,14 @@ mapping body become `_run(root, out)`. Types are annotations only: they are drop
 from __future__ import annotations
 
 import ast
+import copy
 from dataclasses import dataclass, field
 from typing import Any
 
 from compiler.backends.base import CodeGenError, CompiledUnit
 from compiler.function_registry import FunctionInfo
+from compiler.loop_iter import LoopIterError, parse_sort
+from compiler.validation import Validation
 
 _ARITH = {
     ast.Add: "_add",
@@ -38,6 +41,8 @@ class PythonUnit(CompiledUnit):
     # rule function -> the project functions it calls that have no code for Python: the rule
     # cannot run here, and says so instead of failing for a reason of its own
     unavailable: dict[str, list[str]] = field(default_factory=dict)
+    # the mapping checks its input and/or output (its `_safe` gives a third result, the report)
+    validated: bool = False
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -46,6 +51,7 @@ class PythonUnit(CompiledUnit):
             "rules": self.rules,
             "parallel": self.parallel,
             "unavailable": self.unavailable,
+            "validated": self.validated,
         }
 
     @classmethod
@@ -56,6 +62,7 @@ class PythonUnit(CompiledUnit):
             data["rules"],
             data["parallel"],
             data.get("unavailable", {}),
+            data.get("validated", False),
         )
 
 
@@ -85,6 +92,7 @@ class _Rewriter(ast.NodeTransformer):
         self.in_run = False
         self.bound: set[str] = set()  # names the mapping's statements assign or loop over
         self.fused: list[ast.FunctionDef] = []  # the per-element functions of such loops
+        self._item_var = "_e"  # the variable the `for` being read names (a sort key reads it)
 
     # -- declarations ------------------------------------------------------------------
     def visit_FunctionDef(self, node: ast.FunctionDef) -> ast.FunctionDef:
@@ -104,7 +112,7 @@ class _Rewriter(ast.NodeTransformer):
 
     def visit_Name(self, node: ast.Name) -> ast.expr:
         if node.id == "Null":
-            return ast.Constant(value=None)
+            return _name("NULL")
         return node
 
     # -- reading the input -------------------------------------------------------------
@@ -138,6 +146,39 @@ class _Rewriter(ast.NodeTransformer):
     def visit_Subscript(self, node: ast.Subscript) -> ast.expr:
         return self._path(node)
 
+    # -- aggregating comprehensions ----------------------------------------------------
+    def visit_GeneratorExp(self, node: ast.GeneratorExp) -> ast.expr:
+        """`sum(x.v for x in root.items if x.ok)`: the aggregate gets the list of the values of
+        the elements that pass (a missing list has none)."""
+        if len(node.generators) != 1 or node.generators[0].is_async:
+            raise CodeGenError("an aggregate takes one `for` and optional `if`s")
+        gen = node.generators[0]
+        return ast.ListComp(
+            elt=self.visit(node.elt),
+            generators=[
+                ast.comprehension(
+                    target=gen.target,
+                    iter=_call("_each", self.visit(gen.iter)),
+                    ifs=[self.visit(c) for c in gen.ifs],
+                    is_async=0,
+                )
+            ],
+        )
+
+    def visit_ListComp(self, node: ast.ListComp) -> ast.expr:
+        """`[x for x in <list> if <cond>]`, the filter of a loop's iterable: a missing list has no
+        elements."""
+        gens = [
+            ast.comprehension(
+                target=g.target,
+                iter=_call("_each", self.visit(g.iter)),
+                ifs=[self.visit(c) for c in g.ifs],
+                is_async=0,
+            )
+            for g in node.generators
+        ]
+        return ast.ListComp(elt=self.visit(node.elt), generators=gens)
+
     # -- operators ---------------------------------------------------------------------
     def visit_BinOp(self, node: ast.BinOp) -> ast.expr:
         helper = _ARITH.get(type(node.op))
@@ -160,6 +201,8 @@ class _Rewriter(ast.NodeTransformer):
     # -- calls and loops ---------------------------------------------------------------
     def visit_Call(self, node: ast.Call) -> ast.expr:
         func = node.func
+        if isinstance(func, ast.Name) and func.id == "sorted" and node.args:
+            return self._sorted(node)
         if isinstance(func, ast.Name):
             if func.id in self.dataclasses:
                 if node.args:
@@ -179,6 +222,39 @@ class _Rewriter(ast.NodeTransformer):
         elif isinstance(func, ast.Attribute):
             raise CodeGenError(f"method call .{func.attr}(...) is not supported")
         return self.generic_visit(node)  # type: ignore[return-value]
+
+    def _sorted(self, node: ast.Call) -> ast.expr:
+        """`sorted(x, key="f" | by=<expression of the element>, reverse=, nulls=)`: the elements
+        ordered by `_sorted`, which keeps equal keys in order and puts the ones with no key first
+        or last as asked, whatever the direction."""
+        try:
+            sort = parse_sort(node)
+        except LoopIterError as exc:
+            raise CodeGenError(str(exc)) from exc
+        inner = self.visit(node.args[0])
+        var = self._item_var
+        if sort.field is not None:
+            body: ast.expr = _call("_get", _name(var), ast.Constant(value=sort.field))
+        else:
+            assert sort.by is not None
+            body = self.visit(copy.deepcopy(sort.by))
+        key = ast.Lambda(
+            args=ast.arguments(
+                posonlyargs=[],
+                args=[ast.arg(arg=var)],
+                kwonlyargs=[],
+                kw_defaults=[],
+                defaults=[],
+            ),
+            body=body,
+        )
+        return _call(
+            "_sorted",
+            inner,
+            key,
+            ast.Constant(value=sort.reverse),
+            ast.Constant(value=sort.nulls_first),
+        )
 
     def _parallel_loop(self, node: ast.For) -> ast.stmt | None:
         """A loop that only appends what one `@parallel` rule gives for each element (after
@@ -337,13 +413,40 @@ class _Rewriter(ast.NodeTransformer):
         )
 
     def visit_For(self, node: ast.For) -> ast.stmt:
+        self._item_var = _item_name(node.target)
         threaded = self._parallel_loop(node) or self._fused_loop(node)
         if threaded is not None:
             return threaded
-        node.iter = _call("_each", self.visit(node.iter))
+        node.iter = self._iterable(node.iter)
         node.body = [self.visit(s) for s in node.body]
         node.orelse = [self.visit(s) for s in node.orelse]
         return node
+
+    def _iterable(self, node: ast.expr) -> ast.expr:
+        """What a `for` runs over. `enumerate(x, start=1)` (a loop that numbers its elements) and
+        `sorted(x, ...)` keep their call, around the elements of `x`."""
+        return _elements(self.visit(node))
+
+
+def _item_name(target: ast.expr) -> str:
+    """The variable a `for` names for its element (the second of `index, element`)."""
+    if isinstance(target, ast.Tuple) and len(target.elts) == 2:
+        target = target.elts[1]
+    return target.id if isinstance(target, ast.Name) else "_e"
+
+
+def _elements(node: ast.expr) -> ast.expr:
+    """`node` (already visited) as what a `for` can run over: `_each(...)`, inside a call to
+    `enumerate` or `sorted`."""
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id in ("enumerate", "_sorted")
+        and node.args
+    ):
+        node.args = [_elements(node.args[0]), *node.args[1:]]
+        return node
+    return _call("_each", node)
 
 
 def _is_out_array(node: ast.expr) -> bool:
@@ -395,24 +498,6 @@ def _parallel_degree(node: ast.FunctionDef) -> int | None:
                 ):
                     return kw.value.value
     return None
-
-
-def _output_arrays(statements: list[ast.stmt]) -> list[str]:
-    """The fields of `out` the mapping body appends to: their arrays exist even when empty."""
-    found: list[str] = []
-    for stmt in statements:
-        for node in ast.walk(stmt):
-            if (
-                isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Attribute)
-                and node.func.attr == "append"
-                and isinstance(node.func.value, ast.Attribute)
-                and isinstance(node.func.value.value, ast.Name)
-                and node.func.value.value.id == "out"
-                and node.func.value.attr not in found
-            ):
-                found.append(node.func.value.attr)
-    return found
 
 
 def _called_names(node: ast.AST) -> set[str]:
@@ -478,9 +563,10 @@ def compile_module(
     mapping_id: str,
     project: dict[str, FunctionInfo] | None = None,
     parallel_mode: str = "thread",
+    validation: Validation | None = None,
 ) -> PythonUnit:
     """`parallel_mode`: a loop whose element rule is `@parallel` runs in `thread`s or `process`es
-    (`none`: in order)."""
+    (`none`: in order). `validation`: what the entry points check before and after the rules."""
     functions: list[ast.FunctionDef] = []
     body: list[ast.stmt] = []
     dataclasses: set[str] = set()
@@ -513,13 +599,9 @@ def compile_module(
     unavailable = {
         f.name: sorted(_called_names(f) & missing) for f in functions if _called_names(f) & missing
     }
-    arrays = [
-        ast.Expr(value=ast.Attribute(value=_name("out"), attr=name, ctx=ast.Load()))
-        for name in _output_arrays(body)
-    ]
     rewriter.in_run = True
     rewriter.bound = _bound_names(body)
-    run_body: list[ast.stmt] = [*arrays, *(rewriter.visit(s) for s in body)] or [ast.Pass()]
+    run_body: list[ast.stmt] = [*(rewriter.visit(s) for s in body)] or [ast.Pass()]
     rewriter.in_run = False
     run = ast.FunctionDef(
         name="_run",
@@ -535,11 +617,16 @@ def compile_module(
         returns=None,
         type_params=[],
     )
+    extra = ""
+    tail = ""
+    if validation is not None:
+        extra = f"_VALIDATION = {_validation_literal(validation)}\n\n\n"
+        tail = ", _VALIDATION"
     entry = ast.parse(
-        f"def map_{mapping_id}(source):\n"
-        f"    return _execute({mapping_id!r}, _run, source, True)[0]\n\n\n"
+        extra + f"def map_{mapping_id}(source):\n"
+        f"    return _execute({mapping_id!r}, _run, source, True{tail})[0]\n\n\n"
         f"def map_{mapping_id}_safe(source):\n"
-        f"    return _execute({mapping_id!r}, _run, source, False)\n"
+        f"    return _execute({mapping_id!r}, _run, source, False{tail})\n"
     ).body
     module = ast.Module(body=[*new_functions, *rewriter.fused, run, *entry], type_ignores=[])
     ast.fix_missing_locations(module)
@@ -548,5 +635,24 @@ def compile_module(
         "from j2jme_runtime import *\n\n\n"
     )
     return PythonUnit(
-        mapping_id, header + ast.unparse(module) + "\n", sorted(rules), parallel, unavailable
+        mapping_id,
+        header + ast.unparse(module) + "\n",
+        sorted(rules),
+        parallel,
+        unavailable,
+        validation is not None,
     )
+
+
+def _validation_literal(validation: Validation) -> str:
+    """The `_VALIDATION` table of the module: for each side, its embedded JSON Schema (or None)
+    and the checks as (function, code, message, action)."""
+    sides = []
+    for name in ("input", "output"):
+        schema = validation.schemas.get(name) if validation.side(name).schema else None
+        checks = ", ".join(
+            f"({c.fn}, {c.code!r}, {c.message!r}, {c.action!r})"
+            for c in validation.side(name).checks
+        )
+        sides.append(f"{name!r}: ({schema!r}, [{checks}])")
+    return "{" + ", ".join(sides) + "}"

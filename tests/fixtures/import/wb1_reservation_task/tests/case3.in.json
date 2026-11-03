@@ -1,0 +1,34 @@
+{
+  "msgId": "MSG-20260317-000310",
+  "sentAt": "20260317080000",
+  "reservation": {
+    "status": "CANCELLED",
+    "hotelCode": "HX02",
+    "cleaningLevel": "X",
+    "ref": {
+      "channel": "WEB",
+      "number": "90011"
+    },
+    "stay": {
+      "arrival": "2026-05-02T18:45:00-05:00",
+      "departure": null
+    },
+    "guest": null,
+    "rooms": [
+      {
+        "number": "9",
+        "type": "XYZ"
+      }
+    ],
+    "notes": [
+      {
+        "type": "HK",
+        "text": ""
+      },
+      {
+        "type": "HK",
+        "text": "Strip bed"
+      }
+    ]
+  }
+}

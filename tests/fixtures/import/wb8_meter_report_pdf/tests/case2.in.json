@@ -1,0 +1,17 @@
+{
+  "readings": {
+    "meterId": "mt-0043",
+    "unit": null,
+    "site": {
+      "code": "S8",
+      "name": "South depot"
+    },
+    "samples": [
+      {
+        "ts": "2026-05-02T00:00:00Z",
+        "value": 1.005,
+        "quality": "OK"
+      }
+    ]
+  }
+}

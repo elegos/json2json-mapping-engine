@@ -15,6 +15,9 @@ const result = (errors: GoldenResult["errors"]): GoldenResult => ({
   inconclusive: false,
   values: {},
   expected_values: null,
+  report: null,
+  expected_rejected: null,
+  expected_warnings: null,
 });
 const error = (rule: string, cause: string, unavailable: string[] = []) => ({
   rule,

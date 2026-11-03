@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://j2jme.local/import/profile.schema.json",
+  "title": "Import profile (conventions)",
+  "description": "How the functional documents of a group are to be read: a list of conventions, each with its evidence and who confirmed it. Open-ended on purpose: a topic or a value the engine has never seen is allowed; the well-known topics (see profile.md) only tell the reader what to look for and ask.",
+  "type": "object",
+  "required": ["profile_version", "name", "conventions"],
+  "additionalProperties": false,
+  "properties": {
+    "profile_version": { "const": 1 },
+    "name": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$" },
+    "description": { "type": "string", "description": "Who writes in this style, what the documents look like. For people picking a profile." },
+    "applies_to": { "type": "array", "items": { "type": "string" }, "description": "Mapping ids read with it (a profile serves one or more mappings; scoped to the project)." },
+    "derived_from": { "type": "string", "description": "Profile this one started as a copy of." },
+    "layout": {
+      "type": "object",
+      "description": "Hints on where the rules are in the document, so a second document of the group is not re-discovered from scratch. Free-form per format; the reader proposes it, the user corrects it.",
+      "additionalProperties": true,
+      "properties": {
+        "rule_unit": { "enum": ["row_per_target", "row_per_source", "paragraph", "section", "mixed", "other"] },
+        "columns": {
+          "type": "object",
+          "description": "Meaning of the table columns by header text (as written) -> role (target, source, rule, mandatory, type, sample, note, version, ...).",
+          "additionalProperties": { "type": "string" }
+        },
+        "structure_notes": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "conventions": { "type": "array", "items": { "$ref": "#/$defs/convention" } },
+    "history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["at", "change"],
+        "additionalProperties": false,
+        "properties": {
+          "at": { "type": "string", "format": "date-time" },
+          "change": { "type": "string" },
+          "document": { "type": "string" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "convention": {
+      "type": "object",
+      "required": ["topic", "value", "basis"],
+      "additionalProperties": false,
+      "properties": {
+        "topic": { "type": "string", "description": "What the convention is about, e.g. index_base, array_notation, null_rule, mandatory_vocabulary, date_dialect, condition_scope, marker_meaning, path_separator, concatenation_operators, lookup_not_found, version_precedence. Any other string is allowed." },
+        "context": { "type": "string", "description": "Where it holds when it is not everywhere: `code`, `prose`, `positional_rows`, `sheet:<name>`, `section:<title>`, ... Same topic with different contexts = different conventions." },
+        "value": { "description": "Free: a scalar, a list, or a map (e.g. a vocabulary: {\"Y\": \"mandatory\", \"N\": \"optional\"})." },
+        "explanation": { "type": "string" },
+        "basis": { "enum": ["user_answer", "document_evidence", "inferred", "default"], "description": "`default` = what the reader assumes when nothing says otherwise; it is shown, never silent." },
+        "confirmed": { "type": "boolean", "description": "true once a person agreed with it. An unconfirmed convention is applied but flagged on every rule that depends on it." },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["text"],
+            "additionalProperties": false,
+            "properties": { "text": { "type": "string" }, "document": { "type": "string" }, "location": { "type": "object", "additionalProperties": true } }
+          }
+        },
+        "exceptions": { "type": "array", "items": { "type": "string" }, "description": "Known places where the documents do not follow it." }
+      }
+    }
+  }
+}

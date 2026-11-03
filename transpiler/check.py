@@ -32,8 +32,8 @@ from transpiler.anchors import (
     resolve_anchors,
     uses_value,
 )
-from transpiler.expr import parse_block
-from transpiler.exprtypes import ExprTyper
+from transpiler.expr import Block, parse_block
+from transpiler.exprtypes import ExprTyper, did_you_mean
 from transpiler.model import (
     RESERVED_ALIASES,
     FieldRule,
@@ -45,14 +45,16 @@ from transpiler.model import (
     Rule,
     SchemasSection,
     is_alias_path,
+    is_group,
     is_unfinished,
     load_rule,
 )
+from transpiler.orderby import parse_order_by, split_top_level
 from transpiler.paths import expand_paths
 from transpiler.selector import (
     find_selections,
-    normalize_condition,
     replace_selections,
+    selection_parts,
     split_selector,
 )
 from transpiler.serialize import rule_to_raw
@@ -95,6 +97,32 @@ _TYPES = {
     "date": {"string"},
     "datetime": {"string"},
 }
+
+
+_ANCHORED = re.compile(r"^@(\d+|[A-Za-z_]\w*)?(?=[.\[]|$)")
+
+
+def _source_base(
+    source: str, in_root: Node, items: list[Node], labels: list[str | None]
+) -> tuple[Node | None, str]:
+    """The schema node a loop's `source` starts from, and what is left of it: `$` the document, `@` the
+    element of the loop it is written in, `@2` the one outside it, `@label` the loop with that label."""
+    if source.startswith("$"):
+        return in_root, source[1:]
+    found = _ANCHORED.match(source)
+    if found is None:
+        return (items[-1] if items else in_root), re.sub(r"^[$@]", "", source)
+    name = found.group(1)
+    rest = source[found.end() :]
+    if name is None:
+        return (items[-1] if items else in_root), rest
+    if name.isdigit():
+        depth = int(name)
+        return (items[-depth] if 1 <= depth <= len(items) else None), rest
+    for node, label in zip(reversed(items), reversed(labels), strict=False):
+        if label == name:
+            return node, rest
+    return None, rest
 
 
 class _Schemas:
@@ -156,6 +184,30 @@ class _Schemas:
                 unknown = True
         return UNKNOWN if unknown else None
 
+    def names(self, node: Node) -> list[str]:
+        """The property names an object offers (empty where they cannot be listed)."""
+        if not isinstance(node, dict):
+            return []
+        return [
+            k
+            for v in self.variants(node)
+            if isinstance(v.get("properties"), dict)
+            for k in v["properties"]
+        ]
+
+    def near(self, base: Node, text: str, missing: str | None) -> str:
+        """The "did you mean" for `missing`, the segment of `text` (followed from `base`) that
+        the schema does not have: the closest property of the object it was looked up in."""
+        if not missing or missing.startswith("["):
+            return ""
+        parent: Node = base
+        for m in _SEGMENT.finditer(text):
+            reached = self.items(parent) if m.group(2) else self.prop(parent, m.group(1))
+            if reached is None:
+                break
+            parent = reached
+        return did_you_mean(missing, self.names(parent))
+
     def values(self, node: Schema) -> list[Schema] | None:
         """The schemas of an object's values (its properties, or `additionalProperties`);
         None where they cannot be listed."""
@@ -196,13 +248,22 @@ class _Schemas:
         return node, None
 
     def required(self, node: Node) -> list[str]:
+        """What the schema requires of an object. Of a schema that is one of several shapes
+        (`oneOf`), what every shape requires: a field only some shapes have is the mapping's to
+        guard, not required of all."""
         if not isinstance(node, dict):
             return []
-        out: list[str] = []
+        per_shape: list[set[str]] = []
         for v in self.variants(node):
             req = v.get("required")
-            out += [r for r in req if isinstance(r, str)] if isinstance(req, list) else []
-        return out
+            per_shape.append(
+                {r for r in req if isinstance(r, str)} if isinstance(req, list) else set()
+            )
+        if not per_shape:
+            return []
+        common = set.intersection(*per_shape)
+        ordered = [r for v in self.variants(node) for r in (v.get("required") or []) if r in common]
+        return list(dict.fromkeys(ordered))
 
 
 # the schema walker, for the tools that read a schema the way the check does
@@ -307,6 +368,7 @@ class _Checker:
         self.out = _Schemas(output_schema)
         self.has_in = input_schema is not None
         self.has_out = output_schema is not None
+        self.doc = "input"  # what `$` is read against (the output, for a check of the output)
         self.issues: list[Issue] = []
         found = [r for r in self._all(file.rules) if isinstance(r, LookupRule)]
         everything = [*file.shared.values(), *found]
@@ -342,12 +404,13 @@ class _Checker:
 
     def block(
         self, path: str, text: str, scope: AnchorScope, column: str, dev: bool = False
-    ) -> None:
+    ) -> Block | None:
         try:
             resolved = text if dev else resolve_anchors(text, scope, "expression").text
-            parse_block(resolved, "x", "expression")
+            return parse_block(resolved, "x", "expression")
         except FnYamlError as exc:
             self.add(path, column, str(exc).split(": ", 1)[-1])
+            return None
 
     # -- data ------------------------------------------------------------------
 
@@ -366,7 +429,7 @@ class _Checker:
         Answers `text` with each selection as the first element (`$.items[0].qty`), which the
         other checks can follow."""
         for sel in find_selections(text):
-            condition = normalize_condition(sel.condition)
+            condition, order = selection_parts(sel.condition)
             if find_selections(condition):
                 self.add(path, column, "a condition cannot hold another selection")
                 continue
@@ -376,15 +439,21 @@ class _Checker:
             if self.has_in and m and base is not UNKNOWN and base is not None:
                 reached, missing = self.inp.resolve(base, f"{m.group(2)}[*]")
                 if reached is None:
-                    self.add(path, column, f"'{missing}' is not in the input schema ({sel.path})")
+                    hint = self.inp.near(base, f"{m.group(2)}[*]", missing)
+                    self.add(
+                        path, column, f"'{missing}' is not in the input schema ({sel.path}){hint}"
+                    )
                 else:
                     item = reached
             inner = AnchorScope(
                 loops=(*scope.loops, LoopRef(None, "src", "index")), lookups=scope.lookups
             )
-            self.block(path, condition, inner, column)
-            self.refs(path, condition, column, root, [*items, item], [*labels, None])
-            self.typecheck(path, condition, None, "", root, [*items, item], [*labels, None])
+            for part in [condition, *(k.expr for k in order)]:
+                if not part:
+                    continue
+                self.block(path, part, inner, column)
+                self.refs(path, part, column, root, [*items, item], [*labels, None])
+                self.typecheck(path, part, None, "", root, [*items, item], [*labels, None])
         return replace_selections(text, lambda s: f"{s.path}[0]")
 
     def refs(
@@ -411,8 +480,11 @@ class _Checker:
                     continue
                 node, missing = self.inp.resolve(base, chain)
                 if node is None:
+                    hint = self.inp.near(base, chain, missing)
                     self.add(
-                        path, column, f"'{missing}' is not in the input schema ({anchor}{chain})"
+                        path,
+                        column,
+                        f"'{missing}' is not in the {self.doc} schema ({anchor}{chain}){hint}",
                     )
 
     def types(
@@ -459,9 +531,11 @@ class _Checker:
         env: dict[str, Any] = {"root": root, "value": value}
         env.update({f"_LK_{label}": node for label, node in self.lookup_nodes.items()})
         env.update({f"_L{i}": node for i, node in enumerate(items, 1)})
+        env.update({f"_I{i}": UNKNOWN for i in range(1, len(items) + 1)})  # `@index`: a position
         typer = ExprTyper(
             self.inp, env, lambda message: self.add(path, "expression", message), self.functions
         )
+        typer.names(resolved)
         typer.check(resolved, want, what)
 
     def devcheck(self, path: str, text: str, root: Node, items: list[Node]) -> None:
@@ -501,30 +575,56 @@ class _Checker:
         in_root: Node,
         items: list[Node],
         labels: list[str | None],
+        check_required: bool = True,
     ) -> None:
         names: set[str] = set()
+        loop_names: set[str] = set()  # loops may add to one list, one after the other
         covered: set[str] = set()
         for i, rule in enumerate(rules):
             path = f"{prefix}[{i}]"
             self.form(path, rule)
             if isinstance(rule, LookupRule):
                 continue
+            if isinstance(rule, ObjectRule) and is_group(rule):
+                # writes into this container: its rules count as this container's
+                self.group(path, rule, scope, out, in_root, items, labels)
+                covered |= {
+                    r.field if isinstance(r, FieldRule) else _basename(r.output)
+                    for r in rule.rules
+                    if not isinstance(r, LookupRule)
+                }
+                continue
             name = rule.field if isinstance(rule, FieldRule) else _basename(rule.output)
             covered.add(name)
             if is_unfinished(rule):
                 self.unfinished(path, rule, name, out)
-            if name in names:
+            if name in names and not (isinstance(rule, LoopRule) and name in loop_names):
                 self.add(path, "target", f"'{name}' is already a rule of this container")
             names.add(name)
+            if isinstance(rule, LoopRule):
+                loop_names.add(name)
             if isinstance(rule, FieldRule):
                 self.field(path, rule, scope, out, in_root, items, labels)
             else:
                 self.container(path, rule, scope, out, in_root, items, labels)
-        if self.has_out and isinstance(out, dict):
+        if check_required and self.has_out and isinstance(out, dict):
             missing = [r for r in self.out.required(out) if r not in covered]
             if missing:
                 where = prefix.rsplit(".rules", 1)[0] if ".rules" in prefix else ""
                 self.add(where, "target", f"the output schema requires {', '.join(missing)}")
+
+    def group(self, path, rule: ObjectRule, scope, out, in_root, items, labels) -> None:
+        """An object with `output: $`: its guard, then its rules as the rules of the container."""
+        if items:
+            self.add(path, "target", "a group (`output: $`) can only be at the top of the file")
+        if rule.guard:
+            guard = self.selections(path, rule.guard, "expression", scope, in_root, items, labels)
+            self.block(path, guard, scope, "expression")
+            self.refs(path, guard, "expression", in_root, items, labels)
+            self.typecheck(path, guard, None, "", in_root, items, labels)
+        self.walk(
+            rule.rules, f"{path}.rules", scope, out, in_root, items, labels, check_required=False
+        )
 
     def unfinished(self, path: str, rule: Rule, name: str, out: Node) -> None:
         """A rule with nothing defined: ignored by the build, so a warning, unless the output
@@ -549,23 +649,32 @@ class _Checker:
             value = _constant_node(rule.source_constant)
         elif rule.source_path:
             src = self.selections(path, rule.source_path, "source", scope, in_root, items, labels)
-            if self.has_in:
+            if self.has_in and not re.fullmatch(r"@index(\.\d+)?", src):  # `@index` is no field
                 base = in_root if src.startswith("$") else (items[-1] if items else in_root)
                 node, missing = self.inp.resolve(base, re.sub(r"^[$@]", "", src))
                 if node is None:
-                    self.add(path, "source", f"'{missing}' is not in the input schema")
+                    hint = self.inp.near(base, re.sub(r"^[$@]", "", src), missing)
+                    self.add(path, "source", f"'{missing}' is not in the input schema{hint}")
                 else:
                     value = node
         if text and t.status != "manual":
             text = self.selections(path, text, "expression", scope, in_root, items, labels)
         if text:
-            self.block(
+            parsed = self.block(
                 path,
                 text,
                 scope,
                 "status" if t.status == "manual" else "expression",
                 t.status == "manual",
             )
+            if parsed is not None and parsed.can_omit and rule.required and t.status != "manual":
+                # the build refuses it ("annotated non-nullable but returns nothing")
+                self.add(
+                    path,
+                    "expression",
+                    "a bare `return` leaves the field out, but the field is required: "
+                    "untick Required, or return a value",
+                )
             if t.status == "manual":
                 self.devcheck(path, text, in_root, items)
             if t.status != "manual":
@@ -579,7 +688,8 @@ class _Checker:
             return
         node = self.out.prop(out, rule.field)
         if node is None:
-            self.add(path, "target", f"'{rule.field}' is not in the output schema")
+            hint = did_you_mean(rule.field, self.out.names(out))
+            self.add(path, "target", f"'{rule.field}' is not in the output schema{hint}")
             return
         if isinstance(node, dict):
             declared = self.out.types(node)
@@ -600,7 +710,8 @@ class _Checker:
         if self.has_out and isinstance(out, dict):
             node = self.out.prop(out, name)
             if node is None:
-                self.add(path, "target", f"'{name}' is not in the output schema")
+                hint = did_you_mean(name, self.out.names(out))
+                self.add(path, "target", f"'{name}' is not in the output schema{hint}")
                 node = UNKNOWN
         is_loop = isinstance(rule, LoopRule)
         if isinstance(node, dict):
@@ -612,13 +723,26 @@ class _Checker:
                 )
                 node = UNKNOWN
             elif is_loop:
+                if rule.when_empty == "omit" and name in self.out.required(out):
+                    self.add(
+                        path,
+                        "type",
+                        f"'{name}' is mandatory in the output schema, so the list cannot be left "
+                        "out when it is empty (when_empty: list)",
+                    )
                 node = self.out.items(node)
-            elif types and not self.out.nullable(node) and (rule.guard or rule.source):
-                # the build refuses a non-nullable output for a value that may be omitted
+            elif (
+                types
+                and not self.out.nullable(node)
+                and (rule.guard or rule.source)
+                and name in self.out.required(out)
+            ):
+                # the build refuses a required, non-nullable output for a value that may be omitted;
+                # a property the schema does not require may simply be left out
                 self.add(
                     path,
                     "type",
-                    f"'{name}' is left out when its "
+                    f"'{name}' is required by the output schema but is left out when its "
                     f"{'guard is false' if rule.guard else 'source selects no element'}, "
                     'so the output schema must allow null (type ["object", "null"])',
                 )
@@ -637,21 +761,50 @@ class _Checker:
             self.walk(rule.rules, f"{path}.rules", scope, node, in_root, items, labels)
             return
         # a loop, or an object that selects one element of a list: both read an element `@`
+        order_keys: list[Any] = []
         if selector is not None:
-            source, condition, label = f"{selector[0]}[*]", selector[1], None
+            cond, order_keys = selection_parts(selector[1])
+            source, condition, label = f"{selector[0]}[*]", cond or None, None
         else:
             assert isinstance(rule, LoopRule)
             source, condition, label = rule.source, rule.filter, rule.label
         item: Node = UNKNOWN
         if not source.strip() and not is_unfinished(rule):
             self.add(path, "source", "a loop needs a source")
-        if self.has_in and source:
-            base = in_root if source.startswith("$") else (items[-1] if items else in_root)
-            reached, missing = self.inp.resolve(base, re.sub(r"^[$@]", "", source))
+        if source.strip().startswith("split_list("):
+            # the parts of a text: the arguments are read where the loop is written, and the
+            # elements are texts (`@` is one)
+            for arg in split_top_level(source.strip()[len("split_list(") :].rstrip(")")):
+                self.block(path, arg, scope, "source")
+                self.refs(path, arg, "source", in_root, items, labels)
+                self.typecheck(path, arg, None, "", in_root, items, labels)
+        elif self.has_in and source:
+            base, relative = _source_base(source, in_root, items, labels)
+            if base is None:
+                reached, missing, hint = None, "", ""
+                self.add(path, "source", f"'{source}' names a loop that does not enclose this one")
+            else:
+                reached, missing = self.inp.resolve(base, relative)
+                hint = self.inp.near(base, relative, missing) if reached is None else ""
             if reached is None:
-                self.add(path, "source", f"'{missing}' is not in the input schema")
+                if base is not None:
+                    self.add(path, "source", f"'{missing}' is not in the input schema{hint}")
             else:
                 item = reached
+                types = self.inp.types(reached) if isinstance(reached, dict) else set()
+                if (
+                    isinstance(rule, LoopRule)
+                    and "object" in types
+                    and "array" not in types
+                    and not source.strip().endswith("]")  # `[*]` already stepped into the list
+                    and source.strip() != "$"
+                ):
+                    self.add(
+                        path,
+                        "source",
+                        f"a loop runs over a list, but '{source}' is an object "
+                        "(only `$`, the document itself, is one element)",
+                    )
         inner = AnchorScope(
             loops=(*scope.loops, LoopRef(label, "src", "index")), lookups=scope.lookups
         )
@@ -668,6 +821,20 @@ class _Checker:
             self.block(path, condition, inner, column)
             self.refs(path, condition, column, in_root, [*items, item], [*labels, label])
             self.typecheck(path, condition, None, "", in_root, [*items, item], [*labels, label])
+        if isinstance(rule, LoopRule) and rule.order_by:
+            order_keys = parse_order_by(rule.order_by)
+        if order_keys:
+            for key in order_keys:
+                if find_selections(key.expr):
+                    self.add(
+                        path,
+                        "expression",
+                        "an order_by key cannot hold a selection (a path with a condition in it)",
+                    )
+                    continue
+                self.block(path, key.expr, inner, "expression")
+                self.refs(path, key.expr, "expression", in_root, [*items, item], [*labels, label])
+                self.typecheck(path, key.expr, None, "", in_root, [*items, item], [*labels, label])
         self.walk(
             rule.rules, f"{path}.rules", inner, node, in_root, [*items, item], [*labels, label]
         )
@@ -708,10 +875,11 @@ class _Checker:
             if self.has_in and self.inp.root is not None:
                 node, missing = self.inp.resolve(self.inp.root, text.removeprefix("$"))
                 if node is None:
+                    hint = self.inp.near(self.inp.root, text.removeprefix("$"), missing)
                     self.add(
                         "",
                         "paths",
-                        f"paths: the {what} {text} — '{missing}' is not in the input schema",
+                        f"paths: the {what} {text} — '{missing}' is not in the input schema{hint}",
                     )
 
     def run(self) -> list[Issue]:
@@ -719,7 +887,37 @@ class _Checker:
         root_out: Node = self.out.root if self.out.root is not None else UNKNOWN
         scope = AnchorScope(lookups=self.lookups)
         self.walk(self.file.rules, "rules", scope, root_out, root_in, [], [])
+        self.validations(scope, root_in, root_out)
         return self.issues
+
+    def validations(self, scope: AnchorScope, root_in: Node, root_out: Node) -> None:
+        """The extra validations: each `expect` is read as an expression on `$`, the input for the
+        input side and the output for the output side."""
+        for side, root, has in (
+            ("input", root_in, self.has_in),
+            ("output", root_out, self.has_out),
+        ):
+            spec = self.file.validations.side(side)
+            if spec.schema and not has:
+                self.add(
+                    f"validations.{side}",
+                    "schema",
+                    f"the {side} is validated against its JSON Schema, but the mapping has no "
+                    f"{side} schema",
+                )
+            saved = (self.inp, self.has_in, self.doc)
+            if side == "output":  # `$` is the output: read it against the output schema
+                self.inp, self.has_in, self.doc = self.out, self.has_out, "output"
+            try:
+                for i, check in enumerate(spec.checks):
+                    path = f"validations.{side}.checks[{i}]"
+                    text = self.selections(path, check.expect, "expect", scope, root, [], [])
+                    if self.block(path, text, scope, "expect") is None:
+                        continue
+                    self.refs(path, text, "expect", root, [], [])
+                    self.typecheck(path, text, None, "", root, [], [])
+            finally:
+                self.inp, self.has_in, self.doc = saved
 
 
 def _basename(output: str) -> str:

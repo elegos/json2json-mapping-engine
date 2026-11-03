@@ -1,5 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
+import type { Role } from "./goldenEdit";
+import type { ImportSummary, LiveView, Mode, PlanView, ProfileInfo } from "./importModel";
 import type { Diagnostic, FunctionalFile, ReviewFlag } from "./model";
 import type { ConfigIssue, ConfigSchema, ConfigValues } from "./projectConfig";
 
@@ -231,6 +234,8 @@ export interface GoldenCase {
   name: string;
   expected: boolean;
   errors: boolean;
+  rejected: boolean;
+  warnings: boolean;
 }
 
 export const goldenCases = async (project: string, mapping: string) =>
@@ -277,6 +282,18 @@ export interface GoldenResult {
   values: Record<string, unknown>;
   /** The same for the case's expected output; null when it has none. */
   expected_values: Record<string, unknown> | null;
+  /** The checks of a mapping that validates and failed (null for one that does not validate),
+   * and the codes the case expects to reject / warn (null: the case says nothing). */
+  report: ValidationIssue[] | null;
+  expected_rejected: string[] | null;
+  expected_warnings: string[] | null;
+}
+
+export interface ValidationIssue {
+  side: "input" | "output";
+  code: string;
+  message: string;
+  action: "reject" | "warn";
 }
 
 /** A rule that reported an error in a run. `path` is its row in the grid (null for a `.map.py`),
@@ -407,7 +424,7 @@ export const goldenRecord = (project: string, mapping: string, name: string) =>
 /** The text of each file of a case, as on disk (null where the file is not there). */
 export const goldenRead = async (project: string, mapping: string, name: string) =>
   (
-    await reviewRequest<{ files: Record<"input" | "expected" | "errors", string | null> }>({
+    await reviewRequest<{ files: Record<Role, string | null> }>({
       op: "golden_read",
       project,
       mapping,
@@ -420,7 +437,7 @@ export const goldenWrite = (
   project: string,
   mapping: string,
   name: string,
-  role: "input" | "expected" | "errors",
+  role: Role,
   text: string | null,
 ) => reviewRequest({ op: "golden_write", project, mapping, name, role, text });
 
@@ -472,7 +489,15 @@ export async function reviewEdit(
 export async function changeStructure(
   tree: FunctionalFile,
   change:
-    | { op: "add_rule"; parent: string | null; index: number | null; kind: string }
+    | {
+        op: "add_rule";
+        parent: string | null;
+        index: number | null;
+        kind: string;
+        name?: string;
+        type?: string;
+        required?: boolean;
+      }
     | { op: "delete_rule"; path: string },
 ): Promise<FunctionalFile> {
   const answer = await invoke<string>("edit_request", {
@@ -812,3 +837,192 @@ export const sharedLookupShare = async (project: string, stem: string, label: st
 /** Gives every mapping that reads the lookup its own copy and removes it from the project. */
 export const sharedLookupUnshare = async (project: string, label: string) =>
   (await reviewRequest<{ changed: string[] }>({ op: "lookup_unshare", project, label })).changed;
+
+/** Importing a functional document (docs/import/): the screens' operations on the plan, which are the
+ * worker's (cli/import_ops.py), and the run of the assistant, which has a process of its own. */
+export interface Provider {
+  id: "claude" | "codex";
+  title: string;
+  path: string;
+  version: string | null;
+}
+
+export const importProviders = async () =>
+  (await reviewRequest<{ providers: Provider[] }>({ op: "import_providers" })).providers;
+
+export const importList = (project: string) =>
+  reviewRequest<{ imports: ImportSummary[]; profiles: ProfileInfo[] }>({ op: "import_list", project });
+
+/** Drops an import (its plan, answers and working copy); documents, profiles and applied rules stay. */
+export const importDelete = (project: string, mapping: string) =>
+  reviewRequest<{ deleted: string }>({ op: "import_delete", project, mapping });
+
+/** The questions waiting and the progress of a run that is going on. */
+export const importLive = (project: string, mapping: string) =>
+  reviewRequest<LiveView>({ op: "import_live", project, mapping });
+
+export const importPlan = (project: string, mapping: string) =>
+  reviewRequest<PlanView>({ op: "import_plan", project, mapping });
+
+export const importAnswer = (
+  project: string,
+  mapping: string,
+  answers: { id: string; answer?: string; skip?: boolean }[],
+) => reviewRequest<{ open_questions: number }>({ op: "import_answer", project, mapping, answers });
+
+export const importReview = (
+  project: string,
+  mapping: string,
+  kind: "rule" | "validation",
+  id: string,
+  state: "pending" | "accepted" | "rejected",
+) => reviewRequest({ op: "import_review", project, mapping, kind, id, state });
+
+/** A remark on a rule: the next run of the rule reads it as an answer. */
+export const importNote = (project: string, mapping: string, id: string, text: string) =>
+  reviewRequest<{ question: string }>({ op: "import_note", project, mapping, id, text });
+
+/** What building the working copy of the plan and running its cases found (`mapper import test`). */
+export interface TestReport {
+  ok: boolean;
+  /** Required output fields no rule writes yet. */
+  gaps: string[];
+  schemas_found: { input: boolean; output: boolean };
+  rules_included: number;
+  skipped: { rule: string; reason?: string }[];
+  cases: number;
+  pass: number;
+  fail: number;
+  error: number;
+  not_run: number;
+  compile_error?: string;
+}
+
+/** Builds the working copy from the plan, checks it and runs the plan's cases; the results are
+ * written into the plan. */
+export const importTest = (project: string, mapping: string) =>
+  reviewRequest<TestReport>({ op: "import_test", project, mapping });
+
+export const importApply = (project: string, mapping: string, force: boolean) =>
+  reviewRequest<{ file: string; applied: number }>({ op: "import_apply", project, mapping, force });
+
+export async function chooseDocumentFile(defaultPath?: string): Promise<string | null> {
+  const file = await open({
+    title: "Functional document",
+    defaultPath,
+    filters: [{ name: "Document", extensions: ["xlsx", "xlsm", "docx", "pdf", "txt", "md"] }],
+  });
+  return typeof file === "string" ? file : null;
+}
+
+/** What `mapper import run` says: progress lines, then `done` with the protocol's status. */
+export interface RunEvent {
+  event: "started" | "progress" | "surveyed" | "queue" | "batch_started" | "batch" | "settling" | "gaps" | "done";
+  /** Batch events: which batch, and how many units or rules. */
+  batch?: string;
+  /** A `gaps` event: what the survey expects the engine to lack, with how many units wait for it. */
+  expected?: { need: string; units: number; examples: string[] }[];
+  /** A `queue` event: the batches the units were cut into. */
+  batches?: { id: string; units: number; status: string }[];
+  pending_units?: number;
+  text?: string;
+  provider?: string;
+  status?: "needs_answers" | "ready_for_review" | "failed" | "cancelled";
+  error?: string;
+  details?: string[];
+  /** Calls the assistant was refused; `rule` is the permission that would allow it. */
+  denied?: { tool: string; what: string; rule: string }[];
+  mapping?: string;
+  ir?: string;
+  rules?: number;
+  guesses?: number;
+  open_questions?: number;
+}
+
+export interface RunArgs {
+  document: string;
+  provider: Provider["id"];
+  mode: Mode;
+  mapping?: string;
+  profile?: string;
+  ruleIds?: string[];
+  /** JSON Schemas the user already has; the run copies them into the project for the assistant. */
+  inputSchema?: string;
+  outputSchema?: string;
+  /** Permission rules the user allowed after a refusal. */
+  allow?: string[];
+}
+
+export interface RunHandle {
+  /** Stops the assistant; `done` then resolves with status `cancelled`. */
+  cancel: () => void;
+  done: Promise<RunEvent>;
+}
+
+/** Starts a run of the assistant in `project` and follows it. Events of a run reach the window as
+ * `import-line` (one line of `mapper import run`) and `import-exit`; they are matched by run number. */
+export async function importRun(
+  project: string,
+  args: RunArgs,
+  onEvent: (event: RunEvent) => void,
+): Promise<RunHandle> {
+  let run: number | null = null;
+  const early: { run: number; line?: string; code?: number; stderr?: string }[] = [];
+  let last: RunEvent | null = null;
+  let finish: (e: RunEvent) => void = () => {};
+  const done = new Promise<RunEvent>((resolve) => (finish = resolve));
+  const handle = (m: { run: number; line?: string; code?: number; stderr?: string }) => {
+    if (m.line !== undefined) {
+      try {
+        const event = JSON.parse(m.line) as RunEvent;
+        if (event.event === "done") last = event;
+        onEvent(event);
+      } catch {
+        onEvent({ event: "progress", text: m.line });
+      }
+      return;
+    }
+    // the process ended: `done` was its last line unless it died first
+    finish(
+      last ?? {
+        event: "done",
+        status: "failed",
+        error: (m.stderr ?? "").trim().split("\n").slice(-3).join(" ") || `mapper exited with ${m.code}`,
+      },
+    );
+  };
+  const dispatch = (m: { run: number; line?: string; code?: number; stderr?: string }) => {
+    if (run === null) early.push(m);
+    else if (m.run === run) handle(m);
+  };
+  const offLine = await listen<{ run: number; line: string }>("import-line", (e) => dispatch(e.payload));
+  const offExit = await listen<{ run: number; code: number; stderr: string }>("import-exit", (e) =>
+    dispatch(e.payload),
+  );
+  const flags: string[] = [
+    args.document,
+    "--provider",
+    args.provider,
+    "--mode",
+    args.mode,
+  ];
+  if (args.mapping) flags.push("--mapping", args.mapping);
+  if (args.profile) flags.push("--profile", args.profile);
+  for (const id of args.ruleIds ?? []) flags.push("--rule-id", id);
+  if (args.inputSchema) flags.push("--input-schema", args.inputSchema);
+  if (args.outputSchema) flags.push("--output-schema", args.outputSchema);
+  for (const rule of args.allow ?? []) flags.push("--allow", rule);
+  try {
+    run = await invoke<number>("import_run_start", { project, args: flags });
+  } catch (e) {
+    offLine();
+    offExit();
+    throw e;
+  }
+  for (const m of early.splice(0)) if (m.run === run) handle(m);
+  void done.then(() => {
+    offLine();
+    offExit();
+  });
+  return { cancel: () => void invoke("import_cancel", { run }), done };
+}

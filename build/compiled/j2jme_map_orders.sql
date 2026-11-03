@@ -16,52 +16,76 @@ END J2JME_MAP_ORDERS;
 
 CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAP_ORDERS AS
     FUNCTION fn_orders_unit_price(p_src IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN NUMBER IS
+        v_unit_price__ret NUMBER;
     BEGIN
         p_omitted := FALSE;
-        RETURN (p_src.get_Number('total') / p_src.get_Number('qty'));
+        v_unit_price__ret := (p_src.get_Number('total') / p_src.get_Number('qty'));
+        IF v_unit_price__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_unit_price__ret;
     END fn_orders_unit_price;
 
     FUNCTION fn_orders_order_id(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_order_id__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN p_root.get_String('id');
+        v_order_id__ret := p_root.get_String('id');
+        IF v_order_id__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_order_id__ret;
     END fn_orders_order_id;
 
     FUNCTION fn_orders_line(p_root IN JSON_OBJECT_T, p_src IN JSON_OBJECT_T, p__errors IN OUT NOCOPY JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN JSON_OBJECT_T IS
         v_line__dc JSON_OBJECT_T;
-        v_line__rc0 NUMBER;
-        v_line__ro0 BOOLEAN;
+        v_val_line__v0 VARCHAR2(4000 CHAR);
+        v_val_line__v1 NUMBER;
+        v_val_line__v2 VARCHAR2(4000 CHAR);
+        v_line__rc3 NUMBER;
+        v_line__ro3 BOOLEAN;
     BEGIN
         p_omitted := FALSE;
         v_line__dc := JSON_OBJECT_T();
-        v_line__dc.put('Sku', p_src.get_String('sku'));
-        v_line__dc.put('Qty', p_src.get_Number('qty'));
-        v_line__dc.put('Family', MAPPING_OWNER.J2JME_FUNCTIONS.split_first(p_src.get_String('sku'), '-'));
+        v_val_line__v0 := p_src.get_String('sku');
+        IF v_val_line__v0 IS NOT NULL THEN
+            v_line__dc.put('Sku', v_val_line__v0);
+        END IF;
+        v_val_line__v1 := p_src.get_Number('qty');
+        IF v_val_line__v1 IS NOT NULL THEN
+            v_line__dc.put('Qty', v_val_line__v1);
+        END IF;
+        v_val_line__v2 := MAPPING_OWNER.J2JME_FUNCTIONS.split_first(p_src.get_String('sku'), '-');
+        IF v_val_line__v2 IS NOT NULL THEN
+            v_line__dc.put('Family', v_val_line__v2);
+        END IF;
         BEGIN
-            v_line__rc0 := fn_orders_unit_price(p_src, v_line__ro0);
+            v_line__rc3 := fn_orders_unit_price(p_src, v_line__ro3);
         EXCEPTION
             WHEN OTHERS THEN
                 IF NOT p__errors.has('unit_price') THEN
                     p__errors.put('unit_price', SQLERRM);
                 END IF;
-                v_line__ro0 := TRUE;
+                v_line__ro3 := TRUE;
         END;
-        IF NOT v_line__ro0 THEN
-            v_line__dc.put('Unit', v_line__rc0);
+        IF NOT v_line__ro3 THEN
+            v_line__dc.put('Unit', v_line__rc3);
         END IF;
         RETURN v_line__dc;
     END fn_orders_line;
 
     FUNCTION fn_orders_currency(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_currency__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN MAPPING_OWNER.J2JME_FUNCTIONS.lookup(p_root.get_String('country'), p_root.get_Object('currencies'), 'N/A');
+        v_currency__ret := MAPPING_OWNER.J2JME_FUNCTIONS.lookup(p_root.get_String('country'), p_root.get_Object('currencies'), 'N/A');
+        IF v_currency__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_currency__ret;
     END fn_orders_currency;
 
     FUNCTION fn_orders_warehouse(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_warehouse__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN MAPPING_OWNER.J2JME_FUNCTIONS.split_nth(p_root.get_String('ref'), ',', 2);
+        v_warehouse__ret := MAPPING_OWNER.J2JME_FUNCTIONS.split_nth(p_root.get_String('ref'), ',', 2);
+        IF v_warehouse__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_warehouse__ret;
     END fn_orders_warehouse;
 
     PROCEDURE map_orders (
@@ -120,26 +144,28 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAP_ORDERS AS
         DECLARE
             v_forarr_0 JSON_ARRAY_T := v_srcroot.get_Array('items');
         BEGIN
-            FOR v_i_0 IN 0 .. v_forarr_0.get_size - 1 LOOP
-                DECLARE
-                    v_src JSON_OBJECT_T := TREAT(v_forarr_0.get(v_i_0) AS JSON_OBJECT_T);
-                BEGIN
+            IF v_forarr_0 IS NOT NULL THEN
+                FOR v_i_0 IN 0 .. v_forarr_0.get_size - 1 LOOP
                     DECLARE
-                        v_result_line JSON_OBJECT_T;
-                        v_omitted_line BOOLEAN;
+                        v_src JSON_OBJECT_T := TREAT(v_forarr_0.get(v_i_0) AS JSON_OBJECT_T);
                     BEGIN
-                        v_result_line := fn_orders_line(v_srcroot, v_src, v_rule_errors, v_omitted_line);
-                        IF NOT v_omitted_line THEN
-                            v_arr_Lines.append(v_result_line);
-                        END IF;
-                    EXCEPTION
-                        WHEN OTHERS THEN
-                            IF NOT v_errors.EXISTS('line') THEN
-                                v_errors('line') := SQLERRM;
+                        DECLARE
+                            v_result_line JSON_OBJECT_T;
+                            v_omitted_line BOOLEAN;
+                        BEGIN
+                            v_result_line := fn_orders_line(v_srcroot, v_src, v_rule_errors, v_omitted_line);
+                            IF NOT v_omitted_line THEN
+                                v_arr_Lines.append(v_result_line);
                             END IF;
+                        EXCEPTION
+                            WHEN OTHERS THEN
+                                IF NOT v_errors.EXISTS('line') THEN
+                                    v_errors('line') := SQLERRM;
+                                END IF;
+                        END;
                     END;
-                END;
-            END LOOP;
+                END LOOP;
+            END IF;
         END;
 
         DECLARE
@@ -247,26 +273,28 @@ CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAP_ORDERS AS
         DECLARE
             v_forarr_0 JSON_ARRAY_T := v_srcroot.get_Array('items');
         BEGIN
-            FOR v_i_0 IN 0 .. v_forarr_0.get_size - 1 LOOP
-                DECLARE
-                    v_src JSON_OBJECT_T := TREAT(v_forarr_0.get(v_i_0) AS JSON_OBJECT_T);
-                BEGIN
+            IF v_forarr_0 IS NOT NULL THEN
+                FOR v_i_0 IN 0 .. v_forarr_0.get_size - 1 LOOP
                     DECLARE
-                        v_result_line JSON_OBJECT_T;
-                        v_omitted_line BOOLEAN;
+                        v_src JSON_OBJECT_T := TREAT(v_forarr_0.get(v_i_0) AS JSON_OBJECT_T);
                     BEGIN
-                        v_result_line := fn_orders_line(v_srcroot, v_src, v_rule_errors, v_omitted_line);
-                        IF NOT v_omitted_line THEN
-                            v_arr_Lines.append(v_result_line);
-                        END IF;
-                    EXCEPTION
-                        WHEN OTHERS THEN
-                            IF NOT v_errors.EXISTS('line') THEN
-                                v_errors('line') := SQLERRM;
+                        DECLARE
+                            v_result_line JSON_OBJECT_T;
+                            v_omitted_line BOOLEAN;
+                        BEGIN
+                            v_result_line := fn_orders_line(v_srcroot, v_src, v_rule_errors, v_omitted_line);
+                            IF NOT v_omitted_line THEN
+                                v_arr_Lines.append(v_result_line);
                             END IF;
+                        EXCEPTION
+                            WHEN OTHERS THEN
+                                IF NOT v_errors.EXISTS('line') THEN
+                                    v_errors('line') := SQLERRM;
+                                END IF;
+                        END;
                     END;
-                END;
-            END LOOP;
+                END LOOP;
+            END IF;
         END;
 
         DECLARE

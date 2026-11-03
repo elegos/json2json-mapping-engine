@@ -1,0 +1,24 @@
+{
+  "operation": "POST",
+  "enrolment": {
+    "enrolmentId": "E-5002",
+    "messageId": "MSG-20260302-0011",
+    "createdAt": "2026-03-02T18:30:00Z",
+    "mode": null,
+    "status": "DROPPED",
+    "withdrawnAt": null,
+    "student": {
+      "id": "SOUTH-PG-77"
+    },
+    "tags": [],
+    "sessions": [
+      {
+        "sessionNo": 1,
+        "kind": "LEC",
+        "room": null,
+        "start": "2026-03-09T08:00:00-05:00",
+        "end": null
+      }
+    ]
+  }
+}

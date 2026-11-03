@@ -1,0 +1,18 @@
+[
+ {
+  "n": 1,
+  "x": 66,
+  "y": 74.8,
+  "w": 18.1,
+  "h": 4.6,
+  "text": "The cell being edited. i is the variable of the comprehension: its element is one entry of $.items."
+ },
+ {
+  "n": 2,
+  "x": 69.8,
+  "y": 78,
+  "w": 17.5,
+  "h": 6.1,
+  "text": "Typing i. suggests the fields of that element, with their types. The same works for $., @., a loop's label and, in override code, for src. and root.; the keywords (for, if, order by…) and the functions are suggested too."
+ }
+]

@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Quote",
+  "type": "object",
+  "required": [
+    "quote"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "quote": {
+      "type": "object",
+      "required": [
+        "number",
+        "issuedAt",
+        "currency",
+        "customer",
+        "lines"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "number": {
+          "type": "string"
+        },
+        "issuedAt": {
+          "type": "string"
+        },
+        "currency": {
+          "type": "string"
+        },
+        "customer": {
+          "type": "object",
+          "required": [
+            "id",
+            "name"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "vatId": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "lines": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "sku",
+              "qty",
+              "unitPrice"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "sku": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "qty": {
+                "type": "integer"
+              },
+              "unitPrice": {
+                "type": "number"
+              },
+              "discountPct": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              }
+            }
+          }
+        },
+        "terms": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "paymentDays": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "incoterm": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}

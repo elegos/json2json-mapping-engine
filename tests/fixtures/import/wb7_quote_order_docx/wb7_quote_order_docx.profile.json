@@ -1,0 +1,29 @@
+{
+  "workbook": "QuoteToOrder_spec_rev2.2.docx",
+  "family": "formal-requirements",
+  "language": "en",
+  "index_base": {
+    "all": 1,
+    "declared_in": "section 2"
+  },
+  "array_notation": {
+    "lines[1]": "first line"
+  },
+  "null_rule": "missing optional -> field omitted; never null or empty string",
+  "date_dialect": {
+    "issuedAt": "ISO 8601 with offset, convert to UTC first",
+    "output": "yyyy-MM-dd"
+  },
+  "rounding": "half up, 2 decimals, after REQ-08 and REQ-09 and at the total",
+  "status_markers": {
+    "yellow highlight": "changed/new in the latest revisions",
+    "strike-through": "removed (REQ-15)"
+  },
+  "version": {
+    "header": "2.3",
+    "file_name": "2.2",
+    "change_history_last": "2.3",
+    "resolution": "header and history agree; the file name is stale"
+  },
+  "schemas": "in Appendix A (code-like text, one line per paragraph); also provided as files"
+}

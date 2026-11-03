@@ -1,0 +1,15 @@
+{
+  "creditNote": {
+    "noteNo": "CN-5002",
+    "date": "2026-12-31",
+    "lines": [
+      {
+        "row": 1,
+        "sku": "DD-4",
+        "qty": 10,
+        "reasonText": "Changed mind"
+      }
+    ],
+    "totalQty": 10
+  }
+}

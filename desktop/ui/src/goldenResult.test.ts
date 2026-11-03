@@ -22,6 +22,9 @@ const result = (over: Partial<GoldenResult>): GoldenResult => ({
   inconclusive: false,
   values: {},
   expected_values: null,
+  report: null,
+  expected_rejected: null,
+  expected_warnings: null,
   ...over,
 });
 
@@ -30,6 +33,18 @@ describe("golden results", () => {
     const all = [result({}), result({ passed: false }), result({ passed: null }), result({})];
     expect(all.map(verdict)).toEqual(["pass", "fail", "shown", "pass"]);
     expect(tally(all)).toEqual({ pass: 2, fail: 1, shown: 1, inconclusive: 0 });
+  });
+
+  it("compares the checks that rejected or warned with the expected codes", () => {
+    const issue = (code: string, action: "reject" | "warn") => ({ side: "input" as const, code, message: code, action });
+    expect(whyFailed(result({ passed: false, report: [issue("REQ-16", "reject")], expected_rejected: ["REQ-16"] }))).toEqual([]);
+    expect(whyFailed(result({ passed: false, report: [issue("REQ-16", "reject")] }))).toEqual([
+      "checks rejected: [REQ-16], expected []",
+    ]);
+    expect(whyFailed(result({ passed: false, report: [], expected_warnings: ["W-01"] }))).toEqual([
+      "checks warned: [], expected [W-01]",
+    ]);
+    expect(whyFailed(result({ passed: false, diff: "-a\n+b" }))).toEqual(["the output is not the expected one"]);
   });
 
   it("says why a case failed", () => {

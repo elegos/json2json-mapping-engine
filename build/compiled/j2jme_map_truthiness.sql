@@ -14,87 +14,129 @@ END J2JME_MAP_TRUTHINESS;
 
 CREATE OR REPLACE PACKAGE BODY MAPPING_OWNER.J2JME_MAP_TRUTHINESS AS
     FUNCTION fn_truthiness_missing(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_missing__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN (CASE WHEN MAPPING_OWNER.J2JME_FUNCTIONS.truthy(p_root.get('missing')) THEN 'T' ELSE 'F' END);
+        v_missing__ret := (CASE WHEN MAPPING_OWNER.J2JME_FUNCTIONS.truthy(p_root.get('missing')) THEN 'T' ELSE 'F' END);
+        IF v_missing__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_missing__ret;
     END fn_truthiness_missing;
 
     FUNCTION fn_truthiness_json_null(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_json_null__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN (CASE WHEN MAPPING_OWNER.J2JME_FUNCTIONS.truthy(p_root.get('json_null')) THEN 'T' ELSE 'F' END);
+        v_json_null__ret := (CASE WHEN MAPPING_OWNER.J2JME_FUNCTIONS.truthy(p_root.get('json_null')) THEN 'T' ELSE 'F' END);
+        IF v_json_null__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_json_null__ret;
     END fn_truthiness_json_null;
 
     FUNCTION fn_truthiness_bool_false(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_bool_false__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN (CASE WHEN MAPPING_OWNER.J2JME_FUNCTIONS.truthy(p_root.get('bool_false')) THEN 'T' ELSE 'F' END);
+        v_bool_false__ret := (CASE WHEN MAPPING_OWNER.J2JME_FUNCTIONS.truthy(p_root.get('bool_false')) THEN 'T' ELSE 'F' END);
+        IF v_bool_false__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_bool_false__ret;
     END fn_truthiness_bool_false;
 
     FUNCTION fn_truthiness_zero(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_zero__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN (CASE WHEN MAPPING_OWNER.J2JME_FUNCTIONS.truthy(p_root.get('zero')) THEN 'T' ELSE 'F' END);
+        v_zero__ret := (CASE WHEN MAPPING_OWNER.J2JME_FUNCTIONS.truthy(p_root.get('zero')) THEN 'T' ELSE 'F' END);
+        IF v_zero__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_zero__ret;
     END fn_truthiness_zero;
 
     FUNCTION fn_truthiness_zero_float(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_zero_float__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN (CASE WHEN MAPPING_OWNER.J2JME_FUNCTIONS.truthy(p_root.get('zero_float')) THEN 'T' ELSE 'F' END);
+        v_zero_float__ret := (CASE WHEN MAPPING_OWNER.J2JME_FUNCTIONS.truthy(p_root.get('zero_float')) THEN 'T' ELSE 'F' END);
+        IF v_zero_float__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_zero_float__ret;
     END fn_truthiness_zero_float;
 
     FUNCTION fn_truthiness_empty_string(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_empty_string__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN (CASE WHEN MAPPING_OWNER.J2JME_FUNCTIONS.truthy(p_root.get('empty_string')) THEN 'T' ELSE 'F' END);
+        v_empty_string__ret := (CASE WHEN MAPPING_OWNER.J2JME_FUNCTIONS.truthy(p_root.get('empty_string')) THEN 'T' ELSE 'F' END);
+        IF v_empty_string__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_empty_string__ret;
     END fn_truthiness_empty_string;
 
     FUNCTION fn_truthiness_empty_array(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_empty_array__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN (CASE WHEN MAPPING_OWNER.J2JME_FUNCTIONS.truthy(p_root.get('empty_array')) THEN 'T' ELSE 'F' END);
+        v_empty_array__ret := (CASE WHEN MAPPING_OWNER.J2JME_FUNCTIONS.truthy(p_root.get('empty_array')) THEN 'T' ELSE 'F' END);
+        IF v_empty_array__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_empty_array__ret;
     END fn_truthiness_empty_array;
 
     FUNCTION fn_truthiness_empty_object(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_empty_object__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN (CASE WHEN MAPPING_OWNER.J2JME_FUNCTIONS.truthy(p_root.get('empty_object')) THEN 'T' ELSE 'F' END);
+        v_empty_object__ret := (CASE WHEN MAPPING_OWNER.J2JME_FUNCTIONS.truthy(p_root.get('empty_object')) THEN 'T' ELSE 'F' END);
+        IF v_empty_object__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_empty_object__ret;
     END fn_truthiness_empty_object;
 
     FUNCTION fn_truthiness_bool_true(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_bool_true__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN (CASE WHEN MAPPING_OWNER.J2JME_FUNCTIONS.truthy(p_root.get('bool_true')) THEN 'T' ELSE 'F' END);
+        v_bool_true__ret := (CASE WHEN MAPPING_OWNER.J2JME_FUNCTIONS.truthy(p_root.get('bool_true')) THEN 'T' ELSE 'F' END);
+        IF v_bool_true__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_bool_true__ret;
     END fn_truthiness_bool_true;
 
     FUNCTION fn_truthiness_one(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_one__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN (CASE WHEN MAPPING_OWNER.J2JME_FUNCTIONS.truthy(p_root.get('one')) THEN 'T' ELSE 'F' END);
+        v_one__ret := (CASE WHEN MAPPING_OWNER.J2JME_FUNCTIONS.truthy(p_root.get('one')) THEN 'T' ELSE 'F' END);
+        IF v_one__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_one__ret;
     END fn_truthiness_one;
 
     FUNCTION fn_truthiness_text(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_text__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN (CASE WHEN MAPPING_OWNER.J2JME_FUNCTIONS.truthy(p_root.get('text')) THEN 'T' ELSE 'F' END);
+        v_text__ret := (CASE WHEN MAPPING_OWNER.J2JME_FUNCTIONS.truthy(p_root.get('text')) THEN 'T' ELSE 'F' END);
+        IF v_text__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_text__ret;
     END fn_truthiness_text;
 
     FUNCTION fn_truthiness_zero_string(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_zero_string__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN (CASE WHEN MAPPING_OWNER.J2JME_FUNCTIONS.truthy(p_root.get('zero_string')) THEN 'T' ELSE 'F' END);
+        v_zero_string__ret := (CASE WHEN MAPPING_OWNER.J2JME_FUNCTIONS.truthy(p_root.get('zero_string')) THEN 'T' ELSE 'F' END);
+        IF v_zero_string__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_zero_string__ret;
     END fn_truthiness_zero_string;
 
     FUNCTION fn_truthiness_array(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_array__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN (CASE WHEN MAPPING_OWNER.J2JME_FUNCTIONS.truthy(p_root.get('array')) THEN 'T' ELSE 'F' END);
+        v_array__ret := (CASE WHEN MAPPING_OWNER.J2JME_FUNCTIONS.truthy(p_root.get('array')) THEN 'T' ELSE 'F' END);
+        IF v_array__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_array__ret;
     END fn_truthiness_array;
 
     FUNCTION fn_truthiness_object(p_root IN JSON_OBJECT_T, p_omitted OUT BOOLEAN) RETURN VARCHAR2 IS
+        v_object__ret VARCHAR2(4000 CHAR);
     BEGIN
         p_omitted := FALSE;
-        RETURN (CASE WHEN MAPPING_OWNER.J2JME_FUNCTIONS.truthy(p_root.get('object')) THEN 'T' ELSE 'F' END);
+        v_object__ret := (CASE WHEN MAPPING_OWNER.J2JME_FUNCTIONS.truthy(p_root.get('object')) THEN 'T' ELSE 'F' END);
+        IF v_object__ret IS NULL THEN p_omitted := TRUE; END IF;
+        RETURN v_object__ret;
     END fn_truthiness_object;
 
     PROCEDURE map_truthiness (

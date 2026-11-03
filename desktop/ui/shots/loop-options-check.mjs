@@ -1,0 +1,63 @@
+// The loop options dialog: the icon beside a loop opens it, a choice is kept and shows on the icon.
+// A check, with a picture.
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import react from "@vitejs/plugin-react";
+import { chromium } from "playwright-core";
+import { createServer } from "vite";
+import { bridgePlugin, makeCopy, setInitial, shim, stop } from "./bridge.mjs";
+
+const out = process.env.SHOTS_OUT ?? mkdtempSync(join(tmpdir(), "j2jme-loop-options-"));
+const server = await createServer({
+  root: resolve(import.meta.dirname, ".."),
+  configFile: false,
+  plugins: [react(), bridgePlugin()],
+  logLevel: "error",
+  clearScreen: false,
+});
+await server.listen();
+const browser = await chromium.launch();
+const context = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+await context.addInitScript(shim);
+await context.addInitScript(() => {
+  localStorage.setItem("wizardAtStartup", "0");
+  localStorage.setItem("tourOffered.functional", "1");
+});
+setInitial(makeCopy());
+const page = await context.newPage();
+page.on("pageerror", (e) => console.error("page error:", e.message));
+await page.goto(server.resolvedUrls.local[0]);
+await page.waitForSelector(".ag-row");
+const button = page.locator('.ag-cell[col-id="kind"] button.loop-options-button').first();
+console.log("a loop row has the icon:", await button.count(), "| title:", await button.getAttribute("title"));
+await button.click();
+await page.waitForSelector(".loop-options");
+await page.screenshot({ path: join(out, "1-loop-options.png") });
+await page.click(".loop-options .order-keys button:has-text(\"Add a key\")");
+await page.click(".loop-options .order-key .cm-content");
+await page.keyboard.type("@.");
+await page.waitForSelector(".cm-tooltip-autocomplete", { timeout: 5000 }).then(
+  async () => console.log("suggestions:", (await page.locator(".cm-tooltip-autocomplete li").allTextContents()).join(" | ")),
+  () => console.log("no suggestions"),
+);
+await page.screenshot({ path: join(out, "1b-order-suggestions.png") });
+await page.keyboard.press("Escape");
+await page.keyboard.type("sku");
+await page.waitForTimeout(300);
+if ((await page.locator(".loop-options").count()) === 0) throw new Error("Escape in the editor closed the dialog");
+await page.selectOption('.loop-options select[aria-label="Direction of key 1"]', "desc");
+await page.fill('.loop-options label:has-text("First number") input', "1");
+await page.selectOption('.loop-options label:has-text("When there is nothing") select', "omit");
+await page.click('.loop-options button:has-text("Apply")');
+await page.waitForSelector(".loop-options", { state: "detached" });
+const after = page.locator('.ag-cell[col-id="kind"] button.loop-options-button.set').first();
+console.log("icon now says:", await after.getAttribute("title"));
+await after.click();
+console.log("reopened with:", await page.locator(".loop-options .order-key .cm-content").innerText(),
+  "|", await page.inputValue('.loop-options label:has-text("When there is nothing") select'));
+await page.click('.loop-options button:has-text("Cancel")');
+await browser.close();
+await server.close();
+stop();
+console.log("picture in", out);

@@ -8,7 +8,16 @@ import { join, resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "../../..");
 const python = existsSync(join(root, ".venv/bin/python")) ? join(root, ".venv/bin/python") : "python3";
-const env = { ...process.env, PYTHONPATH: root };
+const fakeProvider = join(import.meta.dirname, "fake_provider.py");
+// the import runs with a stand-in for the assistant (shots/fake_provider.py)
+const env = {
+  ...process.env,
+  PYTHONPATH: root,
+  J2JME_IMPORT_PROVIDER: fakeProvider,
+  // a long document in the shots: a batch of one unit, so that several run at once
+  J2JME_IMPORT_BATCH_SIZE: "1",
+  J2JME_FAKE_WAIT: process.env.J2JME_FAKE_WAIT ?? "6",
+};
 export const fixture = join(root, "desktop/fixtures/tour-project");
 
 function runMapper(project, args, stdin) {
@@ -84,7 +93,41 @@ export function setInputFile(project, mapping, path) {
   inputFiles.set(`${project}|${mapping}`, path);
 }
 
+// `mapper import run`, as the Rust side starts it: lines and the end are events the page polls for
+const importRuns = new Map();
+const importEvents = [];
+let importCount = 0;
 const commands = {
+  import_run_start: async ({ project, args }) => {
+    const run = ++importCount;
+    const child = spawn(python, ["-m", "cli.main", "import", "run", "--watch-stdin", ...args], {
+      cwd: project,
+      env,
+    });
+    importRuns.set(run, child);
+    let buffer = "";
+    let stderr = "";
+    child.stdout.on("data", (d) => {
+      buffer += d;
+      let at;
+      while ((at = buffer.indexOf("\n")) >= 0) {
+        importEvents.push({ event: "import-line", payload: { run, line: buffer.slice(0, at) } });
+        buffer = buffer.slice(at + 1);
+      }
+    });
+    child.stderr.on("data", (d) => (stderr += d));
+    child.on("close", (code) => {
+      importRuns.delete(run);
+      importEvents.push({ event: "import-exit", payload: { run, code: code ?? -1, stderr } });
+    });
+    return run;
+  },
+  import_cancel: async ({ run }) => {
+    const child = importRuns.get(run);
+    child?.stdin.write("cancel\n");
+    child?.stdin.end();
+  },
+  import_events: async () => importEvents.splice(0),
   input_file_get: async ({ project, mapping }) => inputFiles.get(`${project}|${mapping}`) ?? null,
   input_file_set: async ({ project, mapping, path }) => {
     if (path) inputFiles.set(`${project}|${mapping}`, path);
@@ -144,12 +187,29 @@ export const shim = `
   window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener() {} };
   window.__TAURI_INTERNALS__ = {
     metadata: { currentWindow: { label: "main" }, currentWebview: { label: "main", windowLabel: "main" } },
-    transformCallback: () => next++,
+    transformCallback: (cb) => {
+      const id = next++;
+      window.__cb = window.__cb ?? {};
+      window.__cb[id] = cb;
+      return id;
+    },
     unregisterCallback() {},
     convertFileSrc: (p) => p,
     invoke: async (cmd, args) => {
       if (cmd === "plugin:dialog|save" && window.__saveTo) return window.__saveTo;
       if (cmd === "plugin:dialog|open" && window.__openFile) return window.__openFile;
+      if (cmd === "plugin:event|listen") {
+        // events of the Rust side (the import run) are polled from the bridge
+        const l = (window.__listeners = window.__listeners ?? {});
+        (l[args.event] = l[args.event] ?? []).push(args.handler);
+        if (!window.__poll) {
+          window.__poll = setInterval(async () => {
+            const r = await (await fetch("/__bridge/import_events", { method: "POST", body: "{}" })).json();
+            for (const e of r.value ?? []) for (const h of l[e.event] ?? []) window.__cb[h]({ event: e.event, id: 0, payload: e.payload });
+          }, 120);
+        }
+        return 0;
+      }
       if (cmd.startsWith("plugin:")) return 0;
       const r = await (await fetch("/__bridge/" + cmd, { method: "POST", body: JSON.stringify(args ?? {}) })).json();
       if (!r.ok) throw r.error;

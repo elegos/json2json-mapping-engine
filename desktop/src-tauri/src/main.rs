@@ -15,7 +15,12 @@ mod window_size;
 use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::collections::HashMap;
+use std::io::{BufRead, BufReader, Write};
+use std::process::Child;
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{Arc, Mutex};
+use tauri::Emitter;
 
 /// Result of a `mapper` invocation, as the UI needs it.
 #[derive(serde::Serialize)]
@@ -268,6 +273,83 @@ fn tour_project_cleanup(path: String) -> Result<(), String> {
     tour::cleanup(Path::new(&path))
 }
 
+/// The runs of the import assistant that are going on (`mapper import run`), by number.
+#[derive(Default)]
+struct ImportRuns {
+    next: AtomicU32,
+    running: Arc<Mutex<HashMap<u32, Child>>>,
+}
+
+/// Starts `mapper import run <args>` in `project`. Each line it prints reaches the window as an
+/// `import-line` event and its end as `import-exit`, both with the run's number (the answer).
+#[tauri::command]
+fn import_run_start(
+    app: tauri::AppHandle,
+    state: tauri::State<ImportRuns>,
+    project: String,
+    args: Vec<String>,
+) -> Result<u32, String> {
+    let found = python::resolve()?;
+    let mut all: Vec<&str> = vec!["import", "run", "--watch-stdin"];
+    all.extend(args.iter().map(String::as_str));
+    let mut child = python::spawn_mapper(&found, &PathBuf::from(&project), &all, &[])?;
+    let run = state.next.fetch_add(1, Ordering::SeqCst) + 1;
+    let stdout = child.stdout.take().ok_or("no stdout")?;
+    let stderr = child.stderr.take().ok_or("no stderr")?;
+    state
+        .running
+        .lock()
+        .map_err(|_| "lock poisoned".to_string())?
+        .insert(run, child);
+    let quiet = app.clone();
+    let errors = std::thread::spawn(move || {
+        let mut text = String::new();
+        for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+            text.push_str(&line);
+            text.push('\n');
+        }
+        text
+    });
+    let running = Arc::clone(&state.running);
+    std::thread::spawn(move || {
+        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+            let _ = app.emit("import-line", serde_json::json!({ "run": run, "line": line }));
+        }
+        let code = match running.lock().ok().and_then(|mut m| m.remove(&run)) {
+            Some(mut child) => child.wait().ok().and_then(|s| s.code()).unwrap_or(-1),
+            None => -1,
+        };
+        let stderr = errors.join().unwrap_or_default();
+        let _ = quiet.emit(
+            "import-exit",
+            serde_json::json!({ "run": run, "code": code, "stderr": stderr }),
+        );
+    });
+    Ok(run)
+}
+
+/// Cancels a run: its stdin gets `cancel` and closes (the run stops the assistant and says so);
+/// a run that does not end in a few seconds is killed.
+#[tauri::command]
+fn import_cancel(state: tauri::State<ImportRuns>, run: u32) {
+    if let Ok(mut map) = state.running.lock() {
+        if let Some(child) = map.get_mut(&run) {
+            if let Some(mut stdin) = child.stdin.take() {
+                let _ = stdin.write_all(b"cancel\n");
+            }
+        }
+    }
+    let running = Arc::clone(&state.running);
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(5));
+        if let Ok(mut map) = running.lock() {
+            if let Some(child) = map.get_mut(&run) {
+                let _ = child.kill();
+            }
+        }
+    });
+}
+
 /// One JSON request to `mapper serve`; returns the JSON answer line.
 #[tauri::command]
 fn edit_request(
@@ -322,6 +404,7 @@ fn main() {
     tour::sweep();
     tauri::Builder::default()
         .manage(EditWorker(Mutex::new(None)))
+        .manage(ImportRuns::default())
         .setup(|app| {
             use tauri::Manager;
             if let Ok(dir) = app.path().resource_dir() {
@@ -353,6 +436,8 @@ fn main() {
             read_fn,
             write_fn,
             edit_request,
+            import_run_start,
+            import_cancel,
             input_file_get,
             input_file_set,
             write_text_file,

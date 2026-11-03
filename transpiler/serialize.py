@@ -22,6 +22,7 @@ from transpiler.model import (
     LoopRule,
     ObjectRule,
     Rule,
+    ValidationsSection,
     apply_decay,
     parse_functional,
 )
@@ -97,14 +98,11 @@ def _rule_to_raw(rule: Rule, in_loop: bool = False, nested: bool = False) -> dic
         _put(raw, "label", rule.label)
         raw["source"] = rule.source
         _put(raw, "filter", rule.filter)
-        if rule.sort_key is not None:
-            sort: dict[str, Any] = {"key": rule.sort_key}
-            if rule.sort_reverse:
-                sort["reverse"] = True
-            raw["sort"] = sort
+        _put(raw, "order_by", rule.order_by)
         raw["output"] = _short(rule.output, "@." if nested else "$.")
         if rule.index_start:
             raw["index_start"] = rule.index_start
+        _put(raw, "when_empty", rule.when_empty)
         _put(raw, "parallel", rule.parallel)
     else:
         assert isinstance(rule, ObjectRule)
@@ -134,7 +132,32 @@ def functional_to_raw(file: FunctionalFile) -> dict[str, Any]:
         paths["aliases"] = dict(file.paths.aliases)
     if paths:
         raw["paths"] = paths
+    validations = _validations_to_raw(file.validations)
+    if validations:
+        raw["validations"] = validations
     raw["rules"] = [_rule_to_raw(r) for r in file.rules]
+    return raw
+
+
+def _validations_to_raw(section: ValidationsSection) -> dict[str, Any]:
+    raw: dict[str, Any] = {}
+    for name in ("input", "output"):
+        side = section.side(name)
+        body: dict[str, Any] = {}
+        if side.schema:
+            body["schema"] = True
+        if side.checks:
+            body["checks"] = []
+            for c in side.checks:
+                item: dict[str, Any] = {"id": c.id, "expect": c.expect, "code": c.code}
+                if c.message != c.code:
+                    item["message"] = c.message
+                if c.action != "reject":
+                    item["action"] = c.action
+                _put(item, "description", c.description)
+                body["checks"].append(item)
+        if body:
+            raw[name] = body
     return raw
 
 

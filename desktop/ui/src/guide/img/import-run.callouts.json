@@ -1,0 +1,42 @@
+[
+ {
+  "n": 1,
+  "x": 1.2,
+  "y": 18,
+  "w": 97.6,
+  "h": 2.2,
+  "text": "A long document is read in batches, several at a time. The bar shows how far they have got, and the count how many are done and running."
+ },
+ {
+  "n": 2,
+  "x": 1.2,
+  "y": 21.6,
+  "w": 97.6,
+  "h": 5.5,
+  "text": "What the assistant expects the engine to lack for this document, counted before a single rule is written, with the rows that wait for each."
+ },
+ {
+  "n": 3,
+  "x": 1.2,
+  "y": 28.2,
+  "w": 55.3,
+  "h": 66.4,
+  "text": "What the assistant is doing."
+ },
+ {
+  "n": 4,
+  "x": 58.8,
+  "y": 40.5,
+  "w": 40,
+  "h": 31.1,
+  "text": "A question it could not answer from the document. The run does not wait: until you answer, the rules that depend on it use the proposal and are marked as guesses."
+ },
+ {
+  "n": 5,
+  "x": 58.8,
+  "y": 73.2,
+  "w": 40,
+  "h": 6.2,
+  "text": "Send the answers: the batches that come next read them, and the rules already written are read again."
+ }
+]

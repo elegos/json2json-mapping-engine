@@ -1,0 +1,48 @@
+{
+  "messageId": "LN|R-20260325-01",
+  "queueId": "NOTICE_QUEUE",
+  "priority": 0,
+  "keepOrder": true,
+  "body": {
+    "channel": "MAIL",
+    "reportTime": "2026-03-25T16:08:12Z",
+    "printStamp": "25-03-2026 16:08:12.00",
+    "patronCard": "C0001",
+    "tierLevel": 2,
+    "currency": "EUR",
+    "notes": {
+      "items": [
+        {
+          "seq": 1,
+          "qual": "LOAN REF",
+          "text": "LN-2026-0042"
+        },
+        {
+          "seq": 2,
+          "qual": "OVERDUE",
+          "text": "5"
+        },
+        {
+          "seq": 3,
+          "qual": "FINE",
+          "text": "1.5 EUR (LATE)"
+        },
+        {
+          "seq": 3,
+          "qual": "FINE",
+          "text": "2 EUR"
+        },
+        {
+          "seq": 4,
+          "qual": "ITEM",
+          "text": "B1|Atlas of Rivers"
+        },
+        {
+          "seq": 4,
+          "qual": "ITEM",
+          "text": "B2|NO TITLE"
+        }
+      ]
+    }
+  }
+}

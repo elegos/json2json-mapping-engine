@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Billing request (synthetic)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "originCode",
+    "billingId",
+    "currencyCode",
+    "ruleDate",
+    "bypassRun",
+    "bypassFlag",
+    "createdDate",
+    "hasDeposit",
+    "customer",
+    "lineItems"
+  ],
+  "properties": {
+    "originCode": {
+      "enum": [
+        "RNT001",
+        "RNT002"
+      ]
+    },
+    "billingId": {
+      "type": "string"
+    },
+    "currencyCode": {
+      "type": "string"
+    },
+    "ruleDate": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "bypassRun": {
+      "const": "N"
+    },
+    "bypassFlag": {
+      "enum": [
+        "Y",
+        "N"
+      ]
+    },
+    "createdDate": {
+      "type": "string",
+      "pattern": "^[0-9]{8}$"
+    },
+    "billingNote": {
+      "type": "string"
+    },
+    "hasDeposit": {
+      "type": "boolean"
+    },
+    "customer": {
+      "type": "object",
+      "required": [
+        "code",
+        "type",
+        "seq"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "seq": {
+          "type": "string"
+        },
+        "levyCountry": {
+          "type": "string"
+        },
+        "levyRegion": {
+          "type": "string"
+        }
+      }
+    },
+    "lineItems": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "seqNo",
+          "assetCode",
+          "chargeNet",
+          "isDeposit"
+        ],
+        "properties": {
+          "seqNo": {
+            "type": "integer"
+          },
+          "assetCode": {
+            "type": "string"
+          },
+          "chargeNet": {
+            "type": "number"
+          },
+          "isDeposit": {
+            "type": "boolean"
+          },
+          "unitLabel": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
